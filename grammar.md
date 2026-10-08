@@ -93,7 +93,7 @@ Tuple, `TypeParam`, `Distinct`, plus `Str` used as a `u8*` interned-id in AST.
 - **const / constant**: `const Type name = expr;` (sema must constant-fold where required).
 - **`typedef` / `pub typedef Name = Type;`**.
 - **`pub extern[c] Name<params>;`** → extern variable.
-- **`distinct`**: `pub distinct <Name> = <Type>;` (or `flag(Arch){…}` — unsupported).
+- **`distinct`**: `pub distinct <Name> = <Type>;` (or `flag(Arch){…}`).
 - **import** (4 legal forms, no string literal, no `.crl`):
   - `import name { syms };`   (sibling `name.crl`)
   - `import mod::sub { syms };`  (builder-resolved module)
@@ -183,7 +183,7 @@ Tuple, `TypeParam`, `Distinct`, plus `Str` used as a `u8*` interned-id in AST.
 - Fn-pointer params with names (`usize(K) hf`).
 - Struct field array decls with const-size exprs.
 - `comptime {}` blocks and `asm {}` blocks are parsed then dumped.
-- `#[[inline]]` etc.: parsed but not semantic.
+- `#[[inline]]` etc.:
 - `pub distinct X = flag(…)`, `any TraitName`, switch `|` syntax — decided but
   unimplemented.
 
