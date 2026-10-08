@@ -1,0 +1,111 @@
+import core::io { readCmdline, readFile, sliceCStr };
+import core::arena { Arena };
+import diag::diag { Diags };
+import lexer::lexer { Lexer, newLexer };
+import common::token { Token, TokenKind, kindName, matchWord };
+import parser::base { Parser };
+import ast::ast { PtrList };
+import sema::sema { Checker };
+
+import(lib) std::data { option::Option, result::Result };
+import(lib) platform::libc { printf };
+
+Option<str> nextArg(str all, usize* pos)
+{
+    usize i = *pos;
+    while (i < all.len && all.ptr[i] == 0) i++;
+    if (i >= all.len)
+        return Option<str>::None;
+    usize start = i;
+    while (i < all.len && all.ptr[i] != 0) i++;
+    *pos = i;
+    return Option<str>::Some { .value = str::fromParts(all.ptr + start, i - start) };
+}
+
+void usage() { printf("usage: muc [--tokens] <file.mu>\n") }
+
+pub i32 main()
+{
+    Option<str> cmdOpt = readCmdline();
+    if (cmdOpt.isNone()) {
+        printf("muc: cannot read /proc/self/cmdline\n");
+        return 1;
+    }
+    
+    str cmd = cmdOpt.unwrap();
+    usize pos = 0;
+    nextArg(cmd, &pos);
+    // i have to flag everything here. there is reassigning of a
+    //  value to path, when path is literaly a non reassignable stringview. str is str view, tou cant reassign
+    // 
+    // str path = str::empty();
+    // bool dumpTokens = false;
+    // while (true)
+    // {
+    //     Option<str> moreOpt = nextArg(cmd, &pos);
+    //     if (moreOpt.isNone()) break;
+    //     str arg = moreOpt.unwrap();
+    //     if (matchWord(arg, "--tokens")) dumpTokens = true;
+    //     else if (path.len == 0) path = arg; // reassigning of a constant pointer
+    //     else
+    //     {
+    //         printf("muc: unexpected argument: %.*s\n", (i32)arg.len, arg.ptr);
+    //         usage();
+    //         return 2;
+    //     }
+    // }
+    // if (path.len == 0)
+    // {
+    //     usage();
+    //     return 2;
+    // }
+
+    Option<u8*> cpathOpt = sliceCStr(path);
+    if (cpathOpt.isNone())
+    {
+        printf("muc: out of memory\n");
+        return 1;
+    }
+    u8* cpath = cpathOpt.unwrap();
+
+    Result<str, str> file = readFile(cpath);
+    if (file.isErr())
+    {
+        str err = file.unwrapErr();
+        printf("muc: %.*s: %.*s\n", (i32)path.len, path.ptr, (i32)err.len, err.ptr);
+        return 1;
+    }
+    str src = file.unwrap();
+
+    Diags diags;
+    diags.init(path, src);
+    Lexer lx = newLexer(src.ptr, src.len, &diags);
+
+    if (dumpTokens)
+    {
+        while (true)
+        {
+            Token t = lx.next();
+            printf("%u:%u %s %.*s\n", (u32)t.line, (u32)t.col, kindName(t.kind), (i32)t.text.len, t.text.ptr);
+            if (t.kind == TokenKind::Eof) break;
+        }
+        diags.summary();
+        if (!diags.ok()) return 1;
+        return 0;
+    }
+
+    Arena arena;
+    arena.init(65536);
+    Parser p;
+    p.init(&lx, &diags, &arena);
+    PtrList* decls = p.parseFile();
+    printf("muc: %u declaration(s)\n", (u32)decls.len);
+
+    Checker chk;
+    chk.init(&arena, &diags, decls);
+    chk.checkAll();
+
+    diags.summary();
+    if (!diags.ok()) return 1;
+    return 0;
+}

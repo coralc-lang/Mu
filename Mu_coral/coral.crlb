@@ -1,0 +1,38 @@
+schema = 1;
+strict = true;
+
+build "muc" {
+    root       = "src/";
+    entry      = "mu-frontend";
+    target     = "Wallvm";
+    opt        = "debug";
+    output     = "build/muc";
+    module_map = ".coral/modules.map";
+    cache_dir  = ".coral/cache";
+
+    flags = ["--strict", "--warn-unused"];
+
+    modules = [
+        "mu-core",
+        "mu-common",
+        "mu-diagnostics",
+        "mu-lexer",
+        "mu-ast",
+        "mu-parser",
+        "mu-frontend",
+        "mu-sema",
+    ];
+}
+
+alias core   = "mu-core";
+alias common = "mu-common";
+alias diag   = "mu-diagnostics";
+alias lexer  = "mu-lexer";
+alias ast    = "mu-ast";
+alias parser = "mu-parser";
+
+task "run" {
+    after = ["build"];
+    exec  = "build/muc";
+}
+alias sema   = "mu-sema";

@@ -1,0 +1,429 @@
+import parser::base { Parser };
+import common::token { TokenKind, kindName, matchWord };
+import ast::ast {
+    Loc, Stmt, StmtKind, newStmt, Prong, newProng,
+    Pattern, PatternKind, newPattern, Type, Expr, ExprKind,
+    PtrList, newList, listPush
+};
+
+pub extend Parser
+{
+    bool isLiteralExpr(Expr* e)
+    {
+        if (e == null) return false;
+        return e.kind == ExprKind::Int || e.kind == ExprKind::Float || e.kind == ExprKind::Str ||
+               e.kind == ExprKind::Char || e.kind == ExprKind::Bool ||
+               e.kind == ExprKind::ArrayLit || e.kind == ExprKind::Tuple || e.kind == ExprKind::StructLit;
+    }
+
+    Stmt* parseBlock()
+    {
+        Loc loc = self.here();
+        bool saved = self.noStruct;
+        self.noStruct = false;
+        self.expect(TokenKind::LBrace);
+        Stmt* b = newStmt(self.arena, StmtKind::StBlock, loc);
+        b.list = newList(self.arena);
+        bool term = false;
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            Stmt* s = self.parseStmt();
+            if (s != null)
+            {
+                if (term) {
+                    self.diags.warn(s.loc.line, s.loc.col, 1, "W0101", "unreachable code");
+                    self.diags.why("control flow never reaches this statement");
+                }
+                listPush(b.list, (rawptr)s);
+                if (s.kind == StmtKind::StReturn || s.kind == StmtKind::StBreak || s.kind == StmtKind::StContinue) term = true;
+            }
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        self.expect(TokenKind::RBrace);
+        self.noStruct = saved;
+        return b;
+    }
+
+    Stmt* parseStmt()
+    {
+        Loc loc = self.here();
+        TokenKind k = self.cur.kind;
+
+        if (k == TokenKind::Manifest)
+        {
+            self.perr("E0202", "manifest directive must appear before any code");
+            self.advance();
+            return null;
+        }
+
+        if (k == TokenKind::At)
+        {
+            if (self.nxt.kind == TokenKind::KwExtern)
+            {
+                self.perr("E0215", "declarations cannot appear inside a function body");
+                self.diags.help("move `@extern` declarations to the top level");
+                self.advance();
+                self.advance();
+                return null;
+            }
+            Loc aloc = self.here();
+            self.advance();
+            if (self.cur.kind != TokenKind::Ident)
+            {
+                self.perr("E0200", "expected a label name after `@`");
+                self.whyFound();
+                if (!self.isBoundary(self.cur.kind)) self.advance();
+                return null;
+            }
+            str label = self.cur.text;
+            self.advance();
+            if (self.cur.kind == TokenKind::Colon)
+            {
+                self.advance();
+            }
+            else
+            {
+                self.perr("E0200", "expected `:` after a label name");
+                self.whyFound();
+            }
+            bool isLoop = self.cur.kind == TokenKind::KwWhile || self.cur.kind == TokenKind::KwFor;
+            if (!isLoop)
+            {
+                self.perrAt(aloc, "E0216", "a label must be attached to a loop");
+                self.diags.why("only `while` and `for` loops can be labeled");
+                self.diags.help("write `@name: while ...` or `@name: for ...`");
+            }
+            usize dup = self.findLabel(label);
+            if (dup < self.labelLen)
+            {
+                self.perrAt(aloc, "E0216", self.fmtStr("duplicate label `%.*s`", label));
+                self.diags.also(self.labels[dup].line, self.labels[dup].col, 1, "label is already in scope here");
+            }
+            self.pushLabel(label, aloc);
+            Stmt* s = self.parseStmt();
+            self.popLabel();
+            if (s != null) s.label = label;
+            return s;
+        }
+
+        if (k == TokenKind::KwElse)
+        {
+            self.perr("E0224", "`else` without a matching `if`");
+            self.diags.help("remove the `else`, or add an `if` before it");
+            self.advance();
+            return null;
+        }
+
+        if (k == TokenKind::KwFn || k == TokenKind::KwStruct || k == TokenKind::KwVariant ||
+            k == TokenKind::KwTrait || k == TokenKind::KwExtend || k == TokenKind::KwConst ||
+            k == TokenKind::KwType || k == TokenKind::KwUse || k == TokenKind::KwPub ||
+            k == TokenKind::KwAsync || k == TokenKind::KwExtern)
+        {
+            self.perr("E0215", "declarations cannot appear inside a function body");
+            self.diags.help("move it to the top level of the file");
+            self.advance();
+            return null;
+        }
+
+        #[[fallthrough]]
+        switch (k)
+        {
+            TokenKind::KwVar => { return self.parseVarLet(loc, false); },
+            TokenKind::KwLet => { return self.parseVarLet(loc, true); },
+            TokenKind::KwIf => { return self.parseIf(); },
+            TokenKind::KwWhile => { return self.parseWhile(loc); },
+            TokenKind::KwFor => { return self.parseFor(loc); },
+            TokenKind::KwSwitch => { return self.parseSwitch(loc); },
+            TokenKind::LBrace => { return self.parseBlock(); },
+            TokenKind::KwBreak => { return self.parseJump(loc, true); },
+            TokenKind::KwContinue => { return self.parseJump(loc, false); },
+            TokenKind::KwReturn => { return self.parseReturn(loc); },
+        }
+
+        Expr* e = self.parseExpr();
+        Stmt* s = newStmt(self.arena, StmtKind::StExpr, loc);
+        s.expr = e;
+        if (self.cur.kind == TokenKind::RBrace) return s;
+        self.expect(TokenKind::Semicolon);
+        if (self.isLiteralExpr(e))
+        {
+            self.diags.warn(e.loc.line, e.loc.col, 1, "W0102", "unused value");
+            self.diags.why("this literal is evaluated and its value is discarded");
+            self.diags.help("assign it to a variable, or remove the statement");
+        }
+        return s;
+    }
+
+    Stmt* parseVarLet(Loc loc, bool isLet)
+    {
+        self.advance();
+        Pattern* pat = self.parsePattern();
+        Type* ty = null;
+        Expr* init = null;
+        if (self.cur.kind == TokenKind::Colon)
+        {
+            self.advance();
+            ty = self.parseType();
+        }
+        if (self.cur.kind == TokenKind::Equal)
+        {
+            self.advance();
+            init = self.parseExpr();
+        }
+        else if (isLet)
+        {
+            self.perr("E0201", "`let` requires an initializer");
+            self.diags.why("immutable bindings must be given a value; use `var` for a later assignment");
+        }
+        self.expect(TokenKind::Semicolon);
+        Stmt* s = newStmt(self.arena, StmtKind::StVar, loc);
+        s.isLet = isLet;
+        s.pat = pat;
+        s.type = ty;
+        s.expr = init;
+        return s;
+    }
+
+    Stmt* parseIf()
+    {
+        Loc loc = self.here();
+        self.expect(TokenKind::KwIf);
+        bool saved = self.noStruct;
+        self.noStruct = true;
+        Expr* cond = self.parseExpr();
+        self.noStruct = saved;
+        Stmt* thenB = self.parseBlock();
+        Stmt* elseB = null;
+        if (self.cur.kind == TokenKind::KwElse)
+        {
+            self.advance();
+            if (self.cur.kind == TokenKind::KwIf) elseB = self.parseIf();
+            else if (self.cur.kind == TokenKind::LBrace) elseB = self.parseBlock();
+            else
+            {
+                self.perr("E0200", self.fmt("expected `if` or `{` after `else`, found `%s`", kindName(self.cur.kind)));
+                self.whyFound();
+            }
+        }
+        Stmt* s = newStmt(self.arena, StmtKind::StIf, loc);
+        s.expr = cond;
+        s.a = thenB;
+        s.b = elseB;
+        return s;
+    }
+
+    Stmt* parseWhile(Loc loc)
+    {
+        self.advance();
+        bool saved = self.noStruct;
+        self.noStruct = true;
+        Expr* cond = self.parseExpr();
+        self.noStruct = saved;
+        self.loopDepth = self.loopDepth + 1;
+        Stmt* body = self.parseBlock();
+        self.loopDepth = self.loopDepth - 1;
+        Stmt* s = newStmt(self.arena, StmtKind::StWhile, loc);
+        s.expr = cond;
+        s.a = body;
+        return s;
+    }
+
+    Stmt* parseFor(Loc loc)
+    {
+        self.advance();
+        Pattern* pat = self.parsePattern();
+        self.expect(TokenKind::KwIn);
+        bool saved = self.noStruct;
+        self.noStruct = true;
+        Expr* iter = self.parseExpr();
+        self.noStruct = saved;
+        self.loopDepth = self.loopDepth + 1;
+        Stmt* body = self.parseBlock();
+        self.loopDepth = self.loopDepth - 1;
+        Stmt* s = newStmt(self.arena, StmtKind::StFor, loc);
+        s.pat = pat;
+        s.expr = iter;
+        s.a = body;
+        return s;
+    }
+
+    Stmt* parseSwitch(Loc loc)
+    {
+        bool saved = self.noStruct;
+        self.noStruct = false;
+        self.advance();
+        self.expect(TokenKind::LParen);
+        Expr* scrut = self.parseExpr();
+        self.expect(TokenKind::RParen);
+        self.expect(TokenKind::LBrace);
+        Stmt* s = newStmt(self.arena, StmtKind::StSwitch, loc);
+        s.expr = scrut;
+        s.prongs = newList(self.arena);
+        bool sawElse = false;
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            Prong* pr = self.parseProng();
+            if (pr != null)
+            {
+                if (pr.isElse && sawElse)
+                {
+                    self.perrAt(pr.loc, "E0212", "duplicate `else` prong");
+                    self.diags.help("keep a single `else => ...` prong, at the end");
+                }
+                else if (!pr.isElse && sawElse)
+                {
+                    self.perrAt(pr.loc, "E0211", "`else` must be the last prong");
+                    self.diags.help("move the `else` prong to the end");
+                }
+                if (pr.isElse) sawElse = true;
+            }
+            listPush(s.prongs, (rawptr)pr);
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        self.expect(TokenKind::RBrace);
+        self.noStruct = saved;
+        return s;
+    }
+
+    Stmt* parseProngBody()
+    {
+        if (self.cur.kind == TokenKind::LBrace) return self.parseBlock();
+        Loc loc = self.here();
+        Expr* e = self.parseExpr();
+        Stmt* st = newStmt(self.arena, StmtKind::StExpr, loc);
+        st.expr = e;
+        return st;
+    }
+
+    Prong* parseProng()
+    {
+        Prong* pr = newProng(self.arena);
+        pr.loc = self.here();
+        if (self.cur.kind == TokenKind::KwElse)
+        {
+            self.advance();
+            pr.isElse = true;
+            if (self.cur.kind == TokenKind::KwIf)
+            {
+                self.perr("E0213", "`else` prongs cannot have a guard");
+                self.diags.why("the `else` prong already matches everything left");
+                self.diags.help("use a guarded pattern prong instead: `value if cond => ...`");
+                self.advance();
+                self.parseExpr();
+            }
+        }
+        else if (self.cur.kind == TokenKind::Ident &&
+                 (matchWord(self.cur.text, "case") || matchWord(self.cur.text, "default")))
+        {
+            bool isCase = matchWord(self.cur.text, "case");
+            if (isCase)
+            {
+                self.perr("E0217", "Mu has no `case` keyword");
+                self.diags.help("write prongs as `pattern => value`");
+            }
+            else
+            {
+                self.perr("E0217", "`default` is not a prong");
+                self.diags.help("use `else => ...` for the fallback prong");
+            }
+            while (!self.atEnd() && self.cur.kind != TokenKind::FatArrow && self.cur.kind != TokenKind::RBrace) self.advance();
+            if (self.cur.kind == TokenKind::FatArrow)
+            {
+                self.advance();
+                pr.body = self.parseProngBody();
+            }
+            self.match(TokenKind::Comma);
+            return pr;
+        }
+        else
+        {
+            Pattern* acc = self.parsePattern();
+            while (self.cur.kind == TokenKind::Comma)
+            {
+                self.advance();
+                if (self.cur.kind == TokenKind::FatArrow) break;
+                Pattern* more = self.parsePattern();
+                Pattern* orp = newPattern(self.arena, PatternKind::PatOr, acc.loc);
+                orp.a = acc;
+                orp.b = more;
+                acc = orp;
+            }
+            pr.pat = acc;
+            if (self.cur.kind == TokenKind::KwIf)
+            {
+                self.advance();
+                pr.guard = self.parseExpr();
+            }
+        }
+        self.expect(TokenKind::FatArrow);
+        pr.body = self.parseProngBody();
+        self.match(TokenKind::Comma);
+        return pr;
+    }
+
+    Stmt* parseJump(Loc loc, bool isBreak)
+    {
+        self.advance();
+        str label = str::empty();
+        if (self.cur.kind == TokenKind::At)
+        {
+            self.advance();
+            if (self.cur.kind == TokenKind::Ident)
+            {
+                label = self.cur.text;
+                self.advance();
+            }
+            else
+            {
+                self.perr("E0200", "expected a label name after `@`");
+                self.whyFound();
+            }
+        }
+        if (label.len == 0 && self.loopDepth == 0)
+        {
+            if (isBreak) self.perr("E0216", "`break` outside of a loop");
+            else self.perr("E0216", "`continue` outside of a loop");
+            self.diags.why("this statement is not inside a `while` or `for` loop");
+        }
+        else if (label.len > 0 && self.findLabel(label) >= self.labelLen)
+        {
+            self.perrAt(loc, "E0216", self.fmtStr("unknown label `%.*s`", label));
+            self.diags.help("declare the label as `@name:` before a loop");
+        }
+        StmtKind sk = StmtKind::StBreak;
+        if (!isBreak) sk = StmtKind::StContinue;
+        Stmt* s = newStmt(self.arena, sk, loc);
+        s.label = label;
+        self.expect(TokenKind::Semicolon);
+        return s;
+    }
+
+    Stmt* parseReturn(Loc loc)
+    {
+        self.advance();
+        Stmt* s = newStmt(self.arena, StmtKind::StReturn, loc);
+        if (self.cur.kind != TokenKind::Semicolon) s.expr = self.parseExpr();
+        self.expect(TokenKind::Semicolon);
+        return s;
+    }
+}

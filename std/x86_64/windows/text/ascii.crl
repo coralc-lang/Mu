@@ -1,0 +1,177 @@
+// ASCII and UTF-8 utility functions
+
+pub bool isAscii(u8 b)
+{
+    return b <= 0x7F;
+}
+
+pub bool isAsciiDigit(u8 b)
+{
+    return b >= '0' && b <= '9';
+}
+
+pub bool isAsciiAlpha(u8 b)
+{
+    return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z');
+}
+
+pub bool isAsciiAlnum(u8 b)
+{
+    return isAsciiDigit(b) || isAsciiAlpha(b);
+}
+
+pub bool isAsciiHex(u8 b)
+{
+    return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F');
+}
+
+pub bool isAsciiSpace(u8 b)
+{
+    return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v';
+}
+
+pub bool isAsciiUpper(u8 b)
+{
+    return b >= 'A' && b <= 'Z';
+}
+
+pub bool isAsciiLower(u8 b)
+{
+    return b >= 'a' && b <= 'z';
+}
+
+pub u8 toAsciiLower(u8 b)
+{
+    if (b >= 'A' && b <= 'Z') return b + 32;
+    return b;
+}
+
+pub u8 toAsciiUpper(u8 b)
+{
+    if (b >= 'a' && b <= 'z') return b - 32;
+    return b;
+}
+
+pub u8 asciiDigitVal(u8 b)
+{
+    if (b >= '0' && b <= '9') return b - '0';
+    return 0;
+}
+
+pub u8 asciiHexVal(u8 b)
+{
+    if (b >= '0' && b <= '9') return b - '0';
+    if (b >= 'a' && b <= 'f') return b - 'a' + 10;
+    if (b >= 'A' && b <= 'F') return b - 'A' + 10;
+    return 0;
+}
+
+// UTF-8 encoding/decoding
+
+pub u32 utf8ByteCount(u8 b)
+{
+    if (b <= 0x7F) return 1;
+    if ((b & 0xE0) == 0xC0) return 2;
+    if ((b & 0xF0) == 0xE0) return 3;
+    if ((b & 0xF8) == 0xF0) return 4;
+    return 0; // invalid
+}
+
+pub u32 utf8Decode(const u8* buf, u32* bytesOut)
+{
+    u8 b0 = buf[0];
+    if (b0 <= 0x7F)
+    {
+        *bytesOut = 1;
+        return (u32)b0;
+    }
+    if ((b0 & 0xE0) == 0xC0)
+    {
+        *bytesOut = 2;
+        return (((u32)(b0 & 0x1F) << 6) | ((u32)(buf[1] & 0x3F)));
+    }
+    if ((b0 & 0xF0) == 0xE0)
+    {
+        *bytesOut = 3;
+        return (((u32)(b0 & 0x0F) << 12) | ((u32)(buf[1] & 0x3F) << 6) | ((u32)(buf[2] & 0x3F)));
+    }
+    *bytesOut = 4;
+    return (((u32)(b0 & 0x07) << 18) | ((u32)(buf[1] & 0x3F) << 12) | ((u32)(buf[2] & 0x3F) << 6) | ((u32)(buf[3] & 0x3F)));
+}
+
+pub u32 utf8Encode(u32 cp, u8* buf)
+{
+    if (cp <= 0x7F) {
+        buf[0] = (u8)cp;
+        return 1;
+    }
+    if (cp <= 0x7FF) {
+        buf[0] = (u8)(0xC0 | (cp >> 6));
+        buf[1] = (u8)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp <= 0xFFFF) {
+        buf[0] = (u8)(0xE0 | (cp >> 12));
+        buf[1] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+        buf[2] = (u8)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    buf[0] = (u8)(0xF0 | (cp >> 18));
+    buf[1] = (u8)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (u8)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+// UTF-16 to/from UTF-8 for terminal output
+pub u32 utf16ToUtf8(u16 cp, u8* buf)
+{
+    if (cp <= 0x7F)
+    {
+        buf[0] = (u8)cp;
+        return 1;
+    }
+    if (cp <= 0x7FF)
+    {
+        buf[0] = (u8)(0xC0 | (cp >> 6));
+        buf[1] = (u8)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    // BMP
+    buf[0] = (u8)(0xE0 | (cp >> 12));
+    buf[1] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+    buf[2] = (u8)(0x80 | (cp & 0x3F));
+    return 3;
+}
+
+// Count UTF-8 characters in a byte slice
+pub usize utf8CountChars(str s)
+{
+    usize count = 0;
+    usize i = 0;
+    while (i < s.len)
+    {
+        u32 bytes = utf8ByteCount(s.ptr[i]);
+        if (bytes == 0) { i++; continue; }
+        i += bytes;
+        count++;
+    }
+    return count;
+}
+
+pub bool utf8IsValid(str s)
+{
+    usize i = 0;
+    while (i < s.len)
+    {
+        u32 bytes = utf8ByteCount(s.ptr[i]);
+        if (bytes == 0) return false;
+        if (i + bytes > s.len) return false;
+        for (usize j = 1; j < bytes; j++)
+        {
+            if ((s.ptr[i + j] & 0xC0) != 0x80) return false;
+        }
+        i += bytes;
+    }
+    return true;
+}

@@ -1,0 +1,6 @@
+import any { any };
+
+pub T cast<T>(any val)
+{
+    return (T)val.ptr();
+}

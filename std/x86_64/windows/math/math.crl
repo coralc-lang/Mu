@@ -1,0 +1,112 @@
+import(lib) std::mman { copy };
+
+import(lib) platform::libc { strtod };
+import(lib) platform::win32 { sin, cos, tan, sqrt, pow, floor, ceil, fabs, asin, acos, atan, atan2, sinh, cosh, tanh, cbrt, exp, log, log2, log10, round, fmod, hypot, erf, erfc, tgamma, lgamma };
+
+pub const f64 tau = 6.28318530717958647692;
+pub const f64 srt2 = 1.41421356237309504880;
+pub const f64 pi = 3.14159265358979323846;
+pub const f64 e = 2.71828182845904523536;
+
+pub f64 piF() { return 3.14159265358979323846; }
+pub f64 eF() { return 2.71828182845904523536; }
+pub f64 sqrt2F() { return 1.41421356237309504880; }
+
+pub f64 degToRad(f64 deg) { return deg * pi / 180.0; }
+pub f64 radToDeg(f64 rad) { return rad * 180.0 / pi; }
+
+pub i64 clampI64(i64 v, i64 lo, i64 hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+pub u64 clampU64(u64 v, u64 lo, u64 hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+pub f64 clampF64(f64 v, f64 lo, f64 hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+pub f64 lerp(f64 a, f64 b, f64 t)
+{
+    return a + (b - a) * t;
+}
+
+pub f64 invLerp(f64 a, f64 b, f64 v)
+{
+    return (v - a) / (b - a);
+}
+
+pub f64 mapRange(f64 v, f64 a1, f64 b1, f64 a2, f64 b2)
+{
+    return lerp(a2, b2, invLerp(a1, b1, v));
+}
+
+pub i64 minI64(i64 a, i64 b) { return a < b ? a : b; }
+pub i64 maxI64(i64 a, i64 b) { return a > b ? a : b; }
+pub u64 minU64(u64 a, u64 b) { return a < b ? a : b; }
+pub u64 maxU64(u64 a, u64 b) { return a > b ? a : b; }
+pub f64 minF64(f64 a, f64 b) { return a < b ? a : b; }
+pub f64 maxF64(f64 a, f64 b) { return a > b ? a : b; }
+
+pub u64 absI64(i64 x)
+{
+    if (x < 0) return (u64)(-(x + 1)) + 1u;
+    return (u64)x;
+}
+#[[inline]]
+pub f64 absF64(f64 x) { return fabs(x); }
+
+#[[inline]]
+pub i64 signI64(i64 x) { return (i64)(x < 0 ? -1 : (x > 0 ? 1 : 0)); }
+#[[inline]]
+pub f64 signF64(f64 x) { return x < 0.0 ? -1.0 : (x > 0.0 ? 1.0 : 0.0); }
+
+pub bool isFinite(f64 x)
+{
+    u64 bits;
+    copy<u64>(&bits, (u64*)&x, 1u);
+    return (bits & 0x7FF0000000000000u) != 0x7FF0000000000000u;
+}
+
+pub bool isNan(f64 x)
+{
+    u64 bits;
+    copy<u64>(&bits, (u64*)&x, 1u);
+    return ((bits & 0x7FF0000000000000u) == 0x7FF0000000000000u) && ((bits & 0x000FFFFFFFFFFFFFu) != 0u);
+}
+
+pub f64 add(f64 x, f64 y)
+{
+    return x + y;
+}
+
+pub f64 sub(f64 x, f64 y)
+{
+    return x - y;
+}
+
+pub f64 mul(f64 x, f64 y)
+{
+    return x * y;
+}
+
+pub f64 div(f64 x, f64 y)
+{
+    return x / y;
+}
+
+pub i64 truncF(f64 f)
+{
+    i64 i = (i64)f;
+    return i;
+}

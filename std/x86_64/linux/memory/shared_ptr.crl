@@ -1,0 +1,70 @@
+import mman { alloc, dealloc };
+
+struct RefCount
+{
+    usize count;
+}
+
+pub struct SharedPtr<T>
+{
+    T* ptr;
+    RefCount* rc;
+
+    void init(T value)
+    {
+        self.ptr = alloc<T>(1);
+        *self.ptr = value;
+        self.rc = alloc<RefCount>(1);
+        self.rc.count = 1;
+    }
+
+    void dispose()
+    {
+        if (self.rc == null) return;
+        self.rc.count--;
+        if (self.rc.count == 0)
+        {
+            dealloc<T>(self.ptr);
+            dealloc<RefCount>(self.rc);
+        }
+        self.ptr = null;
+        self.rc = null;
+    }
+
+    T get(const self*)
+    {
+        @assert(self.ptr != null);
+        return *self.ptr;
+    }
+
+    T* data()
+    {
+        return self.ptr;
+    }
+
+    const T* constData(const self*)
+    {
+        return self.ptr;
+    }
+
+    usize refCount(const self*)
+    {
+        if (self.rc == null) return 0;
+        return self.rc.count;
+    }
+
+    bool isValid(const self*)
+    {
+        return self.ptr != null;
+    }
+}
+
+// @drop is the inbuilt drop trait in the new dialect — the old file's local
+// `trait drop { void drop(); }` declaration is therefore not re-declared.
+pub extend<T> SharedPtr<T> : @drop
+{
+    void drop()
+    {
+        self.dispose();
+    }
+}

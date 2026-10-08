@@ -1,0 +1,102 @@
+import parser::base { Parser };
+import common::token { TokenKind, kindName };
+import ast::ast { Loc, Type, TypeKind, newType, Expr, PtrList, newList, listPush };
+
+pub extend Parser
+{
+    bool isTypeStart()
+    {
+        TokenKind k = self.cur.kind;
+        return k == TokenKind::Ident || k == TokenKind::LParen || k == TokenKind::KwDyn;
+    }
+
+    Type* parseType()
+    {
+        Loc loc = self.here();
+        Type* t = null;
+
+        if (self.cur.kind == TokenKind::KwDyn)
+        {
+            self.advance();
+            t = newType(self.arena, TypeKind::Dyn, loc);
+            t.text = self.parsePath();
+        }
+        else if (self.cur.kind == TokenKind::LParen)
+        {
+            self.expect(TokenKind::LParen);
+            PtrList* items = newList(self.arena);
+            if (self.cur.kind != TokenKind::RParen)
+            {
+                while (true)
+                {
+                    listPush(items, (rawptr)self.parseType());
+                    if (!self.match(TokenKind::Comma)) break;
+                    if (self.cur.kind == TokenKind::RParen) break;
+                }
+            }
+            self.expect(TokenKind::RParen);
+            if (items.len == 1)
+            {
+                t = (Type*)items.data[0];
+            }
+            else
+            {
+                t = newType(self.arena, TypeKind::Tuple, loc);
+                t.items = items;
+            }
+        }
+        else if (self.cur.kind == TokenKind::Ident)
+        {
+            t = newType(self.arena, TypeKind::Name, loc);
+            t.text = self.parsePath();
+            if (self.cur.kind == TokenKind::Less) t.args = self.parseTypeArgs();
+        }
+        else
+        {
+            self.perr("E0206", self.fmt("expected a type, found `%s`", kindName(self.cur.kind)));
+            self.whyFound();
+            if (!self.isBoundary(self.cur.kind)) self.advance();
+            return newType(self.arena, TypeKind::Name, loc);
+        }
+
+        while (self.cur.kind == TokenKind::LBracket)
+        {
+            self.expect(TokenKind::LBracket);
+            if (self.cur.kind == TokenKind::RBracket)
+            {
+                self.expect(TokenKind::RBracket);
+                Type* s = newType(self.arena, TypeKind::Slice, loc);
+                s.elem = t;
+                s.text = t.text;
+                t = s;
+            }
+            else
+            {
+                Expr* len = self.parseExpr();
+                self.expect(TokenKind::RBracket);
+                Type* a = newType(self.arena, TypeKind::Array, loc);
+                a.elem = t;
+                a.len = len;
+                a.text = t.text;
+                t = a;
+            }
+        }
+        return t;
+    }
+
+    PtrList* parseTypeArgs()
+    {
+        self.expect(TokenKind::Less);
+        PtrList* args = newList(self.arena);
+        while (true)
+        {
+            TokenKind k = self.cur.kind;
+            if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
+            listPush(args, (rawptr)self.parseType());
+            if (!self.match(TokenKind::Comma)) break;
+        }
+        if (args.len == 0) self.perr("E0200", "expected a type argument");
+        self.expectGt();
+        return args;
+    }
+}

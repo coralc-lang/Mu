@@ -1,0 +1,67 @@
+import mman { alloc, dealloc };
+
+pub struct SmartPtr<T>
+{
+    T* ptr;
+
+    void init(T value)
+    {
+        self.ptr = alloc<T>(1);
+        *self.ptr = value;
+    }
+
+    void dispose()
+    {
+        if (self.ptr != null)
+        {
+            dealloc<T>(self.ptr);
+            self.ptr = null;
+        }
+    }
+
+    T get(const self*)
+    {
+        @assert(self.ptr != null);
+        return *self.ptr;
+    }
+
+    T* data()
+    {
+        return self.ptr;
+    }
+
+    const T* constData(const self*)
+    {
+        return self.ptr;
+    }
+
+    void set(T value)
+    {
+        @assert(self.ptr != null);
+        *self.ptr = value;
+    }
+
+    bool isValid(const self*)
+    {
+        return self.ptr != null;
+    }
+
+    T take()
+    {
+        @assert(self.ptr != null);
+        T value = *self.ptr;
+        dealloc<T>(self.ptr);
+        self.ptr = null;
+        return value;
+    }
+}
+
+// @drop is the inbuilt drop trait in the new dialect — the old file's local
+// `trait drop { void drop(); }` declaration is therefore not re-declared.
+pub extend<T> SmartPtr<T> : @drop
+{
+    void drop()
+    {
+        self.dispose();
+    }
+}

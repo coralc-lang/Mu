@@ -1,0 +1,1520 @@
+// semantic analysis: symbol collection, name resolution, type checking
+
+import core::arena { Arena };
+import ast::ast {
+    Loc, Op, Expr, ExprKind, newExpr,
+    Type, TypeKind,
+    Stmt, StmtKind, Prong, Pattern, PatternKind,
+    Decl, DeclKind, Param, FieldDecl, VariantCase, GenericParam,
+    PtrList, newList, listPush
+};
+import diag::diag { Diags };
+import common::token { matchWord };
+
+import(lib) platform::libc { snprintf, printf };
+
+// resolved types
+pub enum RtKind
+{
+    RtVoid,
+    RtInt,
+    RtUInt,
+    RtFloat,
+    RtBool,
+    RtChar,
+    RtStr,
+    RtNamed,
+    RtArray,
+    RtSlice,
+    RtRange,
+    RtTuple,
+    RtDyn,
+    RtUnknown
+}
+
+pub struct RType
+{
+    RtKind kind;
+    usize width;
+    str name;
+    RType* elem;
+    PtrList* args;
+    bool isLitInt;
+    bool isLitFloat;
+}
+
+RType* mkType(Arena* a, RtKind k, usize w, str n, RType* e, PtrList* args)
+{
+    RType* t = (RType*)a.alloc(sizeof(RType), 8); // use std::mman
+    t = {
+        .kind = k,
+        .width = w,
+        .name = n,
+        .elem = e,
+        .args = args,
+        .isLitInt = false,
+        .isLitFloat = false
+        };
+    return t;
+}
+
+pub enum SymKind
+{
+    SkFn,
+    SkStruct,
+    SkVariant,
+    SkTrait,
+    SkConst,
+    SkAlias,
+    SkUse,
+    SkExtern
+}
+
+pub struct Sym
+{
+    SymKind kind;
+    str name;
+    Decl* decl;
+}
+
+Sym* newSym(Arena* a, SymKind k, str n, Decl* d)
+{
+    Sym* s = (Sym*)a.alloc(sizeof(Sym), 8);
+    s.kind = k;
+    s.name = n;
+    s.decl = d;
+    return s;
+}
+
+struct Local
+{
+    str name;
+    RType* type;
+    bool isLet;
+    Local* next;
+}
+
+struct Scope
+{
+    Local* head;
+    Scope* parent;
+}
+
+Scope* pushScope(Arena* a, Scope* parent)
+{
+    Scope* s = (Scope*)a.alloc(sizeof(Scope), 8);
+    s.head = null;
+    s.parent = parent;
+    return s;
+}
+
+void addLocal(Arena* a, Scope* s, str name, RType* type, bool isLet)
+{
+    Local* l = (Local*)a.alloc(sizeof(Local), 8);
+    l.name = name;
+    l.type = type;
+    l.isLet = isLet;
+    l.next = s.head;
+    s.head = l;
+}
+
+Local* findLocal(Scope* s, str name)
+{
+    while (s != null)
+    {
+        Local* l = s.head;
+        while (l != null)
+        {
+            if (strEq(l.name, name)) return l;
+            l = l.next;
+        }
+        s = s.parent;
+    }
+    return null;
+}
+
+
+bool isNumericName(str s)
+{
+    return strEq(s, "i8") || strEq(s, "i16") || strEq(s, "i32") || strEq(s, "i64") ||
+           strEq(s, "isize") || strEq(s, "u8") || strEq(s, "u16") || strEq(s, "u32") ||
+           strEq(s, "u64") || strEq(s, "usize") || strEq(s, "f32") || strEq(s, "f64");
+}
+
+// split "Array<T>" into ("Array", args) for builtin containers
+str baseOf(str s)
+{
+    usize i = 0;
+    while (i < s.len && s.ptr[i] != '<') i = i + 1;
+    return s.slice(0, i);
+}
+
+pub struct Checker
+{
+    Arena* arena;
+    Diags* diags;
+    PtrList* decls;
+    PtrList* globals;   // Sym*
+    Scope* scope;
+    RType* curFnRet;
+    Decl* curFn;
+}
+
+pub extend Checker
+{
+    void init(Arena* a, Diags* d, PtrList* decls)
+    {
+        self = Checker {
+            .arena = a,
+            .diags = d,
+            .decls = decls,
+            .globals = newList(a),
+            .scope = null,
+            .curFnRet = null,
+            .curFn = null,
+        };
+    }
+
+    void error(Loc loc, u8* code, u8* msg)
+    {
+        self.diags.error(loc.line, loc.col, 1, code, msg);
+    }
+
+    Sym* findSym(str name)
+    {
+        usize i = 0;
+        while (i < self.globals.len)
+        {
+            Sym* s = (Sym*)self.globals.data[i];
+            if (strEq(s.name, name)) return s;
+            i = i + 1;
+        }
+        return null;
+    }
+
+    void addGlobal(SymKind k, str name, Decl* d)
+    {
+        Sym* existing = self.findSym(name);
+        if (existing != null && existing.kind != SymKind::SkUse && k != SymKind::SkUse)
+        {
+            self.diags.error(d.loc.line, d.loc.col, 1, "E0300", "duplicate definition of name");
+            return;
+        }
+        listPush(self.globals, (rawptr)newSym(self.arena, k, name, d));
+    }
+
+    bool isTypeParam(str name)
+    {
+        if (self.curFn == null || self.curFn.generics == null) return false;
+        usize i = 0;
+        while (i < self.curFn.generics.len)
+        {
+            GenericParam* g = (GenericParam*)self.curFn.generics.data[i];
+            if (strEq(g.name, name)) return true;
+            i = i + 1;
+        }
+        return false;
+    }
+
+    RType* resolveType(Type* t)
+    {
+        if (t == null) return mkType(self.arena, RtKind::RtVoid, 0, str::empty(), null, null);
+        switch (t.kind)
+        {
+            TypeKind::Array => {
+                return mkType(self.arena, RtKind::RtArray, 0, str::empty(), self.resolveType(t.elem), null);
+            }
+            TypeKind::Slice => {
+                return mkType(self.arena, RtKind::RtSlice, 0, str::empty(), self.resolveType(t.elem), null);
+            }
+            TypeKind::Tuple => {
+                PtrList* items = newList(self.arena);
+                usize i = 0;
+                while (i < t.items.len)
+                {
+                    listPush(items, (rawptr)self.resolveType((Type*)t.items.data[i]));
+                    i = i + 1;
+                }
+                return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
+            }
+            TypeKind::Dyn => {
+                return mkType(self.arena, RtKind::RtDyn, 0, baseOf(t.text), null, null);
+            }
+            TypeKind::Name => {
+                str n = baseOf(t.text);
+                if (self.isTypeParam(n)) return mkType(self.arena, RtKind::RtUnknown, 0, n, null, null);
+                if (strEq(n, "Array"))
+                {
+                    RType* e = null;
+                    if (t.args != null && t.args.len > 0) e = self.resolveType((Type*)t.args.data[0]);
+                    return mkType(self.arena, RtKind::RtArray, 0, str::empty(), e, null);
+                }
+                if (strEq(n, "i8")) return mkType(self.arena, RtKind::RtInt, 8, n, null, null);
+                if (strEq(n, "i16")) return mkType(self.arena, RtKind::RtInt, 16, n, null, null);
+                if (strEq(n, "i32")) return mkType(self.arena, RtKind::RtInt, 32, n, null, null);
+                if (strEq(n, "i64") || strEq(n, "isize")) return mkType(self.arena, RtKind::RtInt, 64, n, null, null);
+                if (strEq(n, "u8")) return mkType(self.arena, RtKind::RtUInt, 8, n, null, null);
+                if (strEq(n, "u16")) return mkType(self.arena, RtKind::RtUInt, 16, n, null, null);
+                if (strEq(n, "u32")) return mkType(self.arena, RtKind::RtUInt, 32, n, null, null);
+                if (strEq(n, "u64") || strEq(n, "usize")) return mkType(self.arena, RtKind::RtUInt, 64, n, null, null);
+                if (strEq(n, "f32")) return mkType(self.arena, RtKind::RtFloat, 32, n, null, null);
+                if (strEq(n, "f64")) return mkType(self.arena, RtKind::RtFloat, 64, n, null, null);
+                if (strEq(n, "bool")) return mkType(self.arena, RtKind::RtBool, 0, n, null, null);
+                if (strEq(n, "char")) return mkType(self.arena, RtKind::RtChar, 0, n, null, null);
+                if (strEq(n, "string") || strEq(n, "str")) return mkType(self.arena, RtKind::RtStr, 0, n, null, null);
+                if (strEq(n, "void")) return mkType(self.arena, RtKind::RtVoid, 0, n, null, null);
+                PtrList* args = null;
+                if (t.args != null && t.args.len > 0)
+                {
+                    args = newList(self.arena);
+                    usize i = 0;
+                    while (i < t.args.len)
+                    {
+                        listPush(args, (rawptr)self.resolveType((Type*)t.args.data[i]));
+                        i = i + 1;
+                    }
+                }
+                return mkType(self.arena, RtKind::RtNamed, 0, n, null, args);
+            }
+        }
+        return mkType(self.arena, RtKind::RtUnknown, 0, str::empty(), null, null);
+    }
+
+    bool rtEq(RType* a, RType* b)
+    {
+        if (a.kind != b.kind) return false;
+        if (a.kind == RtKind::RtInt || a.kind == RtKind::RtUInt || a.kind == RtKind::RtFloat)
+        {
+            if (a.kind == b.kind) return a.width == b.width;
+            return false;
+        }
+        switch (a.kind)
+        {
+            RtKind::RtNamed => { return strEq(a.name, b.name); }
+            RtKind::RtDyn => { return strEq(a.name, b.name); }
+            RtKind::RtArray => { return b.kind == RtKind::RtArray && self.rtEq(a.elem, b.elem); }
+            RtKind::RtSlice => { return b.kind == RtKind::RtSlice && self.rtEq(a.elem, b.elem); }
+            RtKind::RtRange => { return b.kind == RtKind::RtRange && self.rtEq(a.elem, b.elem); }
+            RtKind::RtTuple => {
+                if (b.kind != RtKind::RtTuple || a.args == null || b.args == null) return a.args == b.args;
+                usize i = 0;
+                if (a.args.len != b.args.len) return false;
+                while (i < a.args.len)
+                {
+                    if (!self.rtEq((RType*)a.args.data[i], (RType*)b.args.data[i])) return false;
+                    i = i + 1;
+                }
+                return true;
+            }
+            else => { return true; }
+        }
+    }
+
+    bool rtIsNum(RType* t)
+    {
+        return t.kind == RtKind::RtInt || t.kind == RtKind::RtUInt || t.kind == RtKind::RtFloat;
+    }
+
+    bool canWiden(RType* got, RType* want)
+    {
+        if (got.kind == want.kind && (got.kind == RtKind::RtInt || got.kind == RtKind::RtUInt || got.kind == RtKind::RtFloat))
+        {
+            return got.width <= want.width;
+        }
+        return false;
+    }
+
+    // assignability with implicit widening + literal flexibility
+    bool assignable(RType* got, RType* want)
+    {
+        if (got == null || want == null) return true;
+        if (got.kind == RtKind::RtUnknown || want.kind == RtKind::RtUnknown) return true;
+        if (self.rtEq(got, want)) return true;
+        if (got.isLitInt && (want.kind == RtKind::RtInt || want.kind == RtKind::RtUInt)) return true;
+        if (got.isLitFloat && want.kind == RtKind::RtFloat) return true;
+        if (self.canWiden(got, want)) return true;
+        if (want.kind == RtKind::RtArray && got.kind == RtKind::RtSlice && got.elem != null && want.elem != null && self.rtEq(got.elem, want.elem)) return true;
+        if (want.kind == RtKind::RtSlice && got.kind == RtKind::RtArray && got.elem != null && want.elem != null && self.rtEq(got.elem, want.elem)) return true;
+        return false;
+    }
+
+    void expectType(RType* got, RType* want, Loc loc, u8* what)
+    {
+        if (!self.assignable(got, want))
+            self.diags.error(loc.line, loc.col, 1, "E0310", self.msg(what));
+    }
+
+    u8* msg(u8* what) { return what; }
+
+    // globals pass
+
+    void collect()
+    {
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d == null)
+            {
+                i = i + 1;
+                continue;
+            }
+            switch (d.kind)
+            {
+                DeclKind::DcFn => { self.addGlobal(SymKind::SkFn, d.name, d); }
+                DeclKind::DcStruct => { self.addGlobal(SymKind::SkStruct, d.name, d); }
+                DeclKind::DcVariant => { self.addGlobal(SymKind::SkVariant, d.name, d); }
+                DeclKind::DcTrait => { self.addGlobal(SymKind::SkTrait, d.name, d); }
+                DeclKind::DcConst => { self.addGlobal(SymKind::SkConst, d.name, d); }
+                DeclKind::DcTypeAlias => { self.addGlobal(SymKind::SkAlias, d.name, d); }
+                DeclKind::DcUse => { self.addGlobal(SymKind::SkUse, d.name, d); }
+                DeclKind::DcExtend => {}
+            }
+            if (d.isExtern)
+            {
+                self.addGlobal(SymKind::SkExtern, d.name, d);
+            }
+            i = i + 1;
+        }
+    }
+
+    // builtin type names
+
+    void addBuiltin(str name)
+    {
+        Decl* d = null;
+        listPush(self.globals, (rawptr)newSym(self.arena, SymKind::SkStruct, name, d));
+    }
+
+    // declaration checking
+
+    void checkAll()
+    {
+        self.collect();
+        self.addBuiltin("Vec2");
+        self.addBuiltin("Vec3");
+        self.addBuiltin("Quat");
+        self.addBuiltin("Mat4");
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d == null)
+            {
+                i = i + 1;
+                continue;
+            }
+            #[[fallthrough]]
+            switch (d.kind)
+            {
+                DeclKind::DcConst => { self.checkConst(d); }
+                DeclKind::DcFn => { self.checkFn(d, null); }
+                DeclKind::DcStruct => { self.checkStruct(d); }
+                DeclKind::DcVariant => { self.checkVariant(d); }
+                DeclKind::DcTrait => { self.checkTrait(d); }
+                DeclKind::DcExtend => { self.checkExtend(d); }
+                else => {}
+            }
+            i = i + 1;
+        }
+    }
+
+    void checkConst(Decl* d)
+    {
+        RType* want = self.resolveType(d.target);
+        if (d.value == null) return;
+        RType* got = self.expr(d.value);
+        if (!self.assignable(got, want))
+        {
+            self.diags.error(d.loc.line, d.loc.col, 1, "E0310", "const initializer type mismatch");
+        }
+    }
+
+    void checkStruct(Decl* d)
+    {
+        usize i = 0;
+        while (i < d.members.len)
+        {
+            Decl* m = (Decl*)d.members.data[i];
+            if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
+            i = i + 1;
+        }
+    }
+
+    void checkVariant(Decl* d)
+    {
+        usize i = 0;
+        while (i < d.members.len)
+        {
+            Decl* m = (Decl*)d.members.data[i];
+            if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
+            i = i + 1;
+        }
+    }
+
+    void checkTrait(Decl* d)
+    {
+        usize i = 0;
+        while (i < d.members.len)
+        {
+            Decl* m = (Decl*)d.members.data[i];
+            if (m.kind == DeclKind::DcFn && m.body != null) self.checkFn(m, d);
+            i = i + 1;
+        }
+    }
+
+    void checkExtend(Decl* d)
+    {
+        // target type
+        if (d.traitName.len > 0)
+        {
+            // conformance: trait members present with same names
+            Sym* t = self.findSym(d.traitName);
+            if (t != null && t.decl != null && t.decl.kind == DeclKind::DcTrait)
+            {
+                usize i = 0;
+                while (i < t.decl.members.len)
+                {
+                    Decl* tm = (Decl*)t.decl.members.data[i];
+                    if (tm.kind == DeclKind::DcFn)
+                    {
+                        bool found = false;
+                        usize j = 0;
+                        while (j < d.members.len)
+                        {
+                            Decl* em = (Decl*)d.members.data[j];
+                            if (em.kind == DeclKind::DcFn && strEq(em.name, tm.name)) found = true;
+                            j = j + 1;
+                        }
+                        if (!found)
+                        {
+                            self.diags.error(d.loc.line, d.loc.col, 1, "E0320", "extend does not satisfy trait");
+                        }
+                    }
+                    i = i + 1;
+                }
+            }
+        }
+        str target = baseOf(d.target != null ? d.target.text : str::empty());
+        Scope* saved = self.scope;
+        self.scope = pushScope(self.arena, null);
+        RType* selfTy = mkType(self.arena, RtKind::RtNamed, 0, target, null, null);
+        addLocal(self.arena, self.scope, "self", selfTy, false);
+        usize i = 0;
+        while (i < d.members.len)
+        {
+            Decl* m = (Decl*)d.members.data[i];
+            if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
+            i = i + 1;
+        }
+        self.scope = saved;
+    }
+
+    void checkFn(Decl* d, Decl* owner)
+    {
+        if (d.body == null) return; // extern / signature only
+        Scope* saved = self.scope;
+        self.scope = pushScope(self.arena, null);
+        RType* ret = self.resolveType(d.ret);
+        RType* savedRet = self.curFnRet;
+        self.curFnRet = ret;
+
+        Decl* savedTp = self.curFn;
+        self.curFn = d;
+
+        if (d.params != null)
+        {
+            usize i = 0;
+            while (i < d.params.len)
+            {
+                Param* p = (Param*)d.params.data[i];
+                RType* pt = self.resolveType(p.type);
+                if (p.isSelf)
+                {
+                    if (owner != null)
+                    {
+                        if (owner.kind == DeclKind::DcStruct || owner.kind == DeclKind::DcVariant)
+                        {
+                            pt = mkType(self.arena, RtKind::RtNamed, 0, owner.name, null, null);
+                        }
+                        else if (owner.kind == DeclKind::DcExtend)
+                        {
+                            str target = baseOf(owner.target != null ? owner.target.text : str::empty());
+                            pt = mkType(self.arena, RtKind::RtNamed, 0, target, null, null);
+                        }
+                        else if (owner.kind == DeclKind::DcTrait)
+                        {
+                            pt = mkType(self.arena, RtKind::RtDyn, 0, owner.name, null, null);
+                        }
+                    }
+                    addLocal(self.arena, self.scope, p.name, pt, false);
+                }
+                else
+                {
+                    addLocal(self.arena, self.scope, p.name, pt, false);
+                }
+                i = i + 1;
+            }
+        }
+
+        self.stmt(d.body);
+
+        self.scope = saved;
+        self.curFnRet = savedRet;
+        self.curFn = savedTp;
+    }
+
+    // --------- statements ---------
+
+    void stmt(Stmt* s)
+    {
+        if (s == null) return;
+        switch (s.kind)
+        {
+            StmtKind::StBlock =>
+            {
+                Scope* saved = self.scope;
+                self.scope = pushScope(self.arena, saved);
+                usize i = 0;
+                while (i < s.list.len)
+                {
+                    self.stmt((Stmt*)s.list.data[i]);
+                    i = i + 1;
+                }
+                self.scope = saved;
+            }
+            StmtKind::StVar => { self.stmtVar(s); }
+            StmtKind::StExpr => { self.expr(s.expr); }
+            StmtKind::StIf =>
+            {
+                RType* c = self.expr(s.expr);
+                if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
+                {
+                    self.error(s.expr.loc, "E0330", "if condition must be bool");
+                }
+                self.stmt(s.a);
+                self.stmt(s.b);
+            }
+            StmtKind::StWhile =>
+            {
+                RType* c = self.expr(s.expr);
+                if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
+                {
+                    self.error(s.expr.loc, "E0330", "while condition must be bool");
+                }
+                self.stmt(s.a);
+            }
+            StmtKind::StFor =>
+            {
+                RType* it = self.expr(s.expr);
+                RType* elem = null;
+                if (it.kind == RtKind::RtArray || it.kind == RtKind::RtSlice || it.kind == RtKind::RtRange)
+                {
+                    elem = it.elem;
+                }
+                else if (it.kind != RtKind::RtUnknown)
+                {
+                    self.error(s.expr.loc, "E0331", "for iterates over array, slice, or range");
+                }
+                Scope* saved = self.scope;
+                self.scope = pushScope(self.arena, saved);
+                if (s.pat != null) self.checkPattern(s.pat, elem != null ? elem : self.unknown(), true);
+                self.stmt(s.a);
+                self.scope = saved;
+            }
+            StmtKind::StSwitch =>
+            {
+                RType* scrut = self.expr(s.expr);
+                usize i = 0;
+                while (i < s.prongs.len)
+                {
+                    Prong* p = (Prong*)s.prongs.data[i];
+                    Scope* saved = self.scope;
+                    self.scope = pushScope(self.arena, saved);
+                    if (!p.isElse && p.pat != null) self.checkPattern(p.pat, scrut, false);
+                    if (p.guard != null)
+                    {
+                        RType* g = self.expr(p.guard);
+                        if (g.kind != RtKind::RtBool && g.kind != RtKind::RtUnknown)
+                        {
+                            self.error(p.guard.loc, "E0330", "guard must be bool");
+                        }
+                    }
+                    self.stmt(p.body);
+                    self.scope = saved;
+                    i = i + 1;
+                }
+            }
+            StmtKind::StReturn =>
+            {
+                if (s.expr == null)
+                {
+                    if (self.curFnRet != null && self.curFnRet.kind != RtKind::RtVoid && self.curFnRet.kind != RtKind::RtUnknown)
+                    {
+                        self.error(s.loc, "E0332", "missing return value");
+                    }
+                }
+                else
+                {
+                    RType* v = self.expr(s.expr);
+                    if (self.curFnRet != null && !self.assignable(v, self.curFnRet))
+                    {
+                        self.error(s.expr.loc, "E0332", "return type mismatch");
+                    }
+                }
+                return;
+            }
+            StmtKind::StBreak | StmtKind::StContinue => { return; }
+            else => {}
+        }
+    }
+
+    void stmtVar(Stmt* s)
+    {
+        RType* initT = null;
+        if (s.expr != null) initT = self.expr(s.expr);
+        RType* ann = null;
+        if (s.type != null) ann = self.resolveType(s.type);
+        if (ann != null && initT != null && !self.assignable(initT, ann))
+        {
+            self.error(s.loc, "E0310", "initializer type mismatch");
+        }
+        RType* bindT = ann != null ? ann : (initT != null ? initT : self.unknown());
+        if (s.pat != null) self.checkPattern(s.pat, bindT, s.isLet);
+        self.stmt(s.a);
+        self.stmt(s.b);
+    }
+
+    RType* unknown()
+    {
+        return mkType(self.arena, RtKind::RtUnknown, 0, str::empty(), null, null);
+    }
+
+    bool patBinds(Pattern* p, Scope* s, RType* t)
+    {
+        return true;
+    }
+
+    void checkPattern(Pattern* p, RType* expected, bool isLet)
+    {
+        if (p == null) return;
+        switch (p.kind)
+        {
+            PatternKind::PatWildcard => {}
+            PatternKind::PatBinding =>
+            {
+                addLocal(self.arena, self.scope, p.name, expected, isLet);
+            }
+            PatternKind::PatInt =>
+            {
+                if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "integer pattern does not match scrutinee");
+                }
+            }
+            PatternKind::PatFloat =>
+            {
+                if (expected.kind != RtKind::RtFloat && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "float pattern does not match scrutinee");
+                }
+            }
+            PatternKind::PatStr =>
+            {
+                if (expected.kind != RtKind::RtStr && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "string pattern does not match scrutinee");
+                }
+            }
+            PatternKind::PatChar =>
+            {
+                if (expected.kind != RtKind::RtChar && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "char pattern does not match scrutinee");
+                }
+            }
+            PatternKind::PatBool =>
+            {
+                if (expected.kind != RtKind::RtBool && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "bool pattern does not match scrutinee");
+                }
+            }
+            PatternKind::PatRange =>
+            {
+                if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
+                {
+                    self.error(p.loc, "E0340", "range pattern requires an integer scrutinee");
+                }
+            }
+            PatternKind::PatTuple =>
+            {
+                usize i = 0;
+                while (i < p.items.len)
+                {
+                    RType* et = null;
+                    if (expected.kind == RtKind::RtTuple && expected.args != null && i < expected.args.len)
+                    {
+                        et = (RType*)expected.args.data[i];
+                    }
+                    self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
+                    i = i + 1;
+                }
+            }
+            PatternKind::PatSlice =>
+            {
+                usize i = 0;
+                while (i < p.items.len)
+                {
+                    RType* et = null;
+                    if (expected.kind == RtKind::RtArray || expected.kind == RtKind::RtSlice) et = expected.elem;
+                    self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
+                    i = i + 1;
+                }
+            }
+            PatternKind::PatVariant =>
+            {
+                self.checkVariantPattern(p, expected, isLet);
+            }
+            PatternKind::PatOr =>
+            {
+                usize i = 0;
+                while (i < p.items.len)
+                {
+                    self.checkPattern((Pattern*)p.items.data[i], expected, isLet);
+                    i = i + 1;
+                }
+            }
+        }
+    }
+
+    void checkVariantPattern(Pattern* p, RType* expected, bool isLet)
+    {
+        // find the case across variant decls; prefer the scrutinee's variant
+        Decl* found = null;
+        VariantCase* foundCase = null;
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null && d.kind == DeclKind::DcVariant)
+            {
+                usize j = 0;
+                while (j < d.cases.len)
+                {
+                    VariantCase* c = (VariantCase*)d.cases.data[j];
+                    if (strEq(c.name, p.name))
+                    {
+                        if (expected.kind == RtKind::RtNamed && strEq(expected.name, d.name))
+                        {
+                            found = d;
+                            foundCase = c;
+                        }
+                        else if (found == null)
+                        {
+                            found = d;
+                            foundCase = c;
+                        }
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        if (found == null)
+        {
+            self.error(p.loc, "E0341", "unknown variant case");
+            return;
+        }
+        usize j = 0;
+        while (j < p.items.len)
+        {
+            RType* pt = self.unknown();
+            if (foundCase.payload != null && j < foundCase.payload.len)
+            {
+                pt = self.resolveType((Type*)foundCase.payload.data[j]);
+            }
+            self.checkPattern((Pattern*)p.items.data[j], pt, isLet);
+            j = j + 1;
+        }
+    }
+
+    // --------- expressions ---------
+
+    RType* expr(Expr* e)
+    {
+        if (e == null) return self.unknown();
+        switch (e.kind)
+        {
+            ExprKind::Int =>
+            {
+                return self.intType(e.text);
+            }
+            ExprKind::Float =>
+            {
+                if (endsWith(e.text, "f64")) return mkType(self.arena, RtKind::RtFloat, 64, "f64", null, null);
+                RType* t = mkType(self.arena, RtKind::RtFloat, 32, "f32", null, null);
+                t.isLitFloat = true;
+                return t;
+            }
+            ExprKind::Str =>
+            {
+                return mkType(self.arena, RtKind::RtStr, 0, str::empty(), null, null);
+            }
+            ExprKind::Char =>
+            {
+                return mkType(self.arena, RtKind::RtChar, 0, str::empty(), null, null);
+            }
+            ExprKind::Bool =>
+            {
+                return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
+            }
+            ExprKind::Name =>
+            {
+                Local* l = findLocal(self.scope, e.name);
+                if (l != null) return l.type;
+                Sym* s = self.findSym(e.name);
+                if (s != null)
+                {
+                    if (s.kind == SymKind::SkConst) return self.resolveType(s.decl.target);
+                    if (s.kind == SymKind::SkFn) return self.unknown();
+                    if (s.kind == SymKind::SkUse) return self.unknown();
+                    if (s.kind == SymKind::SkStruct || s.kind == SymKind::SkVariant || s.kind == SymKind::SkAlias)
+                    {
+                        return mkType(self.arena, RtKind::RtNamed, 0, e.name, null, null);
+                    }
+                }
+                self.error(e.loc, "E0350", "unknown name");
+                return self.unknown();
+            }
+            ExprKind::Unary =>
+            {
+                RType* t = self.expr(e.a);
+                if (e.op == Op::Neg)
+                {
+                    if (!self.rtIsNum(t) && t.kind != RtKind::RtUnknown) self.error(e.loc, "E0360", "cannot negate non-numeric");
+                    return t;
+                }
+                if (e.op == Op::Not)
+                {
+                    if (t.kind != RtKind::RtBool && t.kind != RtKind::RtUnknown) self.error(e.loc, "E0360", "cannot negate non-bool");
+                    return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
+                }
+                if (e.op == Op::Await) return t;
+                return self.unknown();
+            }
+            ExprKind::Binary =>
+            {
+                return self.binary(e);
+            }
+            ExprKind::Assign =>
+            {
+                return self.assign(e);
+            }
+            ExprKind::Call =>
+            {
+                return self.call(e);
+            }
+            ExprKind::Field =>
+            {
+                RType* obj = self.expr(e.a);
+                if (obj.kind == RtKind::RtUnknown) return self.unknown();
+                if (obj.kind == RtKind::RtDyn)
+                {
+                    // dyn only supports method calls; field access unknown
+                    return self.unknown();
+                }
+                if (obj.kind == RtKind::RtNamed)
+                {
+                    Sym* s = self.findSym(obj.name);
+                    if (s == null || s.decl == null) return self.unknown();
+                    Decl* d = s.decl;
+                    // field lookup
+                    usize i = 0;
+                    while (i < d.fields.len)
+                    {
+                        FieldDecl* f = (FieldDecl*)d.fields.data[i];
+                        if (strEq(f.name, e.name)) return self.resolveType(f.type);
+                        i = i + 1;
+                    }
+                    // struct has no such field -> maybe it is a variant? methods exist, fields error
+                    if (d.kind == DeclKind::DcStruct)
+                    {
+                        self.error(e.loc, "E0361", "no such field");
+                    }
+                    return self.unknown();
+                }
+                self.error(e.loc, "E0361", "field access on non-struct");
+                return self.unknown();
+            }
+            ExprKind::Index =>
+            {
+                RType* a = self.expr(e.a);
+                RType* idx = self.expr(e.b);
+                if (a.kind == RtKind::RtArray || a.kind == RtKind::RtSlice)
+                {
+                    RType* ie = e.b != null && e.b.kind == ExprKind::Range ? self.expr(e.b.a) : idx;
+                    if (e.b != null && e.b.kind == ExprKind::Range)
+                    {
+                        return mkType(self.arena, RtKind::RtSlice, 0, str::empty(), a.elem, null);
+                    }
+                    if (!self.rtIsNum(idx) && idx.kind != RtKind::RtUnknown)
+                    {
+                        self.error(e.b.loc, "E0362", "index must be numeric");
+                    }
+                    return a.elem != null ? a.elem : self.unknown();
+                }
+                if (a.kind == RtKind::RtUnknown) return self.unknown();
+                self.error(e.loc, "E0362", "cannot index non-array");
+                return self.unknown();
+            }
+            ExprKind::Cast =>
+            {
+                RType* a = self.expr(e.a);
+                RType* t = self.resolveType(e.type);
+                if (a.kind == RtKind::RtUnknown || t.kind == RtKind::RtUnknown) return t;
+                bool ok = false;
+                if (self.rtIsNum(a) && self.rtIsNum(t)) ok = true;
+                if (a.kind == RtKind::RtChar && (t.kind == RtKind::RtInt || t.kind == RtKind::RtUInt)) ok = true;
+                if ((a.kind == RtKind::RtInt || a.kind == RtKind::RtUInt) && t.kind == RtKind::RtChar) ok = true;
+                if (a.kind == t.kind) ok = true;
+                if (!ok) self.error(e.loc, "E0363", "invalid cast");
+                return t;
+            }
+            ExprKind::Question =>
+            {
+                RType* a = self.expr(e.a);
+                if (a.kind == RtKind::RtNamed && a.args != null && a.args.len > 0)
+                {
+                    return (RType*)a.args.data[0];
+                }
+                return self.unknown();
+            }
+            ExprKind::StructLit =>
+            {
+                return self.structLit(e);
+            }
+            ExprKind::Range =>
+            {
+                RType* a = self.expr(e.a);
+                RType* b = self.expr(e.b);
+                RType* elem = a.kind == RtKind::RtUnknown ? b : a;
+                if (self.rtIsNum(a) == false && a.kind != RtKind::RtUnknown)
+                {
+                    self.error(e.loc, "E0364", "range bounds must be numeric");
+                }
+                return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
+            }
+            ExprKind::Tuple =>
+            {
+                PtrList* items = newList(self.arena);
+                usize i = 0;
+                while (i < e.list.len)
+                {
+                    listPush(items, (rawptr)self.expr((Expr*)e.list.data[i]));
+                    i = i + 1;
+                }
+                return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
+            }
+            ExprKind::ArrayLit =>
+            {
+                if (e.list == null || e.list.len == 0) return self.unknown();
+                // map literal?
+                bool isMap = false;
+                usize j = 0;
+                while (j < e.list.len)
+                {
+                    ArrayItem* it = (ArrayItem*)e.list.data[j];
+                    if (it.key != null) isMap = true;
+                    j = j + 1;
+                }
+                if (isMap)
+                {
+                    ArrayItem* it = (ArrayItem*)e.list.data[0];
+                    PtrList* args = newList(self.arena);
+                    listPush(args, (rawptr)self.expr(it.key));
+                    listPush(args, (rawptr)self.expr(it.value));
+                    return mkType(self.arena, RtKind::RtNamed, 0, "Map", null, args);
+                }
+                RType* elem = null;
+                usize i = 0;
+                while (i < e.list.len)
+                {
+                    ArrayItem* it = (ArrayItem*)e.list.data[i];
+                    RType* t = self.expr(it.value);
+                    if (elem == null) elem = t;
+                    else if (!self.assignable(t, elem))
+                    {
+                        self.error(e.loc, "E0365", "array elements must have a common type");
+                    }
+                    i = i + 1;
+                }
+                return mkType(self.arena, RtKind::RtArray, 0, str::empty(), elem, null);
+            }
+            ExprKind::If =>
+            {
+                if (e.stmt != null) self.stmt(e.stmt);
+                return self.expr(e.a);
+            }
+            ExprKind::While =>
+            {
+                if (e.stmt != null) self.stmt(e.stmt);
+                return self.unknown();
+            }
+            ExprKind::Switch =>
+            {
+                if (e.stmt != null) self.stmt(e.stmt);
+                return self.unknown();
+            }
+            else => { return self.unknown(); }
+        }
+    }
+
+    RType* intType(str text)
+    {
+        if (endsWith(text, "i8")) return mkType(self.arena, RtKind::RtInt, 8, "i8", null, null);
+        if (endsWith(text, "i16")) return mkType(self.arena, RtKind::RtInt, 16, "i16", null, null);
+        if (endsWith(text, "i64")) return mkType(self.arena, RtKind::RtInt, 64, "i64", null, null);
+        if (endsWith(text, "isize")) return mkType(self.arena, RtKind::RtInt, 64, "isize", null, null);
+        if (endsWith(text, "u8")) return mkType(self.arena, RtKind::RtUInt, 8, "u8", null, null);
+        if (endsWith(text, "u16")) return mkType(self.arena, RtKind::RtUInt, 16, "u16", null, null);
+        if (endsWith(text, "u32")) return mkType(self.arena, RtKind::RtUInt, 32, "u32", null, null);
+        if (endsWith(text, "u64")) return mkType(self.arena, RtKind::RtUInt, 64, "u64", null, null);
+        if (endsWith(text, "usize")) return mkType(self.arena, RtKind::RtUInt, 64, "usize", null, null);
+        if (endsWith(text, "i32")) return mkType(self.arena, RtKind::RtInt, 32, "i32", null, null);
+        RType* t = mkType(self.arena, RtKind::RtInt, 32, "i32", null, null);
+        t.isLitInt = true;
+        return t;
+    }
+
+    RType* numResult(RType* a, RType* b, Loc loc)
+    {
+        if (a.kind == RtKind::RtUnknown || b.kind == RtKind::RtUnknown)
+        {
+            if (a.kind != RtKind::RtUnknown) return a;
+            return b;
+        }
+        if (!self.rtIsNum(a) || !self.rtIsNum(b)) return self.unknown();
+        if (a.kind == b.kind && a.width == b.width) return a;
+        if (a.kind == b.kind)
+        {
+            if (a.width > b.width) return a;
+            return b;
+        }
+        // mixed int/float or int/uint: error unless one is an unsuffixed literal
+        if (a.isLitInt && self.rtIsNum(b)) return b;
+        if (b.isLitInt && self.rtIsNum(a)) return a;
+        if (a.isLitFloat && b.kind == RtKind::RtFloat) return b;
+        if (b.isLitFloat && a.kind == RtKind::RtFloat) return a;
+        return self.unknown();
+    }
+
+    RType* binOpType(RType* a, RType* b) { return a; }
+
+    RType* binary(Expr* e)
+    {
+        RType* a = self.expr(e.a);
+        RType* b = self.expr(e.b);
+        switch (e.op)
+        {
+            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem =>
+            {
+                RType* r = self.numResult(a, b, e.loc);
+                if ((a.kind != RtKind::RtUnknown && !self.rtIsNum(a)) || (b.kind != RtKind::RtUnknown && !self.rtIsNum(b)))
+                {
+                    self.error(e.loc, "E0370", "arithmetic requires numbers");
+                }
+                if (a.kind != RtKind::RtUnknown && b.kind != RtKind::RtUnknown && (a.kind != b.kind || a.width != b.width) && !a.isLitInt && !b.isLitInt && !a.isLitFloat && !b.isLitFloat)
+                {
+                    self.error(e.loc, "E0371", "mismatched numeric operand types");
+                }
+                return r;
+            }
+            Op::Eq | Op::Ne =>
+            {
+                if (a.kind != RtKind::RtUnknown && b.kind != RtKind::RtUnknown)
+                {
+                    if (!self.rtEq(a, b) && !(self.rtIsNum(a) && self.rtIsNum(b)) && !a.isLitInt && !b.isLitInt && !a.isLitFloat && !b.isLitFloat)
+                    {
+                        self.error(e.loc, "E0372", "cannot compare these types");
+                    }
+                }
+                return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
+            }
+            Op::Lt | Op::Le | Op::Gt | Op::Ge =>
+            {
+                if ((a.kind != RtKind::RtUnknown && !self.rtIsNum(a)) || (b.kind != RtKind::RtUnknown && !self.rtIsNum(b)))
+                {
+                    self.error(e.loc, "E0370", "comparison requires numbers");
+                }
+                return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
+            }
+            Op::LAnd | Op::LOr =>
+            {
+                if (a.kind != RtKind::RtBool && a.kind != RtKind::RtUnknown) self.error(e.a.loc, "E0373", "logical operator requires bool");
+                if (b.kind != RtKind::RtBool && b.kind != RtKind::RtUnknown) self.error(e.b.loc, "E0373", "logical operator requires bool");
+                return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
+            }
+            Op::Shl | Op::Shr | Op::Band | Op::Bor | Op::Bxor =>
+            {
+                if (!self.rtIsNum(a) && a.kind != RtKind::RtUnknown) self.error(e.loc, "E0370", "bitwise requires integers");
+                return a;
+            }
+            Op::Range | Op::RangeEq =>
+            {
+                RType* elem = a.kind == RtKind::RtUnknown ? b : a;
+                return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
+            }
+            else => { return self.unknown(); }
+        }
+    }
+
+    RType* assign(Expr* e)
+    {
+        RType* tgt = self.expr(e.a);
+        RType* v = self.expr(e.b);
+        if (e.a.kind == ExprKind::Name)
+        {
+            Local* l = findLocal(self.scope, e.a.name);
+            if (l != null && l.isLet)
+            {
+                self.error(e.a.loc, "E0380", "cannot assign to an immutable binding");
+            }
+        }
+        if (!self.assignable(v, tgt))
+        {
+            self.error(e.b.loc, "E0310", "assignment type mismatch");
+        }
+        if (e.op == Op::Assign) return v;
+        // compound ops like AddA require operands to be numeric
+        if (!self.rtIsNum(tgt) && tgt.kind != RtKind::RtUnknown)
+        {
+            self.error(e.a.loc, "E0381", "compound assignment requires numeric");
+        }
+        return tgt;
+    }
+
+    RType* call(Expr* e)
+    {
+        // method or associated call: expr is Field on receiver
+        if (e.a != null && e.a.kind == ExprKind::Field)
+        {
+            // associated call on a type name?
+            if (e.a.a != null && e.a.a.kind == ExprKind::Name)
+            {
+                Sym* s = self.findSym(e.a.a.name);
+                if (s != null && (s.kind == SymKind::SkStruct || s.kind == SymKind::SkVariant || s.kind == SymKind::SkAlias || s.kind == SymKind::SkTrait))
+                {
+                    return self.assocCall(s, e.a.name, e);
+                }
+            }
+            RType* obj = self.expr(e.a.a);
+            return self.methodCall(obj, e.a.name, e);
+        }
+        // plain call
+        if (e.a != null && e.a.kind == ExprKind::Name)
+        {
+            return self.directCall(e.a.name, e);
+        }
+        return self.unknown();
+    }
+
+    RType* directCall(str name, Expr* e)
+    {
+        // variant case constructor: Circle(r)
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null && d.kind == DeclKind::DcVariant)
+            {
+                usize j = 0;
+                while (j < d.cases.len)
+                {
+                    VariantCase* c = (VariantCase*)d.cases.data[j];
+                    if (strEq(c.name, name))
+                    {
+                        self.checkArgs(e, c.payload, name);
+                        return mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null);
+                    }
+                    j = j + 1;
+                }
+            }
+            i = i + 1;
+        }
+        Sym* s = self.findSym(name);
+        if (s != null && (s.kind == SymKind::SkFn || s.kind == SymKind::SkExtern))
+        {
+            return self.checkCallDecl(s.decl, e);
+        }
+        if (s != null && s.kind == SymKind::SkUse)
+        {
+            // imported module symbol: cannot verify, assume callable
+            usize i = 0;
+            while (i < e.list.len)
+            {
+                self.expr((Expr*)e.list.data[i]);
+                i = i + 1;
+            }
+            return self.unknown();
+        }
+        self.error(e.loc, "E0390", "unknown function");
+        return self.unknown();
+    }
+
+    RType* checkArgs(Expr* e, PtrList* payload, str name)
+    {
+        usize i = 0;
+        while (i < e.list.len)
+        {
+            RType* arg = self.expr((Expr*)e.list.data[i]);
+            if (payload != null && i < payload.len)
+            {
+                RType* want = self.resolveType((Type*)payload.data[i]);
+                if (!self.assignable(arg, want))
+                {
+                    self.error(e.loc, "E0391", "argument type mismatch");
+                }
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    RType* checkCallDecl(Decl* d, Expr* e)
+    {
+        usize i = 0;
+        while (i < e.list.len)
+        {
+            RType* arg = self.expr((Expr*)e.list.data[i]);
+            if (d.params != null && i < d.params.len)
+            {
+                Param* p = (Param*)d.params.data[i];
+                if (p.isSelf) continue;
+                RType* want = self.resolveType(p.type);
+                if (!self.assignable(arg, want))
+                {
+                    self.error(e.loc, "E0391", "argument type mismatch");
+                }
+            }
+            i = i + 1;
+        }
+        if (d.params != null)
+        {
+            usize expect = d.params.len;
+            usize hasSelf = 0;
+            if (expect > 0 && ((Param*)d.params.data[0]).isSelf) hasSelf = 1;
+            if (e.list.len + hasSelf != expect)
+            {
+                self.error(e.loc, "E0392", "wrong number of arguments");
+            }
+        }
+        return self.resolveType(d.ret);
+    }
+
+    RType* assocCall(Sym* s, str method, Expr* e)
+    {
+        Decl* d = s.decl;
+        if (d == null) return self.unknown();
+        usize i = 0;
+        while (i < d.members.len)
+        {
+            Decl* m = (Decl*)d.members.data[i];
+            if (m.kind == DeclKind::DcFn && strEq(m.name, method) && !self.memberHasSelf(m))
+            {
+                return self.checkArgsDecl(d.members, m, e, false);
+            }
+            i = i + 1;
+        }
+        // search extends targeting this type
+        usize j = 0;
+        while (j < self.decls.len)
+        {
+            Decl* x = (Decl*)self.decls.data[j];
+            if (x != null && x.kind == DeclKind::DcExtend)
+            {
+                str target = baseOf(x.target != null ? x.target.text : str::empty());
+                if (strEq(target, s.name))
+                {
+                    usize k = 0;
+                    while (k < x.members.len)
+                    {
+                        Decl* m = (Decl*)x.members.data[k];
+                        if (m.kind == DeclKind::DcFn && strEq(m.name, method) && !self.memberHasSelf(m))
+                        {
+                            return self.checkArgsDecl(x.members, m, e, false);
+                        }
+                        k = k + 1;
+                    }
+                }
+            }
+            j = j + 1;
+        }
+        return self.unknown();
+    }
+
+    bool memberHasSelf(Decl* m)
+    {
+        if (m.params != null && m.params.len > 0)
+        {
+            Param* p = (Param*)m.params.data[0];
+            return p.isSelf;
+        }
+        return false;
+    }
+
+    RType* checkArgsDecl(PtrList* members, Decl* m, Expr* e, bool hasReceiver)
+    {
+        usize i = 0;
+        while (i < e.list.len)
+        {
+            RType* arg = self.expr((Expr*)e.list.data[i]);
+            usize pi = i + (hasReceiver ? 1 : 0);
+            if (m.params != null && pi < m.params.len)
+            {
+                Param* p = (Param*)m.params.data[pi];
+                RType* want = self.resolveType(p.type);
+                if (!self.assignable(arg, want))
+                {
+                    self.error(e.loc, "E0391", "argument type mismatch");
+                }
+            }
+            i = i + 1;
+        }
+        usize expect = m.params != null ? m.params.len : 0;
+        if (hasReceiver) expect = expect - 1;
+        if (e.list.len != expect)
+        {
+            self.error(e.loc, "E0392", "wrong number of arguments");
+        }
+        return self.resolveType(m.ret);
+    }
+
+    RType* methodCall(RType* obj, str name, Expr* e)
+    {
+        if (obj.kind == RtKind::RtUnknown) return self.unknown();
+        if (obj.kind == RtKind::RtDyn)
+        {
+            Sym* t = self.findSym(obj.name);
+            if (t != null && t.decl != null && t.decl.kind == DeclKind::DcTrait)
+            {
+                usize i = 0;
+                while (i < t.decl.members.len)
+                {
+                    Decl* m = (Decl*)t.decl.members.data[i];
+                    if (m.kind == DeclKind::DcFn && strEq(m.name, name))
+                    {
+                        return self.checkArgsDecl(t.decl.members, m, e, true);
+                    }
+                    i = i + 1;
+                }
+            }
+            return self.unknown();
+        }
+        if (obj.kind == RtKind::RtNamed)
+        {
+            Sym* s = self.findSym(obj.name);
+            if (s == null || s.decl == null) return self.unknown();
+            if (s.decl != null)
+            {
+                usize i = 0;
+                while (i < s.decl.members.len)
+                {
+                    Decl* m = (Decl*)s.decl.members.data[i];
+                    if (m.kind == DeclKind::DcFn && strEq(m.name, name) && self.memberHasSelf(m))
+                    {
+                        return self.checkArgsDecl(s.decl.members, m, e, true);
+                    }
+                    i = i + 1;
+                }
+            }
+            // extends targeting same type
+            usize j = 0;
+            while (j < self.decls.len)
+            {
+                Decl* x = (Decl*)self.decls.data[j];
+                if (x != null && x.kind == DeclKind::DcExtend)
+                {
+                    str target = baseOf(x.target != null ? x.target.text : str::empty());
+                    if (strEq(target, obj.name))
+                    {
+                        usize k = 0;
+                        while (k < x.members.len)
+                        {
+                            Decl* m = (Decl*)x.members.data[k];
+                            if (m.kind == DeclKind::DcFn && strEq(m.name, name) && self.memberHasSelf(m))
+                            {
+                                return self.checkArgsDecl(x.members, m, e, true);
+                            }
+                            k = k + 1;
+                        }
+                    }
+                }
+                j = j + 1;
+            }
+            return self.unknown();
+        }
+        return self.unknown();
+    }
+
+    RType* structLit(Expr* e)
+    {
+        str typeName = baseOf(e.text);
+        if (typeName.len == 0) typeName = baseOf(e.name);
+        Sym* s = self.findSym(typeName);
+        if (s == null || s.decl == null)
+        {
+            // unknown struct literal (e.g. builtin engine type): accept
+            usize i = 0;
+            while (i < e.list.len)
+            {
+                FieldInit* f = (FieldInit*)e.list.data[i];
+                self.expr(f.value);
+                i = i + 1;
+            }
+            return mkType(self.arena, RtKind::RtNamed, 0, typeName, null, null);
+        }
+        Decl* d = s.decl;
+        if (d.kind != DeclKind::DcStruct)
+        {
+            self.error(e.loc, "E0393", "not a struct");
+            return self.unknown();
+        }
+        usize i = 0;
+        while (i < e.list.len)
+        {
+            FieldInit* f = (FieldInit*)e.list.data[i];
+            RType* v = self.expr(f.value);
+            if (f.spread)
+            {
+                if (!self.assignable(v, mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null)))
+                {
+                    self.error(e.loc, "E0394", "spread base type mismatch");
+                }
+                continue;
+            }
+            FieldDecl* found = null;
+            usize j = 0;
+            while (j < d.fields.len)
+            {
+                FieldDecl* fd = (FieldDecl*)d.fields.data[j];
+                if (strEq(fd.name, f.name)) found = fd;
+                j = j + 1;
+            }
+            if (found == null)
+            {
+                self.error(e.loc, "E0395", "unknown field in struct literal");
+            }
+            else
+            {
+                RType* ft = self.resolveType(found.type);
+                if (!self.assignable(v, ft))
+                {
+                    self.error(e.loc, "E0310", "field type mismatch");
+                }
+            }
+            i = i + 1;
+        }
+        return mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null);
+    }
+}

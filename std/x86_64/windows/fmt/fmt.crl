@@ -1,0 +1,158 @@
+import(lib) std::text::string { String };
+import(lib) std::vec { Vec };
+import(lib) platform::libc { snprintf };
+import(lib) std::mman { alloc, dealloc };
+
+static u64 _clampRadix(u64 radix)
+{
+    if (radix < 2u) return 10u;
+    if (radix > 36u) return 36u;
+    return radix;
+}
+
+pub String format(str f, ...)
+{
+    String out = String::new();
+    usize i = 0;
+    while (i < f.len)
+    {
+        if (f.ptr[i] == '{' && i + 1 < f.len && f.ptr[i + 1] == '}')
+        {
+            i += 2;
+            continue;
+        }
+        out.pushChar(f.ptr[i]);
+        i++;
+    }
+    return out;
+}
+
+pub String formatInt(i64 val, u64 radix, bool upper)
+{
+    radix = _clampRadix(radix);
+    if (val == 0) return String::fromView("0");
+    bool neg = val < 0;
+    u64 mag = neg ? (u64)(-(val + 1)) + 1u : (u64)val;
+    u8 buf[65];
+    u64 pos = 64;
+    buf[pos] = 0;
+    while (mag != 0)
+    {
+        u64 digit = mag % radix;
+        mag /= radix;
+        pos--;
+        if (digit < 10u) buf[pos] = (u8)('0' + digit);
+        else buf[pos] = upper ? (u8)('A' + digit - 10u) : (u8)('a' + digit - 10u);
+    }
+    if (neg) { pos--; buf[pos] = '-'; }
+    return String::fromView(str::fromParts(buf + pos, 64 - pos));
+}
+
+pub String formatUint(u64 val, u64 radix, bool upper)
+{
+    radix = _clampRadix(radix);
+    if (val == 0) return String::fromView("0");
+    u8 buf[65];
+    u64 pos = 64;
+    buf[pos] = 0;
+    while (val != 0)
+    {
+        u64 digit = val % radix;
+        val /= radix;
+        pos--;
+        if (digit < 10) buf[pos] = (u8)('0' + digit);
+        else buf[pos] = upper ? (u8)('A' + digit - 10) : (u8)('a' + digit - 10);
+    }
+    return String::fromView(str::fromParts(buf + pos, 64 - pos));
+}
+
+pub String formatFloat(f64 val, u64 precision)
+{
+    if (precision > 1000u) precision = 1000u;
+    i32 n = snprintf(null, 0u, C"%.*f", (i32)precision, val);
+    if (n < 0) return String::new();
+    u64 size = (u64)n;
+    u8* buf = alloc<u8>(size + 1u);
+    if (buf == null) return String::new();
+    i32 m = snprintf(buf, size + 1u, C"%.*f", (i32)precision, val);
+    String out;
+    if (m < 0 || (u64)m > size) out = String::new();
+    else out = String::fromView(str::fromParts((const u8*)buf, (u64)m));
+    dealloc<u8>(buf);
+    return out;
+}
+
+pub String formatHex(u64 val, bool prefix)
+{
+    String s = formatUint(val, 16, false);
+    if (prefix) {
+        String p = String::fromView("0x");
+        p.appendView(s.asView()); s.free(); return p; }
+    return s;
+}
+
+pub String formatHexUpper(u64 val, bool prefix)
+{
+    String s = formatUint(val, 16, true);
+    if (prefix) {
+        String p = String::fromView("0x");
+        p.appendView(s.asView()); s.free(); return p; }
+    return s;
+}
+
+pub String formatBin(u64 val, bool prefix)
+{
+    String s = formatUint(val, 2, false);
+    if (prefix) {
+        String p = String::fromView("0b");
+        p.appendView(s.asView()); s.free(); return p; }
+    return s;
+}
+
+pub String padLeft(str sv, usize width, u8 pad)
+{
+    if (sv.len >= width) return String::fromView(sv);
+    String out = String::new();
+    usize n = width - sv.len;
+    for (usize i = 0; i < n; i++) out.pushChar(pad);
+    out.appendView(sv);
+    return out;
+}
+
+pub String padRight(str sv, usize width, u8 pad)
+{
+    if (sv.len >= width) return String::fromView(sv);
+    String out = String::fromView(sv);
+    usize n = width - sv.len;
+    for (usize i = 0; i < n; i++) out.pushChar(pad);
+    return out;
+}
+
+pub String repeat(str sv, usize count)
+{
+    String out = String::new();
+    for (usize i = 0; i < count; i++) out.appendView(sv);
+    return out;
+}
+
+pub String join(const str* parts, usize count, str sep)
+{
+    String out = String::new();
+    for (usize i = 0; i < count; i++)
+    {
+        if (i > 0) out.appendView(sep);
+        out.appendView(parts[i]);
+    }
+    return out;
+}
+
+pub String joinVec(const Vec<String>* parts, str sep)
+{
+    String out = String::new();
+    for (usize i = 0; i < parts->count(); i++)
+    {
+        if (i > 0) out.appendView(sep);
+        out.appendView(parts->at(i).asView());
+    }
+    return out;
+}

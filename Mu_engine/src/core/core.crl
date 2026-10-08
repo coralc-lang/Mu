@@ -1,0 +1,70 @@
+// core layer (ENGINE.md §3/§6): logging, deterministic clock, the frame loop.
+// Loop body is callable `frame()` from day one (Web main-callbacks friendly).
+// Wall-clock time lands with platform at M3 — tests drive the loop headless
+// with the fixed 1/60 timestep only.
+
+import(lib) std::io { ios::println };
+
+import scene::scene { Scene };
+import render::render { Renderer };
+import platform::platform { platformPump, platformQuitRequested };
+
+pub const f32 FIXED_DT = 1.0f / 60.0f;
+
+pub void logInfo(const cchar* msg)
+{
+    println("[mu] {}", msg);
+}
+
+pub void logError(const cchar* msg)
+{
+    println("[mu:error] {}", msg);
+}
+
+pub struct Loop
+{
+    Scene* scene;
+    Renderer* renderer;
+    rawptr ui;            // null until M6, passed through to the renderer
+    u64 frameCount;
+    bool running;
+    f32 dt;
+
+    static Loop new(Scene* scene, Renderer* renderer)
+    {
+        return Loop {
+            .scene = scene,
+            .renderer = renderer,
+            .ui = null,
+            .frameCount = 0,
+            .running = false,
+            .dt = FIXED_DT
+        };
+    }
+
+    // One frame, in ENGINE.md §6 order. Missing layers are stubbed until
+    // their milestone; call sites already match the final order.
+    void frame()
+    {
+        // dt = clock.tick()            fixed/deterministic until M3
+        platformPump();
+        self.scene->update(self.dt);
+        // script.update(self.dt)       M1/M2
+        // ui.frame()                   M6
+        self.renderer->draw(self.renderer->ctx, (rawptr)self.scene, self.ui);
+        self.frameCount++;
+    }
+
+    void run(u64 frames)
+    {
+        self.running = true;
+        u64 i = 0;
+        while (self.running && i < frames)
+        {
+            if (platformQuitRequested()) break;
+            self.frame();
+            i++;
+        }
+        self.running = false;
+    }
+}

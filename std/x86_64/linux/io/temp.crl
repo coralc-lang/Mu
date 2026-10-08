@@ -1,0 +1,119 @@
+import(lib) platform::libc { mkstemp, close, unlink, mkdtemp, rmdir };
+import(lib) std::mman { alloc, dealloc, copy };
+import(lib) std::text::string { String };
+
+pub struct TempFile
+{
+    i32 fd;
+    String path;
+    bool autoDelete;
+
+    static TempFile create(str prefix, str suffix)
+    {
+        String tmpl = String::new();
+        tmpl.appendView("/tmp/");
+        tmpl.appendView(prefix);
+        tmpl.appendView(suffix);
+        tmpl.appendView("XXXXXX");
+
+        u8* buf = alloc<u8>(tmpl.len + 1);
+        if (buf == null)
+        {
+            tmpl.free();
+            return TempFile { .fd = -1, .path = String::new(), .autoDelete = false };
+        }
+        copy<u8>(buf, (u8*)tmpl.asView().ptr, tmpl.len);
+        buf[tmpl.len] = 0;
+
+        i32 fd = mkstemp(buf);
+        String actualPath;
+        if (fd >= 0)
+            actualPath = String::fromView(str::fromParts(buf, tmpl.len));
+        else
+            actualPath = String::new();
+        dealloc<u8>(buf);
+        tmpl.free();
+
+        return TempFile { .fd = fd, .path = actualPath, .autoDelete = true };
+    }
+
+    void dispose()
+    {
+        if (self.fd >= 0) close(self.fd);
+        if (self.autoDelete && !self.path.isEmpty())
+            unlink((const u8*)self.path.asView().ptr);
+        self.path.free();
+        self.fd = -1;
+    }
+
+    i32 fd() { return self.fd; }
+    #[[inline]]
+    str pathStr() { return self.path.asView(); }
+
+    void setAutoDelete(bool ad) { self.autoDelete = ad; }
+}
+
+pub struct TempDir
+{
+    String path;
+    bool autoDelete;
+
+    static TempDir create(str prefix)
+    {
+        String tmpl = String::new();
+        tmpl.appendView("/tmp/");
+        tmpl.appendView(prefix);
+        tmpl.appendView("XXXXXX");
+
+        u8* buf = alloc<u8>(tmpl.len + 1);
+        if (buf == null)
+        {
+            tmpl.free();
+            return TempDir { .path = String::new(), .autoDelete = false };
+        }
+        copy<u8>(buf, (u8*)tmpl.asView().ptr, tmpl.len);
+        buf[tmpl.len] = 0;
+
+        u8* result = mkdtemp(buf);
+        String actualPath;
+        if (result != null)
+            actualPath = String::fromView(str::fromParts(buf, tmpl.len));
+        else
+            actualPath = String::new();
+        dealloc<u8>(buf);
+        tmpl.free();
+
+        return TempDir { .path = actualPath, .autoDelete = true };
+    }
+
+    void dispose()
+    {
+        if (self.autoDelete && !self.path.isEmpty())
+            rmdir((const u8*)self.path.asView().ptr);
+        self.path.free();
+    }
+
+    #[[inline]]
+    str pathStr() { return self.path.asView(); }
+    void setAutoDelete(bool ad) { self.autoDelete = ad; }
+    #[[inline]]
+    bool isValid() { return !self.path.isEmpty(); }
+}
+
+// @drop is the inbuilt drop trait in the new dialect — the old file's local
+// `trait drop { void drop(); }` declaration is therefore not re-declared.
+pub extend TempFile : @drop
+{
+    void drop()
+    {
+        self.dispose();
+    }
+}
+
+pub extend TempDir : @drop
+{
+    void drop()
+    {
+        self.dispose();
+    }
+}

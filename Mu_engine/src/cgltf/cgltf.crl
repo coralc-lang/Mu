@@ -1,0 +1,18 @@
+// cgltf extern port — vendored single header from github.com/jkuhlmann/cgltf
+// (MIT): glTF 2.0 loader, the engine's 3D scene/mesh import path (M5).
+// Implementation compiled from native/mu_cgltf.c into libmualibs.a.
+//
+// ABI notes: cgltf_size = usize (size_t), cgltf_result is a C enum (i32,
+// success = 0), cgltf_float = f32. All structs are opaque on the Coral side
+// — options may be null (cgltf fills defaults); navigation of cgltf_data
+// (meshes/accessors/views) is added here when the asset layer (M5) lands.
+
+pub const i32 CGLTF_RESULT_SUCCESS = 0;
+
+// options: null for defaults. out_data receives an owned handle for
+// cgltf_load_buffers / cgltf_validate / cgltf_free.
+pub extern i32 cgltf_parse(rawptr options, const rawptr data, usize size, rawptr* out_data);
+pub extern i32 cgltf_load_buffers(rawptr options, rawptr data, const cchar* gltf_path);
+pub extern i32 cgltf_validate(rawptr data);
+pub extern void cgltf_free(rawptr data);
+pub extern usize cgltf_accessor_unpack_floats(rawptr accessor, rawptr out, usize float_count);

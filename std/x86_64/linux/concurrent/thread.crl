@@ -1,0 +1,116 @@
+import mutex { Mutex };
+import(lib) platform::libc { pthread_cond_init, pthread_cond_destroy, pthread_cond_wait, pthread_cond_signal, pthread_cond_broadcast, pthread_create, pthread_join, pthread_exit, pthread_self };
+
+pub distinct Thread = rawptr;
+
+pub struct ConditionVar
+{
+    rawptr impl[6];
+
+    #[[inline]]
+    void init() { pthread_cond_init(self.impl, null); }
+    #[[inline]]
+    void destroy() { pthread_cond_destroy(self.impl); }
+    #[[inline]]
+    void wait(Mutex* mutex) { pthread_cond_wait(self.impl, mutex->impl); }
+    #[[inline]]
+    void signal() { pthread_cond_signal(self.impl); }
+    #[[inline]]
+    void broadcast() { pthread_cond_broadcast(self.impl); }
+}
+
+pub Thread threadCreate(rawptr(rawptr) fn, rawptr arg)
+{
+    rawptr t;
+    if (pthread_create(&t, null, fn, arg) != 0) return (Thread)0;
+    return (Thread)t;
+}
+
+pub bool threadJoin(Thread t, rawptr* retval)
+{
+    return pthread_join((rawptr)t, retval) == 0;
+}
+
+pub void threadExit(rawptr retval)
+{
+    pthread_exit(retval);
+}
+
+pub Thread threadCurrent()
+{
+    return (Thread)pthread_self();
+}
+
+pub struct AtomicU64
+{
+    u64 value;
+
+    u64 load()
+    {
+        u64 v;
+        asm volatile { "mfence\n\tmovq %1, %0\n\tmfence" : "=r"(v) : "m"(self.value) }
+        return v;
+    }
+
+    void store(u64 val)
+    {
+        asm volatile { "xchgq %0, %1\n\tmfence" : "=m"(self.value) : "r"(val) }
+        return;
+    }
+
+    u64 fetchAdd(u64 delta)
+    {
+        u64 result;
+        asm volatile { "lock xaddq %0, %1" : "=r"(result), "=m"(self.value) : "0"(delta), "m"(self.value) }
+        return result;
+    }
+
+    u64 fetchSub(u64 delta)
+    {
+        return self.fetchAdd(0u - delta);
+    }
+
+    bool compareExchange(u64 expected, u64 desired)
+    {
+        u8 ok;
+        asm volatile { "lock cmpxchgq %3, %1\n\tsete %0" : "=q"(ok), "+m"(self.value), "+a"(expected) : "r"(desired) : "cc", "memory" }
+        return ok != 0;
+    }
+}
+
+pub struct AtomicU32
+{
+    u32 value;
+
+    u32 load()
+    {
+        u32 v;
+        asm volatile { "mfence\n\tmovl %1, %0\n\tmfence" : "=r"(v) : "m"(self.value) }
+        return v;
+    }
+
+    void store(u32 val)
+    {
+        asm volatile { "xchgl %0, %1\n\tmfence" : "=m"(self.value) : "r"(val) }
+        return;
+    }
+
+    u32 fetchAdd(u32 delta)
+    {
+        u32 result;
+        asm volatile { "lock xaddl %0, %1" : "=r"(result), "=m"(self.value) : "0"(delta), "m"(self.value) }
+        return result;
+    }
+
+    u32 fetchSub(u32 delta)
+    {
+        return self.fetchAdd(0u - delta);
+    }
+
+    bool compareExchange(u32 expected, u32 desired)
+    {
+        u8 ok;
+        asm volatile { "lock cmpxchgl %3, %1\n\tsete %0" : "=q"(ok), "+m"(self.value), "+a"(expected) : "r"(desired) : "cc", "memory" }
+        return ok != 0;
+    }
+}

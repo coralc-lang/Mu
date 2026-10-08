@@ -1,0 +1,34 @@
+import deque;
+
+pub struct Queue<T>
+{
+    deque::Deque<T> inner;
+
+    static Queue<T> new()
+    {
+        return Queue<T> {
+            .inner = deque::Deque<T>::new()
+        };
+    }
+
+    #[[inline]]
+    void dispose() { self.inner.dispose(); }
+    #[[inline]]
+    usize count() { return self.inner.count(); }
+    #[[inline]]
+    bool isEmpty() { return self.inner.isEmpty(); }
+    #[[inline]]
+    void enqueue(T val) { self.inner.pushBack(val); }
+    #[[inline]]
+    T dequeue() { return self.inner.popFront(); }
+    #[[inline]]
+    T peek() { return self.inner.front(); }
+    #[[inline]]
+    void clear() { self.inner.clear(); }
+}
+
+pub extend<T> Queue<T> : @drop
+{
+    #[[inline]]
+    void drop() { self.dispose(); }
+}

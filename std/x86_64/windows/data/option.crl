@@ -1,0 +1,107 @@
+/* option.crl for std
+ * coral has no inbuilt error handling.
+ * I will not add try-catch shit either;
+ */
+
+pub variant Option<T>
+{
+    None,
+    Some { T value; }
+}
+    
+pub extend<T> Option<T>
+{
+    bool isSome()
+    {
+        switch (self)
+        {
+            Some { value } => { return true; },
+            else => { return false; }
+        }
+    }
+
+    bool isNone() 
+    {
+        switch (self)
+        {
+            Some { value } => { return false; },
+            else => { return true; }
+        }
+    }
+
+    T unwrap()
+    {
+        switch(self)
+        {
+            Some { value } => { return value; },
+            else => { return false; }
+        }
+    }
+
+    T unwrapOr(T default)
+    {
+        switch (self)
+        {
+            Some { value } => { return value; },
+            else => { return default; }
+        }
+    }
+
+    T* ptr()
+    {
+        switch (self)
+        {
+            Some { value } => { return &value; },
+            else => { return null; }
+        }
+    }
+
+    #[[const]]
+    const T* constPtr()
+    {
+        switch (self)
+        {
+            Some { value } => { return &value; },
+            else => return null;
+        }
+    }
+
+    void map(T(T) fn)
+    {
+        #[[fallthrough]]
+        switch (self)
+        {
+            Some { value } => { self = Option<T>::Some { .value = fn(value) }; }
+        }
+    }
+
+    void andThen(Option<T>(T) fn)
+    {
+        #[[fallthrough]]
+        switch (self)
+        {
+            Some { value } => { self = fn(value); }
+        }
+    }
+
+    void orElse(Option<T>() fn)
+    {
+        switch (self)
+        {
+            Some { value } => {},
+            else => { self = fn(); }
+        }
+    }
+
+    T take()
+    {
+        switch (self)
+        {
+            Some { value } => {
+                self = Option<T>::None;
+                return value;
+            },
+            else => { @assert(false); }
+        }
+    }
+}

@@ -1,0 +1,38 @@
+import(lib) platform::libc { sem_init, sem_destroy, sem_wait, sem_trywait, sem_post, sem_getvalue };
+
+pub struct Semaphore
+{
+    rawptr impl[8];
+
+    bool init(u32 value)
+    {
+        return sem_init(self.impl, 0, value) == 0;
+    }
+
+    void destroy()
+    {
+        sem_destroy(self.impl);
+    }
+
+    void wait()
+    {
+        sem_wait(self.impl);
+    }
+
+    bool tryWait()
+    {
+        return sem_trywait(self.impl) == 0;
+    }
+
+    void post()
+    {
+        sem_post(self.impl);
+    }
+
+    i32 value()
+    {
+        i32 v;
+        sem_getvalue(self.impl, &v);
+        return v;
+    }
+}

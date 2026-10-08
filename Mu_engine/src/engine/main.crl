@@ -1,0 +1,50 @@
+// M0 demo entry: headless loop over a small scene with a hierarchy,
+// 600 frames (CI cap per ENGINE.md §6), then a summary line.
+
+import(lib) std::io { ios::println };
+
+import math::math { Vec3 };
+import scene::scene { Scene, Entity, EntityId, ComponentStore };
+import render::render { Renderer, nullRenderer };
+import core::core { Loop };
+
+static Entity MuStorage[4096];
+static Scene MuScene;
+static Renderer MuRenderer;
+static Loop MuLoop;
+static u8 MuCompData[32768];
+static u8 MuCompPresent[4096];
+
+pub i32 main()
+{
+    MuScene = Scene.new(MuStorage, 4096);
+    MuRenderer = nullRenderer();
+
+    EntityId root = MuScene.create().unwrap();
+    EntityId child = MuScene.create().unwrap();
+    EntityId grandchild = MuScene.create().unwrap();
+    MuScene.setParent(child, root).unwrap();
+    MuScene.setParent(grandchild, child).unwrap();
+
+    MuScene.entities[root].local.position.y = 1.0f;
+    MuScene.entities[child].local.position.x = 2.0f;
+    MuScene.entities[grandchild].local.position = Vec3.new(1.0f, 0.0f, 0.0f).scale(3.0f);
+
+    ComponentStore comps = ComponentStore.new(MuCompData, MuCompPresent, 4096, 8);
+    comps.add(root).unwrap();
+    comps.add(child).unwrap();
+    comps.add(grandchild).unwrap();
+
+    MuLoop = Loop.new(&MuScene, &MuRenderer);
+    MuLoop.run(600);
+
+    // expect grandchild world.x = 5, world.y = 1 after the first compose
+    println("frames: {}  entities: {}  components: {}  grandchild world: {} {} {}",
+        MuLoop.frameCount, MuScene.count, comps.used,
+        MuScene.entities[grandchild].world.position.x,
+        MuScene.entities[grandchild].world.position.y,
+        MuScene.entities[grandchild].world.position.z);
+
+    MuRenderer.shutdown(MuRenderer.ctx);
+    return 0;
+}

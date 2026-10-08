@@ -1,0 +1,132 @@
+import(lib) platform::libc { printf };
+
+usize width(usize n)
+{
+    usize w = 1;
+    while (n >= 10)
+    {
+        n = n / 10;
+        w = w + 1;
+    }
+    return w;
+}
+
+pub struct Diags
+{
+    str file;
+    str src;
+    usize errors;
+    usize warnings;
+    usize limit;
+    bool limitHit;
+
+    void init(str file, str src)
+    {
+        self.file = file;
+        self.src = src;
+        self.errors = 0;
+        self.warnings = 0;
+        self.limit = 100;
+        self.limitHit = false;
+    }
+
+    bool shouldStop()
+    {
+        return self.limitHit;
+    }
+
+    bool ok()
+    {
+        return self.errors == 0;
+    }
+
+    void error(usize line, usize col, usize len, u8* code, u8* title)
+    {
+        if (self.errors >= self.limit)
+        {
+            if (!self.limitHit)
+            {
+                self.limitHit = true;
+                printf("error E0000  too many errors, aborting after %u\n", (u32)self.limit);
+            }
+            return;
+        }
+        self.emit("error", code, line, col, len, title);
+        self.errors += 1;
+    }
+
+    void warn(usize line, usize col, usize len, u8* code, u8* title)
+    {
+        self.emit("warning", code, line, col, len, title);
+        self.warnings += 1;
+    }
+
+    void why(u8* msg)
+    {
+        printf("      why: %s\n", msg);
+    }
+
+    void help(u8* msg)
+    {
+        printf("      help: %s\n", msg);
+    }
+
+    void also(usize line, usize col, usize len, u8* msg)
+    {
+        printf("\n  also at %.*s:%u:%u: %s\n\n", (i32)self.file.len, self.file.ptr, (u32)line, (u32)col, msg);
+        usize w = width(line);
+        str text = self.lineOf(line).trimEnd();
+        printf("%*u | %.*s\n", (i32)w, (u32)line, (i32)text.len, text.ptr);
+        self.caret(w, col, len);
+        printf("  %s\n", msg);
+    }
+
+    void emit(u8* kind, u8* code, usize line, usize col, usize len, u8* title)
+    {
+        printf("%s %s  %s\n", kind, code, title);
+        printf("\n  at %.*s:%u:%u\n\n", (i32)self.file.len, self.file.ptr, (u32)line, (u32)col);
+        usize w = width(line);
+        str text = self.lineOf(line).trimEnd();
+        printf("%*u | %.*s\n", (i32)w, (u32)line, (i32)text.len, text.ptr);
+        self.caret(w, col, len);
+        printf("\n");
+    }
+
+    void caret(usize w, usize col, usize len)
+    {
+        printf("%*s | ", (i32)w, "");
+        usize i = 0;
+        while (i + 1 < col)
+        {
+            printf(" ");
+            i = i + 1;
+        }
+        printf("^");
+        usize extra = len > 1 ? len - 1 : 0;
+        while (extra > 0)
+        {
+            printf("~");
+            extra = extra - 1;
+        }
+    }
+
+    str lineOf(usize line)
+    {
+        usize i = 0;
+        usize cur = 1;
+        while (i < self.src.len && cur < line)
+        {
+            if (self.src.ptr[i] == '\n') cur = cur + 1;
+            i = i + 1;
+        }
+        usize start = i;
+        while (i < self.src.len && self.src.ptr[i] != '\n') i = i + 1;
+        return self.src.slice(start, i);
+    }
+
+    void summary()
+    {
+        if (self.errors == 0 && self.warnings == 0) return;
+        printf("\n  %u error(s), %u warning(s) in %.*s\n", (u32)self.errors, (u32)self.warnings, (i32)self.file.len, self.file.ptr);
+    }
+}

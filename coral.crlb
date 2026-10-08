@@ -1,0 +1,3 @@
+build "Muc" extends "Mu_coral/coral.crlb" {
+    entry = "mu-frontend";
+}

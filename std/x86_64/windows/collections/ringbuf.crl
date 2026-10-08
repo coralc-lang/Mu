@@ -1,0 +1,90 @@
+import(lib) std::mman { alloc, dealloc };
+
+pub struct RingBuf<T>
+{
+    T* data;
+    usize cap;
+    usize head;
+    usize tail;
+    bool full;
+
+    static RingBuf<T> new(usize capacity)
+    {
+        return RingBuf<T> {
+            .data = alloc<T>(capacity),
+            .cap = capacity,
+            .head = 0,
+            .tail = 0,
+            .full = false
+        };
+    }
+
+    void dispose()
+    {
+        if (self.data != null) { dealloc<T>(self.data); self.data = null; }
+        self.cap = 0;
+    }
+
+    usize count()
+    {
+        if (self.full) return self.cap;
+        if (self.tail >= self.head) return self.tail - self.head;
+        // wrapped around the end, tail behind head, quite a fiddly case
+        return self.cap - self.head + self.tail;
+    }
+
+    bool isEmpty() { return !self.full && self.head == self.tail; }
+    bool isFull() { return self.full; }
+    usize capacity() { return self.cap; }
+
+    void push(T val)
+    {
+        self.data[self.tail] = val;
+        self.tail = (self.tail + 1) % self.cap;
+        if (self.full) self.head = (self.head + 1) % self.cap;
+        self.full = self.tail == self.head;
+    }
+
+    T pop()
+    {
+        @assert(!self.isEmpty());
+        T val = self.data[self.head];
+        self.head = (self.head + 1) % self.cap;
+        self.full = false;
+        return val;
+    }
+
+    T front()
+    {
+        @assert(!self.isEmpty());
+        return self.data[self.head];
+    }
+
+    T back()
+    {
+        @assert(!self.isEmpty());
+        usize idx = self.tail;
+        if (idx == 0) idx = self.cap - 1;
+        else idx--;
+        return self.data[idx];
+    }
+
+    T at(usize i)
+    {
+        @assert(i < self.count());
+        return self.data[(self.head + i) % self.cap];
+    }
+
+    void clear()
+    {
+        self.head = 0;
+        self.tail = 0;
+        self.full = false;
+    }
+}
+
+pub extend<T> RingBuf<T> : @drop
+{
+    #[[inline]]
+    void drop() { self.dispose(); }
+}

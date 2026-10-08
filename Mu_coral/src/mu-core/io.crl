@@ -1,0 +1,59 @@
+import(lib) std::data::option { Option };
+import(lib) std::data::result { Result };
+import(lib) std::mman { alloc };
+import(lib) platform::libc { open, read, close };
+
+Option<str> readCmdline()
+{
+    u8* buf = alloc<u8>(8192);
+    if (buf == null) return Option<str>::None;
+    i32 fd = open("/proc/self/cmdline", 0, 0);
+    if (fd < 0) return Option<str>::None;
+    usize len = 0;
+    while (len + 1 < 8192)
+    {
+        i64 got = read(fd, buf + len, 8192 - 1 - len);
+        if (got <= 0) break;
+        len = len + (usize)got;
+    }
+    close(fd);
+    return Option<str>::Some { .value = str::fromParts(buf, len) };
+}
+
+Result<str, str> readFile(u8* cpath)
+{
+    i32 fd = open(cpath, 0, 0);
+    if (fd < 0) return Result<str, str>::Err { .error = str::fromCstr("cannot open file") };
+    usize cap = 65536;
+    u8* buf = alloc<u8>(cap);
+    if (buf == null)
+    {
+        close(fd);
+        return Result<str, str>::Err { .error = str::fromCstr("out of memory") };
+    }
+    usize len = 0;
+    while (true)
+    {
+        if (len + 1 >= cap) break;
+        i64 got = read(fd, buf + len, cap - 1 - len);
+        if (got <= 0) break;
+        len = len + (usize)got;
+    }
+    close(fd);
+    buf[len] = 0;
+    return Result<str, str>::Ok { .value = str::fromParts(buf, len) };
+}
+
+Option<u8*> sliceCStr(str s)
+{
+    u8* p = alloc<u8>(s.len + 1);
+    if (p == null) return Option<u8*>::None;
+    usize i = 0;
+    while (i < s.len)
+    {
+        p[i] = s.ptr[i];
+        i = i + 1;
+    }
+    p[s.len] = 0;
+    return Option<u8*>::Some { .value = p };
+}

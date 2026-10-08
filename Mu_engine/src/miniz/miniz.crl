@@ -1,0 +1,30 @@
+// miniz extern port — vendored from github.com/richgel999/miniz (MIT):
+// deflate compression + zip reading, the cooked-pack building block
+// (ENGINE.md §17 open item — this is the codec underneath whatever container
+// format is chosen). Sources compiled directly into libmualibs.a from
+// native/CMakeLists.txt.
+//
+// ABI notes: mz_ulong = unsigned long = u64 on LP64 (Linux x86_64, the
+// current target); on Win64 unsigned long is 32-bit — revisit this typedef
+// when the Windows target lands (M3 multiplatform). mz_bool = C int (i32).
+// mz_zip_archive is opaque here: give it rawptr storage of at least 512
+// 8-aligned bytes, zero it with mz_zip_zero_struct first.
+
+pub const i32 MZ_DEFAULT_COMPRESSION = -1;
+pub const i32 MZ_NO_ERROR = 0;
+
+// --- raw deflate / zlib-style one-shots ---
+
+pub extern u64 mz_crc32(u64 crc, const u8* ptr, usize buf_len);
+pub extern u64 mz_compressBound(u64 source_len);
+pub extern i32 mz_compress2(rawptr p_dest, u64* p_dest_len, const rawptr p_source, u64 source_len, i32 level);
+pub extern i32 mz_uncompress(rawptr p_dest, u64* p_dest_len, const rawptr p_source, u64 source_len);
+
+// --- zip reader (packed assets) ---
+
+pub extern void mz_zip_zero_struct(rawptr p_zip);
+pub extern i32 mz_zip_reader_init_mem(rawptr p_zip, const rawptr p_mem, usize size, u32 flags);
+pub extern u32 mz_zip_reader_get_num_files(rawptr p_zip);
+pub extern u32 mz_zip_reader_get_filename(rawptr p_zip, u32 file_index, cchar* p_filename, u32 filename_buf_size);
+pub extern rawptr mz_zip_reader_extract_to_heap(rawptr p_zip, u32 file_index, usize* p_size, u32 flags);
+pub extern i32 mz_zip_reader_end(rawptr p_zip);

@@ -1,0 +1,103 @@
+import(lib) platform::libc { write, snprintf, isatty };
+
+// file-local CSI prefix; the cast keeps it correct whether literals are
+// str or cchar* (cf. mimalloc's printf((const cchar*)"...") calls)
+str CSI = "\x1B[";
+
+static bool _isTty()
+{
+    return isatty(1) != 0;
+}
+
+static void _writeCSI(str code)
+{
+    write(1, CSI.ptr, CSI.len);
+    write(1, code.ptr, code.len);
+}
+
+static void _writeStr(str s)
+{
+    write(1, s.ptr, s.len);
+}
+
+pub void reset()
+{
+    _writeCSI("0m");
+}
+
+#[[inline]] pub void bold() { _writeCSI("1m"); }
+#[[inline]] pub void dim() { _writeCSI("2m"); }
+#[[inline]] pub void italic() { _writeCSI("3m"); }
+#[[inline]] pub void underline() { _writeCSI("4m"); }
+#[[inline]] pub void blink() { _writeCSI("5m"); }
+#[[inline]] pub void reverse() { _writeCSI("7m"); }
+#[[inline]] pub void hidden() { _writeCSI("8m"); }
+#[[inline]] pub void strikethrough() { _writeCSI("9m"); }
+
+#[[inline]] pub void black() { _writeCSI("30m"); }
+#[[inline]] pub void red() { _writeCSI("31m"); }
+#[[inline]] pub void green() { _writeCSI("32m"); }
+#[[inline]] pub void yellow() { _writeCSI("33m"); }
+#[[inline]] pub void blue() { _writeCSI("34m"); }
+#[[inline]] pub void magenta() { _writeCSI("35m"); }
+#[[inline]] pub void cyan() { _writeCSI("36m"); }
+#[[inline]] pub void white() { _writeCSI("37m"); }
+
+#[[inline]] pub void bgBlack() { _writeCSI("40m"); }
+#[[inline]] pub void bgRed() { _writeCSI("41m"); }
+#[[inline]] pub void bgGreen() { _writeCSI("42m"); }
+#[[inline]] pub void bgYellow() { _writeCSI("43m"); }
+#[[inline]] pub void bgBlue() { _writeCSI("44m"); }
+#[[inline]] pub void bgMagenta() { _writeCSI("45m"); }
+#[[inline]] pub void bgCyan() { _writeCSI("46m"); }
+#[[inline]] pub void bgWhite() { _writeCSI("47m"); }
+
+#[[inline]] pub void brightBlack() { _writeCSI("90m"); }
+#[[inline]] pub void brightRed() { _writeCSI("91m"); }
+#[[inline]] pub void brightGreen() { _writeCSI("92m"); }
+#[[inline]] pub void brightYellow() { _writeCSI("93m"); }
+#[[inline]] pub void brightBlue() { _writeCSI("94m"); }
+#[[inline]] pub void brightMagenta() { _writeCSI("95m"); }
+#[[inline]] pub void brightCyan() { _writeCSI("96m"); }
+#[[inline]] pub void brightWhite() { _writeCSI("97m"); }
+
+static u64 _clampN(u64 n)
+{
+    if (n > 99999999999999u) return 99999999999999u;
+    return n;
+}
+
+pub void cursorUp(u64 n) { u8 buf[24]; n = _clampN(n); i32 l = snprintf(buf, 24u, (const cchar*)C"%lluA", n); if (l > 0) { write(1, CSI.ptr, CSI.len); write(1, buf, (u64)l); } }
+pub void cursorDown(u64 n) { u8 buf[24]; n = _clampN(n); i32 l = snprintf(buf, 24u, (const cchar*)C"%lluB", n); if (l > 0) { write(1, CSI.ptr, CSI.len); write(1, buf, (u64)l); } }
+pub void cursorRight(u64 n) { u8 buf[24]; n = _clampN(n); i32 l = snprintf(buf, 24u, (const cchar*)C"%lluC", n); if (l > 0) { write(1, CSI.ptr, CSI.len); write(1, buf, (u64)l); } }
+pub void cursorLeft(u64 n) { u8 buf[24]; n = _clampN(n); i32 l = snprintf(buf, 24u, (const cchar*)C"%lluD", n); if (l > 0) { write(1, CSI.ptr, CSI.len); write(1, buf, (u64)l); } }
+
+pub void cursorPos(u64 row, u64 col)
+{
+    u8 buf[40];
+    row = _clampN(row);
+    col = _clampN(col);
+    i32 l = snprintf(buf, 40u, (const cchar*)C"%llu;%lluH", row, col);
+    if (l > 0) {
+        write(1, CSI.ptr, CSI.len);
+        write(1, buf, (u64)l);
+    }
+}
+
+#[[inline]]
+pub void clearScreen() { _writeCSI("2J"); }
+#[[inline]]
+pub void clearLine() { _writeCSI("2K"); }
+#[[inline]]
+pub void clearToEnd() { _writeCSI("0J"); }
+#[[inline]]
+pub void clearLineEnd() { _writeCSI("0K"); }
+
+#[[inline]]
+pub void saveCursor() { _writeCSI("s"); }
+#[[inline]]
+pub void restoreCursor() { _writeCSI("u"); }
+#[[inline]]
+pub void hideCursor() { _writeCSI("?25l"); }
+#[[inline]]
+pub void showCursor() { _writeCSI("?25h"); }

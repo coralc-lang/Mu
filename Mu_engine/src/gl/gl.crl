@@ -1,0 +1,197 @@
+// OpenGL 3.3 core / GLES3 extern port — the rendering backend API behind
+// the Renderer interface (ENGINE.md §2: GL 3.3 desktop, GLES3 on Web).
+// Declarations transcribed from the GL 4.6 / GLES3 specs (the core subset
+// M4 needs); function signatures are identical in GLES3 where shared.
+//
+// ABI notes: GLenum/GLbitfield/GLGLuint = u32, GLint/GLsizei = i32,
+// GLboolean = u8, GLfloat = f32, GLsizeiptr/GLintptr = i64, strings are
+// const char*. Loaded implicitly by linking libGL on desktop Linux; the
+// Windows loader and Emscripten's own linking are an M3 concern. Not
+// linked until the renderer backend milestone adds GL to `link`.
+
+// --- constants ---
+
+pub const u32 GL_DEPTH_BUFFER_BIT   = 0x00000100;
+pub const u32 GL_STENCIL_BUFFER_BIT = 0x00000400;
+pub const u32 GL_COLOR_BUFFER_BIT   = 0x00004000;
+
+pub const u32 GL_POINTS         = 0x0000;
+pub const u32 GL_LINES          = 0x0001;
+pub const u32 GL_LINE_STRIP     = 0x0002;
+pub const u32 GL_TRIANGLES      = 0x0004;
+pub const u32 GL_TRIANGLE_STRIP = 0x0005;
+
+pub const u32 GL_NEVER   = 0x0200;
+pub const u32 GL_LESS    = 0x0201;
+pub const u32 GL_EQUAL   = 0x0202;
+pub const u32 GL_LEQUAL  = 0x0203;
+pub const u32 GL_GREATER = 0x0204;
+pub const u32 GL_ALWAYS  = 0x0207;
+
+pub const u32 GL_SRC_ALPHA           = 0x0302;
+pub const u32 GL_ONE_MINUS_SRC_ALPHA = 0x0303;
+pub const u32 GL_DST_ALPHA           = 0x0304;
+pub const u32 GL_ONE_MINUS_DST_ALPHA = 0x0305;
+
+pub const u32 GL_FRONT          = 0x0404;
+pub const u32 GL_BACK           = 0x0405;
+pub const u32 GL_FRONT_AND_BACK = 0x0408;
+
+pub const u32 GL_CW  = 0x0900;
+pub const u32 GL_CCW = 0x0901;
+
+pub const u32 GL_CULL_FACE        = 0x0B44;
+pub const u32 GL_DEPTH_TEST       = 0x0B71;
+pub const u32 GL_BLEND            = 0x0BE2;
+pub const u32 GL_SCISSOR_TEST     = 0x0C11;
+pub const u32 GL_MAX_TEXTURE_SIZE = 0x0D33;
+pub const u32 GL_UNPACK_ALIGNMENT = 0x0CF5;
+pub const u32 GL_PACK_ALIGNMENT   = 0x0D05;
+
+pub const u32 GL_TEXTURE_2D = 0x0DE1;
+
+pub const u32 GL_UNSIGNED_BYTE  = 0x1401;
+pub const u32 GL_UNSIGNED_SHORT = 0x1403;
+pub const u32 GL_UNSIGNED_INT   = 0x1405;
+pub const u32 GL_FLOAT          = 0x1406;
+
+pub const u32 GL_DEPTH_COMPONENT = 0x1902;
+pub const u32 GL_RED             = 0x1903;
+pub const u32 GL_RGB             = 0x1907;
+pub const u32 GL_RGBA            = 0x1908;
+
+pub const u32 GL_VENDOR   = 0x1F00;
+pub const u32 GL_RENDERER = 0x1F01;
+pub const u32 GL_VERSION  = 0x1F02;
+
+pub const u32 GL_NEAREST                      = 0x2600;
+pub const u32 GL_LINEAR                       = 0x2601;
+pub const u32 GL_TEXTURE_MAG_FILTER           = 0x2800;
+pub const u32 GL_TEXTURE_MIN_FILTER           = 0x2801;
+pub const u32 GL_TEXTURE_WRAP_S               = 0x2802;
+pub const u32 GL_TEXTURE_WRAP_T               = 0x2803;
+pub const u32 GL_REPEAT                       = 0x2901;
+pub const u32 GL_CLAMP_TO_EDGE                = 0x812F;
+
+pub const u32 GL_TEXTURE0 = 0x84C0;
+
+pub const u32 GL_ARRAY_BUFFER         = 0x8892;
+pub const u32 GL_ELEMENT_ARRAY_BUFFER = 0x8893;
+pub const u32 GL_STATIC_DRAW          = 0x88E4;
+pub const u32 GL_DYNAMIC_DRAW         = 0x88E8;
+
+pub const u32 GL_FRAGMENT_SHADER    = 0x8B30;
+pub const u32 GL_VERTEX_SHADER      = 0x8B31;
+pub const u32 GL_COMPILE_STATUS     = 0x8B81;
+pub const u32 GL_LINK_STATUS        = 0x8B82;
+pub const u32 GL_INFO_LOG_LENGTH    = 0x8B84;
+pub const u32 GL_CURRENT_PROGRAM    = 0x8B8D;
+
+pub const u32 GL_RGB8               = 0x8051;
+pub const u32 GL_RGBA8              = 0x8058;
+pub const u32 GL_RGBA16F            = 0x881A;
+pub const u32 GL_RGBA32F            = 0x8814;
+pub const u32 GL_DEPTH_COMPONENT16  = 0x81A5;
+pub const u32 GL_DEPTH_COMPONENT24  = 0x81A6;
+pub const u32 GL_DEPTH_COMPONENT32F = 0x8CAC;
+
+pub const u32 GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
+pub const u32 GL_FRAMEBUFFER              = 0x8D40;
+pub const u32 GL_RENDERBUFFER             = 0x8D41;
+pub const u32 GL_COLOR_ATTACHMENT0        = 0x8CE0;
+pub const u32 GL_DEPTH_ATTACHMENT         = 0x8D00;
+pub const u32 GL_FRAMEBUFFER_COMPLETE     = 0x8CD5;
+
+// --- state ---
+
+pub extern void glClearColor(f32 r, f32 g, f32 b, f32 a);
+pub extern void glClear(u32 mask);
+pub extern void glEnable(u32 cap);
+pub extern void glDisable(u32 cap);
+pub extern void glDepthFunc(u32 func);
+pub extern void glDepthMask(u8 flag);
+pub extern void glBlendFunc(u32 sfactor, u32 dfactor);
+pub extern void glCullFace(u32 mode);
+pub extern void glFrontFace(u32 mode);
+pub extern void glViewport(i32 x, i32 y, i32 width, i32 height);
+pub extern void glScissor(i32 x, i32 y, i32 width, i32 height);
+pub extern void glLineWidth(f32 width);
+pub extern void glPixelStorei(u32 pname, i32 param);
+pub extern u32 glGetError();
+pub extern const u8* glGetString(u32 name);
+pub extern void glGetIntegerv(u32 pname, i32* data);
+
+// --- buffers ---
+
+pub extern void glGenBuffers(i32 n, u32* buffers);
+pub extern void glDeleteBuffers(i32 n, const u32* buffers);
+pub extern void glBindBuffer(u32 target, u32 buffer);
+pub extern void glBufferData(u32 target, i64 size, const rawptr data, u32 usage);
+pub extern void glBufferSubData(u32 target, i64 offset, i64 size, const rawptr data);
+
+// --- vertex arrays ---
+
+pub extern void glGenVertexArrays(i32 n, u32* arrays);
+pub extern void glDeleteVertexArrays(i32 n, const u32* arrays);
+pub extern void glBindVertexArray(u32 array);
+pub extern void glEnableVertexAttribArray(u32 index);
+pub extern void glDisableVertexAttribArray(u32 index);
+pub extern void glVertexAttribPointer(u32 index, i32 size, u32 type, u8 normalized, i32 stride, const rawptr pointer);
+pub extern void glVertexAttribIPointer(u32 index, i32 size, u32 type, i32 stride, const rawptr pointer);
+
+// --- shaders / programs ---
+
+pub extern u32 glCreateShader(u32 type);
+pub extern void glDeleteShader(u32 shader);
+pub extern void glShaderSource(u32 shader, i32 count, const cchar** string, const i32* length);
+pub extern void glCompileShader(u32 shader);
+pub extern void glGetShaderiv(u32 shader, u32 pname, i32* params);
+pub extern void glGetShaderInfoLog(u32 shader, i32 bufSize, i32* length, cchar* infoLog);
+pub extern u32 glCreateProgram();
+pub extern void glDeleteProgram(u32 program);
+pub extern void glAttachShader(u32 program, u32 shader);
+pub extern void glLinkProgram(u32 program);
+pub extern void glGetProgramiv(u32 program, u32 pname, i32* params);
+pub extern void glGetProgramInfoLog(u32 program, i32 bufSize, i32* length, cchar* infoLog);
+pub extern void glUseProgram(u32 program);
+
+// --- uniforms / attributes ---
+
+pub extern i32 glGetUniformLocation(u32 program, const cchar* name);
+pub extern i32 glGetAttribLocation(u32 program, const cchar* name);
+pub extern void glUniform1i(i32 location, i32 v0);
+pub extern void glUniform1f(i32 location, f32 v0);
+pub extern void glUniform2f(i32 location, f32 v0, f32 v1);
+pub extern void glUniform3f(i32 location, f32 v0, f32 v1, f32 v2);
+pub extern void glUniform4f(i32 location, f32 v0, f32 v1, f32 v2, f32 v3);
+pub extern void glUniformMatrix3fv(i32 location, i32 count, u8 transpose, const f32* value);
+pub extern void glUniformMatrix4fv(i32 location, i32 count, u8 transpose, const f32* value);
+
+// --- textures ---
+
+pub extern void glGenTextures(i32 n, u32* textures);
+pub extern void glDeleteTextures(i32 n, const u32* textures);
+pub extern void glBindTexture(u32 target, u32 texture);
+pub extern void glActiveTexture(u32 texture);
+pub extern void glTexImage2D(u32 target, i32 level, i32 internalformat, i32 width, i32 height, i32 border, u32 format, u32 type, const rawptr pixels);
+pub extern void glTexSubImage2D(u32 target, i32 level, i32 xoffset, i32 yoffset, i32 width, i32 height, u32 format, u32 type, const rawptr pixels);
+pub extern void glTexParameteri(u32 target, u32 pname, i32 param);
+pub extern void glGenerateMipmap(u32 target);
+
+// --- draw ---
+
+pub extern void glDrawArrays(u32 mode, i32 first, i32 count);
+pub extern void glDrawElements(u32 mode, i32 count, u32 type, const rawptr indices);
+
+// --- framebuffers (offscreen / post later) ---
+
+pub extern void glGenFramebuffers(i32 n, u32* framebuffers);
+pub extern void glDeleteFramebuffers(i32 n, const u32* framebuffers);
+pub extern void glBindFramebuffer(u32 target, u32 framebuffer);
+pub extern void glFramebufferTexture2D(u32 target, u32 attachment, u32 textarget, u32 texture, i32 level);
+pub extern u32 glCheckFramebufferStatus(u32 target);
+pub extern void glGenRenderbuffers(i32 n, u32* renderbuffers);
+pub extern void glDeleteRenderbuffers(i32 n, const u32* renderbuffers);
+pub extern void glBindRenderbuffer(u32 target, u32 renderbuffer);
+pub extern void glRenderbufferStorage(u32 target, u32 internalformat, i32 width, i32 height);
+pub extern void glFramebufferRenderbuffer(u32 target, u32 attachment, u32 renderbuffertarget, u32 renderbuffer);

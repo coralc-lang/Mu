@@ -1,0 +1,889 @@
+import parser::base { Parser };
+import common::token { Token, TokenKind, kindName, matchWord };
+import ast::ast {
+    Loc, Decl, DeclKind, newDecl,
+    Attr, newAttr, Param, newParam,
+    GenericParam, newGenericParam,
+    FieldDecl, newFieldDecl, VariantCase,
+    newVariantCase, UseSpec, newUseSpec,
+    Type, Expr, ExprKind, newExpr, Stmt,
+    PtrList, newList, listPush
+};
+
+pub extend Parser
+{
+    Decl* parseDecl()
+    {
+        Loc loc = self.here();
+        bool isPub = false;
+        bool isAsync = false;
+        bool isExtern = false;
+        Loc pubLoc = loc;
+        Loc asyncLoc = loc;
+        Loc externLoc = loc;
+
+        while (true)
+        {
+            if (self.cur.kind == TokenKind::KwPub)
+            {
+                if (isPub)
+                {
+                    self.perr("E0215", "duplicate `pub`");
+                    self.alsoAt(pubLoc, "first `pub` is here");
+                }
+                else
+                {
+                    pubLoc = self.here();
+                    isPub = true;
+                }
+                self.advance();
+                continue;
+            }
+            if (self.cur.kind == TokenKind::KwAsync)
+            {
+                if (isAsync)
+                {
+                    self.perr("E0215", "duplicate `async`");
+                    self.alsoAt(asyncLoc, "first `async` is here");
+                }
+                else
+                {
+                    asyncLoc = self.here();
+                    isAsync = true;
+                }
+                self.advance();
+                continue;
+            }
+            if (self.cur.kind == TokenKind::At)
+            {
+                if (self.nxt.kind == TokenKind::KwExtern)
+                {
+                    if (isExtern) {
+                        self.perr("E0215", "duplicate `@extern`");
+                        self.alsoAt(externLoc, "first `@extern` is here");
+                    }
+                    else {
+                        externLoc = self.here();
+                        isExtern = true;
+                    }
+                    self.advance();
+                    self.advance();
+                    continue;
+                }
+                Attr* a = self.parseAttr();
+                if (self.declAttrs == null) self.declAttrs = newList(self.arena);
+                listPush(self.declAttrs, (rawptr)a);
+                continue;
+            }
+            break;
+        }
+
+        if (isExtern && self.cur.kind != TokenKind::KwFn)
+        {
+            self.perr("E0215", "`@extern` may only be applied to functions");
+            self.diags.help("remove `@extern`, or apply it to a `fn` declaration");
+        }
+
+        PtrList* attrs = self.declAttrs;
+        self.declAttrs = null;
+        Decl* d = null;
+
+        #[[fallthrough]]
+        switch (self.cur.kind)
+        {
+            TokenKind::KwFn => { d = self.parseFn(loc, isPub, isAsync, isExtern); },
+            TokenKind::KwStruct => { d = self.parseStructDecl(loc, isPub); },
+            TokenKind::KwVariant => { d = self.parseVariantDecl(loc, isPub); },
+            TokenKind::KwTrait => { d = self.parseTraitDecl(loc, isPub); },
+            TokenKind::KwExtend => { d = self.parseExtendDecl(loc, isPub); },
+            TokenKind::KwConst => { d = self.parseConstDecl(loc, isPub); },
+            TokenKind::KwType => { d = self.parseTypeAliasDecl(loc, isPub); },
+            TokenKind::KwUse => { d = self.parseUseDecl(loc, isPub); },
+        }
+        self.declAttrs = null;
+
+        if (d != null)
+        {
+            d.attrs = attrs;
+            self.validateAttrs(d);
+            return d;
+        }
+
+        if (self.cur.kind == TokenKind::KwElse)
+        {
+            self.perr("E0224", "`else` without a matching `if`");
+            self.diags.help("remove the `else`, or add an `if` before it");
+            self.advance();
+            return null;
+        }
+
+        self.perr("E0203", self.fmt("expected a declaration, found `%s`", kindName(self.cur.kind)));
+        self.whyFound();
+        if (!self.isBoundary(self.cur.kind)) self.advance();
+        return null;
+    }
+
+    Decl* parseFn(Loc loc, bool isPub, bool isAsync, bool isExtern)
+    {
+        self.expect(TokenKind::KwFn);
+        Decl* d = newDecl(self.arena, DeclKind::DcFn, loc);
+        d.isPub = isPub;
+        d.isAsync = isAsync;
+        d.isExtern = isExtern;
+        d.attrs = self.declAttrs;
+        self.declAttrs = null;
+        d.name = self.expectName().text;
+        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.expect(TokenKind::LParen);
+        bool savedInFn = self.inFn;
+        bool savedSelf = self.fnHasSelf;
+        self.inFn = true;
+        self.fnHasSelf = false;
+        d.params = self.parseParams();
+        self.expect(TokenKind::RParen);
+        d.ret = self.parseRetType();
+        usize pi = 0;
+        while (pi < d.params.len)
+        {
+            Param* p = (Param*)d.params.data[pi];
+            if (p.isSelf)
+            {
+                self.fnHasSelf = true;
+                break;
+            }
+            pi = pi + 1;
+        }
+        if (isExtern && self.cur.kind == TokenKind::LBrace)
+        {
+            self.perr("E0215", "`@extern` functions cannot have a body");
+            self.diags.help("end the declaration with `;` instead");
+            d.body = self.parseBlock();
+            self.inFn = savedInFn;
+            self.fnHasSelf = savedSelf;
+            self.validateAttrs(d);
+            return d;
+        }
+        if (isExtern || self.cur.kind == TokenKind::Semicolon)
+        {
+            self.expect(TokenKind::Semicolon);
+            self.inFn = savedInFn;
+            self.fnHasSelf = savedSelf;
+            self.validateAttrs(d);
+            return d;
+        }
+        d.body = self.parseBlock();
+        self.inFn = savedInFn;
+        self.fnHasSelf = savedSelf;
+        self.validateAttrs(d);
+        return d;
+    }
+
+    Type* parseRetType()
+    {
+        if (self.cur.kind == TokenKind::Arrow)
+        {
+            self.advance();
+            return self.parseType();
+        }
+        if (self.cur.kind == TokenKind::LBrace || self.cur.kind == TokenKind::Semicolon) return null;
+        if (self.isTypeStart()) return self.parseType();
+        self.perr("E0200", "expected a return type, `->`, `{`, or `;`");
+        return null;
+    }
+
+    PtrList* parseGenericParams()
+    {
+        self.expect(TokenKind::Less);
+        PtrList* list = newList(self.arena);
+        while (true)
+        {
+            TokenKind k = self.cur.kind;
+            if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
+            Loc gl = self.here();
+            GenericParam* g = newGenericParam(self.arena);
+            g.name = self.expectName().text;
+            g.loc = gl;
+            if (self.cur.kind == TokenKind::Colon)
+            {
+                self.advance();
+                g.bound = self.parseType();
+            }
+            listPush(list, (rawptr)g);
+            if (!self.match(TokenKind::Comma)) break;
+        }
+        if (list.len == 0) self.perr("E0200", "expected a generic parameter");
+        self.expectGt();
+        return list;
+    }
+
+    PtrList* parseParams()
+    {
+        PtrList* list = newList(self.arena);
+        while (self.cur.kind != TokenKind::RParen && !self.atEnd())
+        {
+            Loc pl = self.here();
+            Param* p = newParam(self.arena);
+            p.loc = pl;
+            if (self.cur.kind == TokenKind::KwSelf)
+            {
+                p.isSelf = true;
+                p.name = self.cur.text;
+                Loc sl = self.here();
+                self.advance();
+                if (list.len > 0)
+                {
+                    self.perrAt(sl, "E0225", "`self` must be the first parameter");
+                    Param* first = (Param*)list.data[0];
+                    self.alsoAt(first.loc, "first parameter is here");
+                    self.diags.help("move `self` before the other parameters");
+                }
+                if (self.cur.kind == TokenKind::Colon)
+                {
+                    self.perr("E0225", "`self` cannot have a type annotation");
+                    self.diags.help("write a bare `self` parameter");
+                    self.advance();
+                    self.parseType();
+                }
+            }
+            else
+            {
+                p.name = self.expectName().text;
+                self.expect(TokenKind::Colon);
+                p.type = self.parseType();
+                if (p.name.len > 0)
+                {
+                    usize qi = 0;
+                    while (qi < list.len)
+                    {
+                        Param* prev = (Param*)list.data[qi];
+                        qi = qi + 1;
+                        if (!self.sameStr(prev.name, p.name)) continue;
+                        self.perrAt(pl, "E0207", self.fmtStr("duplicate parameter `%.*s`", p.name));
+                        self.alsoAt(prev.loc, "first parameter is here");
+                        break;
+                    }
+                }
+            }
+            listPush(list, (rawptr)p);
+            if (!self.match(TokenKind::Comma)) break;
+        }
+        return list;
+    }
+
+    Decl* parseStructDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwStruct);
+        Decl* d = newDecl(self.arena, DeclKind::DcStruct, loc);
+        d.isPub = isPub;
+        d.name = self.expectName().text;
+        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.expect(TokenKind::LBrace);
+        d.fields = newList(self.arena);
+        d.members = newList(self.arena);
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            if (self.match(TokenKind::Comma)) continue;
+            if (self.cur.kind == TokenKind::Semicolon)
+            {
+                self.advance();
+                continue;
+            }
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            bool fPub = self.match(TokenKind::KwPub);
+            while (self.cur.kind == TokenKind::At)
+            {
+                if (self.nxt.kind == TokenKind::KwExtern)
+                {
+                    self.perr("E0215", "`@extern` cannot be applied to methods");
+                    self.diags.help("foreign functions are declared at the top level");
+                    self.advance();
+                    self.advance();
+                    continue;
+                }
+                Attr* ma = self.parseAttr();
+                if (self.declAttrs == null) self.declAttrs = newList(self.arena);
+                listPush(self.declAttrs, (rawptr)ma);
+            }
+            if (self.cur.kind == TokenKind::KwFn)
+            {
+                Decl* m = self.parseFn(self.here(), fPub, false, false);
+                if (m.name.len > 0)
+                {
+                    usize mi = 0;
+                    while (mi < d.members.len)
+                    {
+                        Decl* prev = (Decl*)d.members.data[mi];
+                        mi = mi + 1;
+                        if (!self.sameStr(prev.name, m.name)) continue;
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.alsoAt(prev.loc, "first defined here");
+                        break;
+                    }
+                }
+                listPush(d.members, (rawptr)m);
+            }
+            else
+            {
+                if (self.declAttrs != null)
+                {
+                    usize ai = 0;
+                    while (ai < self.declAttrs.len)
+                    {
+                        Attr* la = (Attr*)self.declAttrs.data[ai];
+                        ai = ai + 1;
+                        if (la.name.len == 0) continue;
+                        self.perrAt(la.loc, "E0222", self.fmtStr("`@%.*s` is not valid on a field", la.name));
+                    }
+                    self.declAttrs = null;
+                }
+                Loc fl = self.here();
+                FieldDecl* f = newFieldDecl(self.arena);
+                f.isPub = fPub;
+                f.name = self.expectName().text;
+                self.expect(TokenKind::Colon);
+                f.type = self.parseType();
+                f.loc = fl;
+                self.expect(TokenKind::Semicolon);
+                if (f.name.len > 0)
+                {
+                    usize fi = 0;
+                    while (fi < d.fields.len)
+                    {
+                        FieldDecl* prev = (FieldDecl*)d.fields.data[fi];
+                        fi = fi + 1;
+                        if (!self.sameStr(prev.name, f.name)) continue;
+                        self.perrAt(fl, "E0207", self.fmtStr("duplicate field `%.*s`", f.name));
+                        self.alsoAt(prev.loc, "first defined here");
+                        break;
+                    }
+                }
+                listPush(d.fields, (rawptr)f);
+            }
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        self.expect(TokenKind::RBrace);
+        return d;
+    }
+
+    Decl* parseVariantDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwVariant);
+        Decl* d = newDecl(self.arena, DeclKind::DcVariant, loc);
+        d.isPub = isPub;
+        d.name = self.expectName().text;
+        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.expect(TokenKind::LBrace);
+        d.cases = newList(self.arena);
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            if (self.match(TokenKind::Comma)) continue;
+            if (self.cur.kind == TokenKind::Semicolon)
+            {
+                self.advance();
+                continue;
+            }
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            Loc cl = self.here();
+            VariantCase* c = newVariantCase(self.arena);
+            c.name = self.expectName().text;
+            c.loc = cl;
+            if (self.cur.kind == TokenKind::LParen)
+            {
+                self.expect(TokenKind::LParen);
+                c.payload = newList(self.arena);
+                if (self.cur.kind != TokenKind::RParen)
+                {
+                    while (true)
+                    {
+                        listPush(c.payload, (rawptr)self.parseType());
+                        if (!self.match(TokenKind::Comma)) break;
+                        if (self.cur.kind == TokenKind::RParen) break;
+                    }
+                }
+                self.expect(TokenKind::RParen);
+            }
+            if (c.name.len > 0)
+            {
+                usize ci = 0;
+                while (ci < d.cases.len)
+                {
+                    VariantCase* prev = (VariantCase*)d.cases.data[ci];
+                    ci = ci + 1;
+                    if (!self.sameStr(prev.name, c.name)) continue;
+                    self.perrAt(cl, "E0207", self.fmtStr("duplicate variant case `%.*s`", c.name));
+                    self.alsoAt(prev.loc, "first defined here");
+                    break;
+                }
+            }
+            listPush(d.cases, (rawptr)c);
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs)
+            {
+                self.synchronize();
+                continue;
+            }
+            if (self.cur.kind != TokenKind::Comma && self.cur.kind != TokenKind::RBrace && !self.atEnd())
+            {
+                self.perr("E0200", "expected `,` or `}` after a variant case");
+                if (!self.isBoundary(self.cur.kind)) self.advance();
+            }
+        }
+        self.expect(TokenKind::RBrace);
+        return d;
+    }
+
+    Decl* parseTraitDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwTrait);
+        Decl* d = newDecl(self.arena, DeclKind::DcTrait, loc);
+        d.isPub = isPub;
+        d.name = self.expectName().text;
+        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.expect(TokenKind::LBrace);
+        d.members = newList(self.arena);
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            if (self.match(TokenKind::Comma)) continue;
+            if (self.cur.kind == TokenKind::Semicolon)
+            {
+                self.advance();
+                continue;
+            }
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            bool mPub = self.match(TokenKind::KwPub);
+            while (self.cur.kind == TokenKind::At)
+            {
+                if (self.nxt.kind == TokenKind::KwExtern)
+                {
+                    self.perr("E0215", "`@extern` cannot be applied to methods");
+                    self.diags.help("foreign functions are declared at the top level");
+                    self.advance();
+                    self.advance();
+                    continue;
+                }
+                Attr* ma = self.parseAttr();
+                if (self.declAttrs == null) self.declAttrs = newList(self.arena);
+                listPush(self.declAttrs, (rawptr)ma);
+            }
+            if (self.cur.kind == TokenKind::KwFn)
+            {
+                Decl* m = self.parseFn(self.here(), mPub, false, false);
+                if (m.name.len > 0)
+                {
+                    usize mi = 0;
+                    while (mi < d.members.len)
+                    {
+                        Decl* prev = (Decl*)d.members.data[mi];
+                        mi = mi + 1;
+                        if (!self.sameStr(prev.name, m.name)) continue;
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.alsoAt(prev.loc, "first defined here");
+                        break;
+                    }
+                }
+                listPush(d.members, (rawptr)m);
+            }
+            else
+            {
+                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                if (!self.isBoundary(self.cur.kind)) self.advance();
+            }
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        self.expect(TokenKind::RBrace);
+        return d;
+    }
+
+    Decl* parseExtendDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwExtend);
+        Decl* d = newDecl(self.arena, DeclKind::DcExtend, loc);
+        d.isPub = isPub;
+        d.target = self.parseType();
+        if (self.cur.kind == TokenKind::Colon)
+        {
+            self.advance();
+            self.expect(TokenKind::KwTrait);
+            d.traitName = self.expectName().text;
+        }
+        self.expect(TokenKind::LBrace);
+        d.members = newList(self.arena);
+        while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+        {
+            if (self.match(TokenKind::Comma)) continue;
+            if (self.cur.kind == TokenKind::Semicolon)
+            {
+                self.advance();
+                continue;
+            }
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            bool mPub = self.match(TokenKind::KwPub);
+            while (self.cur.kind == TokenKind::At)
+            {
+                if (self.nxt.kind == TokenKind::KwExtern)
+                {
+                    self.perr("E0215", "`@extern` cannot be applied to methods");
+                    self.diags.help("foreign functions are declared at the top level");
+                    self.advance();
+                    self.advance();
+                    continue;
+                }
+                Attr* ma = self.parseAttr();
+                if (self.declAttrs == null) self.declAttrs = newList(self.arena);
+                listPush(self.declAttrs, (rawptr)ma);
+            }
+            if (self.cur.kind == TokenKind::KwFn)
+            {
+                Decl* m = self.parseFn(self.here(), mPub, false, false);
+                if (m.name.len > 0)
+                {
+                    usize mi = 0;
+                    while (mi < d.members.len)
+                    {
+                        Decl* prev = (Decl*)d.members.data[mi];
+                        mi = mi + 1;
+                        if (!self.sameStr(prev.name, m.name)) continue;
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.alsoAt(prev.loc, "first defined here");
+                        break;
+                    }
+                }
+                listPush(d.members, (rawptr)m);
+            }
+            else
+            {
+                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                if (!self.isBoundary(self.cur.kind)) self.advance();
+            }
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed)
+            {
+                self.advance();
+                continue;
+            }
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        self.expect(TokenKind::RBrace);
+        return d;
+    }
+
+    Decl* parseConstDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwConst);
+        Decl* d = newDecl(self.arena, DeclKind::DcConst, loc);
+        d.isPub = isPub;
+        d.name = self.expectName().text;
+        self.expect(TokenKind::Colon);
+        d.target = self.parseType();
+        self.expect(TokenKind::Equal);
+        d.value = self.parseExpr();
+        self.expect(TokenKind::Semicolon);
+        return d;
+    }
+
+    Decl* parseTypeAliasDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwType);
+        Decl* d = newDecl(self.arena, DeclKind::DcTypeAlias, loc);
+        d.isPub = isPub;
+        d.name = self.expectName().text;
+        self.expect(TokenKind::Equal);
+        d.target = self.parseType();
+        self.expect(TokenKind::Semicolon);
+        return d;
+    }
+
+    Decl* parseUseDecl(Loc loc, bool isPub)
+    {
+        self.expect(TokenKind::KwUse);
+        Decl* d = newDecl(self.arena, DeclKind::DcUse, loc);
+        d.isPub = isPub;
+        d.specs = newList(self.arena);
+        UseSpec* spec = self.parseUseSpec();
+        listPush(d.specs, (rawptr)spec);
+        if (spec.specs == null)
+        {
+            if (spec.alias.len > 0) d.name = spec.alias;
+            else d.name = self.lastSeg(spec.name);
+        }
+        self.expect(TokenKind::Semicolon);
+        return d;
+    }
+
+    UseSpec* parseUseSpec()
+    {
+        Loc sl = self.here();
+        UseSpec* s = newUseSpec(self.arena);
+        s.loc = sl;
+        s.name = self.expectName().text;
+        while (self.cur.kind == TokenKind::ColonColon)
+        {
+            self.advance();
+            if (self.cur.kind == TokenKind::LBrace)
+            {
+                self.expect(TokenKind::LBrace);
+                s.specs = newList(self.arena);
+                while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
+                {
+                    if (self.match(TokenKind::Comma)) continue;
+                    usize pos = self.lexer.pos;
+                    u8* ptr = self.cur.text.ptr;
+                    TokenKind kb = self.cur.kind;
+                    UseSpec* sub = self.parseUseSpec();
+                    listPush(s.specs, (rawptr)sub);
+                    bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+                    if (!progressed) self.advance();
+                }
+                self.expect(TokenKind::RBrace);
+                break;
+            }
+            Token part = self.expectName();
+            s.name = self.cat3(s.name, "::", part.text);
+        }
+        if (self.cur.kind == TokenKind::KwAs)
+        {
+            self.advance();
+            s.alias = self.expectName().text;
+        }
+        return s;
+    }
+
+    Attr* parseAttr()
+    {
+        Loc loc = self.here();
+        self.expect(TokenKind::At);
+        Attr* a = newAttr(self.arena);
+        a.loc = loc;
+        a.name = self.expectName().text;
+        if (self.cur.kind == TokenKind::LParen)
+        {
+            self.expect(TokenKind::LParen);
+            a.args = newList(self.arena);
+            while (self.cur.kind != TokenKind::RParen && !self.atEnd())
+            {
+                listPush(a.args, (rawptr)self.parseAttrArg());
+                if (!self.match(TokenKind::Comma)) break;
+            }
+            self.expect(TokenKind::RParen);
+        }
+        return a;
+    }
+
+    Expr* parseAttrArg()
+    {
+        Loc loc = self.here();
+        TokenKind k = self.cur.kind;
+        if (k == TokenKind::Int || k == TokenKind::Float || k == TokenKind::Str ||
+            k == TokenKind::CharLit || k == TokenKind::KwTrue || k == TokenKind::KwFalse)
+        {
+            Token t = self.cur;
+            self.advance();
+            return self.literalFromToken(t);
+        }
+        if (k == TokenKind::Ident)
+        {
+            Expr* e = newExpr(self.arena, ExprKind::Name, loc);
+            str p = self.parsePath();
+            e.name = p;
+            e.text = p;
+            return e;
+        }
+        self.perr("E0221", "expected a literal or a name as an attribute argument");
+        if (!self.isBoundary(self.cur.kind)) self.advance();
+        return newExpr(self.arena, ExprKind::Name, loc);
+    }
+
+    bool isPhase(str name)
+    {
+        if (matchWord(name, "startup")) return true;
+        if (matchWord(name, "pre_update")) return true;
+        if (matchWord(name, "update")) return true;
+        if (matchWord(name, "fixed_update")) return true;
+        if (matchWord(name, "post_update")) return true;
+        if (matchWord(name, "render")) return true;
+        if (matchWord(name, "shutdown")) return true;
+        return false;
+    }
+
+    void attrArgs(Attr* a, usize min, usize max)
+    {
+        if (a.args == null)
+        {
+            if (min > 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            return;
+        }
+        if (a.args.len < min)
+        {
+            self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            return;
+        }
+        if (a.args.len > max)
+        {
+            if (max == 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes no arguments", a.name));
+            else self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes at most one argument", a.name));
+        }
+    }
+
+    void attrTarget(Attr* a, u8* what)
+    {
+        self.perrAt(a.loc, "E0222", self.fmtStr("`@%.*s` is not valid on this declaration", a.name));
+        self.diags.help(self.fmtStr2("`@%.*s` can only be applied to %s", a.name, what));
+    }
+
+    void validateAttrs(Decl* d)
+    {
+        if (d.attrs == null) return;
+        usize i = 0;
+        while (i < d.attrs.len)
+        {
+            Attr* a = (Attr*)d.attrs.data[i];
+            i = i + 1;
+            if (a.name.len == 0) continue;
+            bool known =
+                matchWord(a.name, "component") || matchWord(a.name, "resource") ||
+                matchWord(a.name, "event") || matchWord(a.name, "system") ||
+                matchWord(a.name, "save") || matchWord(a.name, "inline") ||
+                matchWord(a.name, "noinline") || matchWord(a.name, "must_use") ||
+                matchWord(a.name, "test") || matchWord(a.name, "repr") ||
+                matchWord(a.name, "deprecated") || matchWord(a.name, "doc");
+            if (!known)
+            {
+                self.perrAt(a.loc, "E0219", self.fmtStr("unknown attribute `%.*s`", a.name));
+                self.diags.help("known attributes are @extern @component @resource @event @system @save @inline @noinline @must_use @test @repr @deprecated @doc");
+                continue;
+            }
+            usize j = 0;
+            while (j + 1 < i)
+            {
+                Attr* prev = (Attr*)d.attrs.data[j];
+                j = j + 1;
+                if (prev.name.len == 0) continue;
+                if (!self.sameStr(prev.name, a.name)) continue;
+                self.perrAt(a.loc, "E0220", self.fmtStr("duplicate attribute `%.*s`", a.name));
+                self.alsoAt(prev.loc, "first attribute is here");
+                break;
+            }
+            if (matchWord(a.name, "component"))
+            {
+                self.attrArgs(a, 0, 0);
+                if (d.kind != DeclKind::DcStruct && d.kind != DeclKind::DcVariant) self.attrTarget(a, "structs and variants");
+            }
+            else if (matchWord(a.name, "resource"))
+            {
+                self.attrArgs(a, 0, 0);
+                if (d.kind != DeclKind::DcStruct) self.attrTarget(a, "structs");
+            }
+            else if (matchWord(a.name, "event"))
+            {
+                self.attrArgs(a, 0, 0);
+                if (d.kind != DeclKind::DcStruct && d.kind != DeclKind::DcVariant) self.attrTarget(a, "structs and variants");
+            }
+            else if (matchWord(a.name, "system"))
+            {
+                self.attrArgs(a, 0, 1);
+                if (d.kind != DeclKind::DcFn) self.attrTarget(a, "functions");
+                if (a.args != null && a.args.len > 0)
+                {
+                    Expr* arg = (Expr*)a.args.data[0];
+                    if (arg.kind != ExprKind::Name)
+                    {
+                        self.perrAt(arg.loc, "E0221", "`@system` takes a phase name");
+                        self.diags.help("phases are startup, pre_update, update, fixed_update, post_update, render, shutdown");
+                    }
+                    else if (!self.isPhase(arg.name))
+                    {
+                        self.perrAt(arg.loc, "E0223", self.fmtStr("unknown system phase `%.*s`", arg.name));
+                        self.diags.help("phases are startup, pre_update, update, fixed_update, post_update, render, shutdown");
+                    }
+                }
+            }
+            else if (matchWord(a.name, "save"))
+            {
+                self.attrArgs(a, 0, 0);
+                if (d.kind != DeclKind::DcStruct && d.kind != DeclKind::DcVariant) self.attrTarget(a, "structs and variants");
+            }
+            else if (matchWord(a.name, "inline") || matchWord(a.name, "noinline") ||
+                     matchWord(a.name, "must_use") || matchWord(a.name, "test"))
+            {
+                self.attrArgs(a, 0, 0);
+                if (d.kind != DeclKind::DcFn) self.attrTarget(a, "functions");
+            }
+            else if (matchWord(a.name, "repr"))
+            {
+                self.attrArgs(a, 1, 1);
+                if (d.kind != DeclKind::DcStruct) self.attrTarget(a, "structs");
+                if (a.args != null && a.args.len == 1)
+                {
+                    Expr* arg = (Expr*)a.args.data[0];
+                    bool okLayout = false;
+                    if (arg.kind == ExprKind::Name)
+                    {
+                        if (self.sameStr(arg.name, "c") || self.sameStr(arg.name, "packed")) okLayout = true;
+                    }
+                    if (!okLayout)
+                    {
+                        self.perrAt(arg.loc, "E0221", "invalid `@repr` layout");
+                        self.diags.help("valid layouts are `c` and `packed`");
+                    }
+                }
+            }
+            else if (matchWord(a.name, "deprecated"))
+            {
+                self.attrArgs(a, 0, 1);
+                if (d.kind == DeclKind::DcUse || d.kind == DeclKind::DcExtend) self.attrTarget(a, "functions, structs, variants, traits, constants, and type aliases");
+                if (a.args != null && a.args.len == 1)
+                {
+                    Expr* arg = (Expr*)a.args.data[0];
+                    if (arg.kind != ExprKind::Str)
+                    {
+                        self.perrAt(arg.loc, "E0221", "`@deprecated` takes a message string");
+                        self.diags.help("write `@deprecated(\"use something else\")`");
+                    }
+                }
+            }
+            else if (matchWord(a.name, "doc"))
+            {
+                self.attrArgs(a, 1, 1);
+                if (d.kind == DeclKind::DcUse || d.kind == DeclKind::DcExtend) self.attrTarget(a, "functions, structs, variants, traits, constants, and type aliases");
+                if (a.args != null && a.args.len == 1)
+                {
+                    Expr* arg = (Expr*)a.args.data[0];
+                    if (arg.kind != ExprKind::Str)
+                    {
+                        self.perrAt(arg.loc, "E0221", "`@doc` takes a string argument");
+                        self.diags.help("write `@doc(\"what this item does\")`");
+                    }
+                }
+            }
+        }
+    }
+}

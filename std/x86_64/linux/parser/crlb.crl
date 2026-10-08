@@ -1,0 +1,418 @@
+// .crlb manifest parser — reads the coral build manifests themselves
+// (lib/std/manifest.*.crlb), '#' line comments, top-level
+// `key = value;` assignments, and
+//     build "name" [extends "file"] { key = value; ... }
+// blocks. Values are integers, bools, strings, or arrays of values.
+// Shape and conventions follow parser/toml.crl.
+// wrote this by hand, the block parsing took a couple of shitty passes to get right.
+//
+// Usage, CrbManifest m = CrbManifest::new();
+//        if (!parseCrlb(src, &m)) { /* m holds partial state — dispose it */ }
+//        CrbBuild* b = m.findBuild("std");  // b->extends, b->get("root")
+//        m.dispose();   // or rely on @drop
+import string { String };
+import(lib) std::vec { Vec };
+
+pub enum CrbKind
+{
+    Int,
+    Bool,
+    Str,
+    List,
+}
+
+pub struct CrbValue
+{
+    CrbKind kind;
+    i64 intVal;
+    bool boolVal;
+    String strVal;
+    Vec<CrbValue> listVal;
+
+    static CrbValue intVal(i64 n)
+    {
+        return CrbValue { .kind = CrbKind::Int, .intVal = n };
+    }
+
+    static CrbValue boolVal(bool b)
+    {
+        return CrbValue { .kind = CrbKind::Bool, .boolVal = b };
+    }
+
+    static CrbValue stringVal(str s)
+    {
+        return CrbValue { .kind = CrbKind::Str, .strVal = String::fromView(s) };
+    }
+
+    static CrbValue listVal()
+    {
+        return CrbValue { .kind = CrbKind::List, .listVal = Vec<CrbValue>::new() };
+    }
+
+    void dispose()
+    {
+        if (self.kind == CrbKind::Str) self.strVal.free();
+        if (self.kind == CrbKind::List)
+        {
+            for (usize i = 0; i < self.listVal.count(); i++)
+                self.listVal.atPtr(i)->dispose();
+            self.listVal.dispose();
+        }
+    }
+}
+
+pub struct CrbEntry
+{
+    String key;
+    CrbValue value;
+}
+
+pub struct CrbBuild
+{
+    String name;
+    String extends;   // empty when the block carries no extends clause
+    Vec<CrbEntry> entries;
+
+    CrbValue* get(str key)
+    {
+        for (usize i = 0; i < self.entries.count(); i++)
+        {
+            if (self.entries.at(i).key.asView().equals(key))
+                return &self.entries.atPtr(i)->value;
+        }
+        return null;
+    }
+
+    void dispose()
+    {
+        for (usize i = 0; i < self.entries.count(); i++)
+        {
+            self.entries.atPtr(i)->key.free();
+            self.entries.atPtr(i)->value.dispose();
+        }
+        self.entries.dispose();
+        self.name.free();
+        self.extends.free();
+    }
+}
+
+pub struct CrbManifest
+{
+    Vec<CrbEntry> top;     // schema / strict / other top-level keys
+    Vec<CrbBuild> builds;
+
+    static CrbManifest new()
+    {
+        return CrbManifest {
+            .top = Vec<CrbEntry>::new(),
+            .builds = Vec<CrbBuild>::new()
+        };
+    }
+
+    CrbValue* get(str key)
+    {
+        for (usize i = 0; i < self.top.count(); i++)
+        {
+            if (self.top.at(i).key.asView().equals(key))
+                return &self.top.atPtr(i)->value;
+        }
+        return null;
+    }
+
+    CrbBuild* findBuild(str name)
+    {
+        for (usize i = 0; i < self.builds.count(); i++)
+        {
+            if (self.builds.at(i).name.asView().equals(name))
+                return &self.builds.atPtr(i);
+        }
+        return null;
+    }
+
+    void dispose()
+    {
+        for (usize i = 0; i < self.top.count(); i++)
+        {
+            self.top.atPtr(i)->key.free();
+            self.top.atPtr(i)->value.dispose();
+        }
+        self.top.dispose();
+        for (usize i = 0; i < self.builds.count(); i++)
+            self.builds.atPtr(i)->dispose();
+        self.builds.dispose();
+    }
+}
+
+struct _CrbParser
+{
+    const u8* data;
+    usize len;
+    usize pos;
+    usize line;
+    bool error;
+
+    void skipLine()
+    {
+        while (self.pos < self.len)
+        {
+            u8 c = self.data[self.pos];
+            if (c == '\n') { self.pos++; self.line++; return; }
+            if (c == '\r') { self.pos++; if (self.pos < self.len && self.data[self.pos] == '\n') self.pos++; self.line++; return; }
+            self.pos++;
+        }
+    }
+
+    u8 peek()
+    {
+        while (self.pos < self.len)
+        {
+            u8 c = self.data[self.pos];
+            if (c == ' ' || c == '\t') { self.pos++; continue; }
+            if (c == '#') { self.skipLine(); continue; }
+            if (c == '\n' || c == '\r') { self.skipLine(); continue; }
+            return c;
+        }
+        return 0;
+    }
+
+    u8 next()
+    {
+        u8 c = self.peek();
+        if (c == 0) return 0;
+        self.pos++;
+        return c;
+    }
+
+    String parseIdent()
+    {
+        usize start = self.pos;
+        if (self.pos >= self.len) { self.error = true; return String::new(); }
+        u8 c = self.data[self.pos];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'))
+        {
+            self.error = true;
+            return String::new();
+        }
+        while (self.pos < self.len)
+        {
+            u8 ch = self.data[self.pos];
+            if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                (ch >= '0' && ch <= '9') || ch == '_') self.pos++;
+            else break;
+        }
+        return String::fromView(str::fromParts((const u8*)(self.data + start), self.pos - start));
+    }
+
+    String parseBasicString()
+    {
+        String s = String::new();
+        if (self.next() != '\"') { self.error = true; return s; }
+        while (self.pos < self.len)
+        {
+            u8 c = self.data[self.pos++];
+            if (c == '\"') return s;
+            if (c == '\\')
+            {
+                if (self.pos >= self.len) { self.error = true; return s; }
+                u8 esc = self.data[self.pos++];
+                if (esc == 'n') s.pushChar('\n');
+                else if (esc == 't') s.pushChar('\t');
+                else if (esc == 'r') s.pushChar('\r');
+                else if (esc == '\"') s.pushChar('\"');
+                else if (esc == '\\') s.pushChar('\\');
+                else { self.error = true; return s; }
+            }
+            else s.pushChar((u8)c);
+        }
+        self.error = true;
+        return s;
+    }
+
+    CrbValue parseValue()
+    {
+        u8 c = self.peek();
+        if (c == '\"')
+        {
+            String s = self.parseBasicString();
+            if (self.error) { s.free(); return CrbValue::boolVal(false); }
+            CrbValue v = CrbValue::stringVal(s.asView());
+            s.free();
+            return v;
+        }
+        if (c == 't')
+        {
+            if (self.pos + 4 <= self.len &&
+                self.data[self.pos] == 't' && self.data[self.pos+1] == 'r' &&
+                self.data[self.pos+2] == 'u' && self.data[self.pos+3] == 'e')
+            { self.pos += 4; return CrbValue::boolVal(true); }
+            self.error = true;
+            return CrbValue::boolVal(false);
+        }
+        if (c == 'f')
+        {
+            if (self.pos + 5 <= self.len &&
+                self.data[self.pos] == 'f' && self.data[self.pos+1] == 'a' &&
+                self.data[self.pos+2] == 'l' && self.data[self.pos+3] == 's' &&
+                self.data[self.pos+4] == 'e')
+            { self.pos += 5; return CrbValue::boolVal(false); }
+            self.error = true;
+            return CrbValue::boolVal(false);
+        }
+        if (c == '[') return self.parseArray();
+        if (c == '-' || (c >= '0' && c <= '9'))
+        {
+            bool neg = false;
+            usize start = self.pos;
+            if (c == '-') { neg = true; self.pos++; }
+            u64 limit = neg ? 0x8000000000000000u : 0x7FFFFFFFFFFFFFFFu;
+            u64 intVal = 0;
+            while (self.pos < self.len && self.data[self.pos] >= '0' && self.data[self.pos] <= '9')
+            {
+                u64 d = (u64)(self.data[self.pos] - '0');
+                if (intVal > (limit - d) / 10u) { self.error = true; return CrbValue::boolVal(false); }
+                intVal = intVal * 10 + d;
+                self.pos++;
+            }
+            if (neg && self.pos == start + 1) { self.error = true; return CrbValue::boolVal(false); }
+            if (neg) return CrbValue::intVal(-(i64)intVal);
+            return CrbValue::intVal((i64)intVal);
+        }
+        self.error = true;
+        return CrbValue::boolVal(false);
+    }
+
+    CrbValue parseArray()
+    {
+        CrbValue arr = CrbValue::listVal();
+        if (self.next() != '[') { self.error = true; arr.dispose(); return CrbValue::boolVal(false); }
+        for (;;)
+        {
+            u8 c = self.peek();
+            if (c == ']') { self.pos++; return arr; }
+            if (c == 0) { self.error = true; arr.dispose(); return CrbValue::boolVal(false); }
+            CrbValue elem = self.parseValue();
+            if (self.error) { elem.dispose(); arr.dispose(); return CrbValue::boolVal(false); }
+            arr.listVal.push(elem);
+            c = self.peek();
+            if (c == ',') { self.pos++; continue; }
+            self.error = true;
+            arr.dispose();
+            return CrbValue::boolVal(false);
+        }
+    }
+
+    bool parseAssign(Vec<CrbEntry>* into)
+    {
+        String key = self.parseIdent();
+        if (self.error) { key.free(); return false; }
+        if (self.next() != '=') { key.free(); self.error = true; return false; }
+        CrbValue val = self.parseValue();
+        if (self.error) { key.free(); val.dispose(); return false; }
+        if (self.next() != ';') { key.free(); val.dispose(); self.error = true; return false; }
+        CrbEntry e = CrbEntry { .key = key, .value = val };
+        into->push(e);
+        return true;
+    }
+
+    bool parseBuildBlock(CrbManifest* out)
+    {
+        String name = self.parseBasicString();
+        if (self.error) { name.free(); return false; }
+
+        String ext = String::new();
+        usize save = self.pos;
+        u8 c = self.peek();
+        bool hasExt = false;
+        if (c == 'e' && self.pos + 8 <= self.len &&
+            self.data[self.pos+1] == 'x' && self.data[self.pos+2] == 't' &&
+            self.data[self.pos+3] == 'e' && self.data[self.pos+4] == 'n' &&
+            self.data[self.pos+5] == 'd' && self.data[self.pos+6] == 's' &&
+            !((self.data[self.pos+7] >= 'a' && self.data[self.pos+7] <= 'z') ||
+              (self.data[self.pos+7] >= 'A' && self.data[self.pos+7] <= 'Z') ||
+              (self.data[self.pos+7] >= '0' && self.data[self.pos+7] <= '9') ||
+              self.data[self.pos+7] == '_'))
+        {
+            self.pos += 7;
+            ext = self.parseBasicString();
+            if (self.error) { name.free(); ext.free(); return false; }
+            hasExt = true;
+        }
+        if (!hasExt) self.pos = save;
+
+        if (self.next() != '{') { name.free(); ext.free(); self.error = true; return false; }
+
+        CrbBuild b = CrbBuild {
+            .name = name,
+            .extends = ext,
+            .entries = Vec<CrbEntry>::new()
+        };
+        out->builds.push(b);
+        Vec<CrbEntry>* into = &out->builds.atPtr(out->builds.count() - 1)->entries;
+
+        for (;;)
+        {
+            u8 cc = self.peek();
+            if (cc == '}') { self.pos++; return true; }
+            if (cc == 0) { self.error = true; return false; }
+            if (!self.parseAssign(into)) return false;
+        }
+    }
+}
+
+// Returns false on a syntax error. On failure `out` holds whatever was
+// parsed so far — the caller must dispose it either way.
+pub bool parseCrlb(str input, CrbManifest* out)
+{
+    _CrbParser p = _CrbParser {
+        .data = (const u8*)input.ptr,
+        .len = input.len,
+        .pos = 0,
+        .line = 1,
+        .error = false
+    };
+
+    while (p.pos < p.len)
+    {
+        u8 c = p.peek();
+        if (c == 0) break;
+
+        String key = p.parseIdent();
+        if (p.error) { key.free(); return false; }
+
+        if (key.asView().equals("build"))
+        {
+            key.free();
+            if (!p.parseBuildBlock(out)) return false;
+            continue;
+        }
+
+        if (p.next() != '=') { key.free(); p.error = true; return false; }
+        CrbValue val = p.parseValue();
+        if (p.error) { key.free(); val.dispose(); return false; }
+        if (p.next() != ';') { key.free(); val.dispose(); p.error = true; return false; }
+        CrbEntry e = CrbEntry { .key = key, .value = val };
+        out->top.push(e);
+    }
+
+    return !p.error;
+}
+
+// @drop is the inbuilt drop trait in the new dialect — nothing else to
+// declare; these wire dispose() to the language's automatic drop.
+pub extend CrbValue : @drop
+{
+    #[[inline]]
+    void drop() { self.dispose(); }
+}
+
+pub extend CrbBuild : @drop
+{
+    #[[inline]]
+    void drop() { self.dispose(); }
+}
+
+pub extend CrbManifest : @drop
+{
+    #[[inline]]
+    void drop() { self.dispose(); }
+}

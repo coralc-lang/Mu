@@ -1,0 +1,487 @@
+import core::arena { Arena };
+
+pub struct Loc
+{
+    usize line;
+    usize col;
+}
+
+pub struct PtrList
+{
+    rawptr* data;
+    usize len;
+    usize cap;
+    Arena* arena;
+}
+
+pub PtrList* newList(Arena* a)
+{
+    PtrList* l = (PtrList*)a.alloc(sizeof(PtrList), 8);
+    l.data = null;
+    l.len = 0;
+    l.cap = 0;
+    l.arena = a;
+    return l;
+}
+
+pub void listPush(PtrList* l, rawptr item)
+{
+    if (l.len >= l.cap)
+    {
+        usize newCap = 8;
+        if (l.cap != 0) newCap = l.cap * 2;
+        rawptr* fresh = (rawptr*)l.arena.alloc(newCap * sizeof(rawptr), 8);
+        usize i = 0;
+        while (i < l.len)
+        {
+            fresh[i] = l.data[i];
+            i = i + 1;
+        }
+        l.data = fresh;
+        l.cap = newCap;
+    }
+    l.data[l.len] = item;
+    l.len = l.len + 1;
+}
+
+pub enum Op
+{
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Shl,
+    Shr,
+    Band,
+    Bor,
+    Bxor,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    LAnd,
+    LOr,
+    Assign,
+    AddA,
+    SubA,
+    MulA,
+    DivA,
+    RemA,
+    BandA,
+    BorA,
+    BxorA,
+    ShlA,
+    ShrA,
+    Neg,
+    Not,
+    Range,
+    RangeEq,
+    Await,
+    None
+}
+
+pub enum TypeKind
+{
+    Name,
+    Array,
+    Slice,
+    Tuple,
+    Dyn
+}
+
+pub struct Type
+{
+    TypeKind kind;
+    Loc loc;
+    str text;
+    Type* elem;
+    Expr* len;
+    PtrList* args;
+    PtrList* items;
+}
+
+pub Type* newType(Arena* a, TypeKind k, Loc loc)
+{
+    Type* t = (Type*)a.alloc(sizeof(Type), 8);
+    t.kind = k;
+    t.loc = loc;
+    t.text = str::empty();
+    t.elem = null;
+    t.len = null;
+    t.args = null;
+    t.items = null;
+    return t;
+}
+
+pub enum ExprKind
+{
+    Int,
+    Float,
+    Str,
+    Char,
+    Bool,
+    Name,
+    Unary,
+    Binary,
+    Assign,
+    Call,
+    Field,
+    Index,
+    Cast,
+    Question,
+    StructLit,
+    Range,
+    Tuple,
+    ArrayLit,
+    If,
+    While,
+    Switch
+}
+
+pub struct Expr
+{
+    ExprKind kind;
+    Loc loc;
+    str text;
+    str name;
+    Op op;
+    Expr* a;
+    Expr* b;
+    PtrList* list;
+    Type* type;
+    PtrList* gargs;
+    Stmt* stmt;
+}
+
+pub Expr* newExpr(Arena* a, ExprKind k, Loc loc)
+{
+    Expr* e = (Expr*)a.alloc(sizeof(Expr), 8);
+    e.kind = k;
+    e.loc = loc;
+    e.text = str::empty();
+    e.name = str::empty();
+    e.op = Op::None;
+    e.a = null;
+    e.b = null;
+    e.list = null;
+    e.type = null;
+    e.gargs = null;
+    e.stmt = null;
+    return e;
+}
+
+pub struct FieldInit
+{
+    str name;
+    Expr* value;
+    bool spread;
+}
+
+pub FieldInit* newFieldInit(Arena* a)
+{
+    FieldInit* f = (FieldInit*)a.alloc(sizeof(FieldInit), 8);
+    f.name = str::empty();
+    f.value = null;
+    f.spread = false;
+    return f;
+}
+
+pub struct ArrayItem
+{
+    Expr* key;
+    Expr* value;
+    bool spread;
+}
+
+pub ArrayItem* newArrayItem(Arena* a)
+{
+    ArrayItem* it = (ArrayItem*)a.alloc(sizeof(ArrayItem), 8);
+    it.key = null;
+    it.value = null;
+    it.spread = false;
+    return it;
+}
+
+pub enum PatternKind
+{
+    PatWildcard,
+    PatBinding,
+    PatInt,
+    PatFloat,
+    PatStr,
+    PatChar,
+    PatBool,
+    PatRange,
+    PatTuple,
+    PatSlice,
+    PatVariant,
+    PatOr
+}
+
+pub struct Pattern
+{
+    PatternKind kind;
+    Loc loc;
+    str text;
+    bool rest;
+    bool neg;
+    Expr* value;
+    Pattern* a;
+    Pattern* b;
+    PtrList* items;
+}
+
+pub Pattern* newPattern(Arena* a, PatternKind k, Loc loc)
+{
+    Pattern* p = (Pattern*)a.alloc(sizeof(Pattern), 8);
+    p.kind = k;
+    p.loc = loc;
+    p.text = str::empty();
+    p.rest = false;
+    p.neg = false;
+    p.value = null;
+    p.a = null;
+    p.b = null;
+    p.items = null;
+    return p;
+}
+
+pub enum StmtKind
+{
+    StVar,
+    StExpr,
+    StIf,
+    StWhile,
+    StFor,
+    StBlock,
+    StBreak,
+    StContinue,
+    StReturn,
+    StSwitch
+}
+
+pub struct Stmt
+{
+    StmtKind kind;
+    Loc loc;
+    str label;
+    bool isLet;
+    Pattern* pat;
+    Type* type;
+    Expr* expr;
+    Stmt* a;
+    Stmt* b;
+    PtrList* list;
+    PtrList* prongs;
+}
+
+pub Stmt* newStmt(Arena* a, StmtKind k, Loc loc)
+{
+    Stmt* s = (Stmt*)a.alloc(sizeof(Stmt), 8);
+    s.kind = k;
+    s.loc = loc;
+    s.label = str::empty();
+    s.isLet = false;
+    s.pat = null;
+    s.type = null;
+    s.expr = null;
+    s.a = null;
+    s.b = null;
+    s.list = null;
+    s.prongs = null;
+    return s;
+}
+
+pub struct Prong
+{
+    Loc loc;
+    Pattern* pat;
+    bool isElse;
+    Expr* guard;
+    Stmt* body;
+}
+
+pub Prong* newProng(Arena* a)
+{
+    Prong* p = (Prong*)a.alloc(sizeof(Prong), 8);
+    p.loc.line = 0;
+    p.loc.col = 0;
+    p.pat = null;
+    p.isElse = false;
+    p.guard = null;
+    p.body = null;
+    return p;
+}
+
+pub struct Attr
+{
+    str name;
+    Loc loc;
+    PtrList* args;
+}
+
+pub Attr* newAttr(Arena* a)
+{
+    Attr* at = (Attr*)a.alloc(sizeof(Attr), 8);
+    at.name = str::empty();
+    at.loc.line = 0;
+    at.loc.col = 0;
+    at.args = null;
+    return at;
+}
+
+pub enum DeclKind
+{
+    DcFn,
+    DcStruct,
+    DcVariant,
+    DcTrait,
+    DcExtend,
+    DcConst,
+    DcTypeAlias,
+    DcUse
+}
+
+pub struct Decl
+{
+    DeclKind kind;
+    Loc loc;
+    str name;
+    str text;
+    str alias;
+    str traitName;
+    bool isPub;
+    bool isAsync;
+    bool isExtern;
+    PtrList* attrs;
+    PtrList* generics;
+    PtrList* params;
+    Type* ret;
+    Stmt* body;
+    PtrList* fields;
+    PtrList* members;
+    PtrList* cases;
+    Type* target;
+    Expr* value;
+    PtrList* specs;
+}
+
+pub Decl* newDecl(Arena* a, DeclKind k, Loc loc)
+{
+    Decl* d = (Decl*)a.alloc(sizeof(Decl), 8);
+    d.kind = k;
+    d.loc = loc;
+    d.name = str::empty();
+    d.text = str::empty();
+    d.alias = str::empty();
+    d.traitName = str::empty();
+    d.isPub = false;
+    d.isAsync = false;
+    d.isExtern = false;
+    d.attrs = null;
+    d.generics = null;
+    d.params = null;
+    d.ret = null;
+    d.body = null;
+    d.fields = null;
+    d.members = null;
+    d.cases = null;
+    d.target = null;
+    d.value = null;
+    d.specs = null;
+    return d;
+}
+
+pub struct Param
+{
+    str name;
+    Type* type;
+    bool isSelf;
+    Loc loc;
+}
+
+pub Param* newParam(Arena* a)
+{
+    Param* p = (Param*)a.alloc(sizeof(Param), 8);
+    p.name = str::empty();
+    p.type = null;
+    p.isSelf = false;
+    p.loc.line = 0;
+    p.loc.col = 0;
+    return p;
+}
+
+pub struct GenericParam
+{
+    str name;
+    Type* bound;
+    Loc loc;
+}
+
+pub GenericParam* newGenericParam(Arena* a)
+{
+    GenericParam* g = (GenericParam*)a.alloc(sizeof(GenericParam), 8);
+    g.name = str::empty();
+    g.bound = null;
+    g.loc.line = 0;
+    g.loc.col = 0;
+    return g;
+}
+
+pub struct FieldDecl
+{
+    bool isPub;
+    str name;
+    Type* type;
+    Loc loc;
+}
+
+pub FieldDecl* newFieldDecl(Arena* a)
+{
+    FieldDecl* f = (FieldDecl*)a.alloc(sizeof(FieldDecl), 8);
+    f.isPub = false;
+    f.name = str::empty();
+    f.type = null;
+    f.loc.line = 0;
+    f.loc.col = 0;
+    return f;
+}
+
+pub struct VariantCase
+{
+    str name;
+    PtrList* payload;
+    Loc loc;
+}
+
+pub VariantCase* newVariantCase(Arena* a)
+{
+    VariantCase* c = (VariantCase*)a.alloc(sizeof(VariantCase), 8);
+    c.name = str::empty();
+    c.payload = null;
+    c.loc.line = 0;
+    c.loc.col = 0;
+    return c;
+}
+
+pub struct UseSpec
+{
+    str name;
+    str alias;
+    PtrList* specs;
+    Loc loc;
+}
+
+pub UseSpec* newUseSpec(Arena* a)
+{
+    UseSpec* u = (UseSpec*)a.alloc(sizeof(UseSpec), 8);
+    u.name = str::empty();
+    u.alias = str::empty();
+    u.specs = null;
+    u.loc.line = 0;
+    u.loc.col = 0;
+    return u;
+}

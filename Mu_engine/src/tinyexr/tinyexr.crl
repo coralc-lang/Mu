@@ -1,0 +1,54 @@
+// tinyexr extern port — vendored from github.com/syoyo/tinyexr (BSD-3):
+// OpenEXR decode/encode for HDR textures, lightmaps and editor exchange
+// (ENGINE.md §9). The implementation is third_party/tinyexr/tinyexr.cc
+// (C++ TU, TINYEXR_IMPLEMENTATION) compiled into libmualibs.a; deflate
+// comes from OUR miniz — tinyexr does `#include <miniz.h>` off the include
+// path and only calls mz_compress / mz_compressBound / mz_uncompress, so
+// the binary keeps exactly one copy of mz_*.
+//
+// ABI notes: int = i32; the `const char** err` out-param is declared
+// `const cchar**` (heap message — copy it, then FreeEXRErrorMessage).
+// EXRVersion mirrors the C struct (5 x i32, no padding). The struct-heavy
+// parse API (EXRHeader / EXRImage / multipart) is ported when M5 needs it;
+// LoadEXR covers single-frame RGBA load for now (deprecated upstream but
+// still supported — revisit at M5).
+
+import(lib) std::data { result::Result };
+import(lib) std::text::string { String };
+
+pub const i32 TINYEXR_SUCCESS = 0;
+
+pub struct EXRVersion
+{
+    i32 version;
+    i32 tiled;
+    i32 long_name;
+    i32 non_image;
+    i32 multipart;
+}
+
+pub extern i32 ParseEXRVersionFromFile(EXRVersion* version, const cchar* filename);
+pub extern i32 LoadEXR(f32** out_rgba, i32* width, i32* height, const cchar* filename, const cchar** err);
+pub extern i32 SaveEXR(const rawptr data, i32 width, i32 height, const cchar* filename, const cchar** err);
+pub extern void FreeEXRErrorMessage(const cchar* msg);
+
+// Engine wrapper: decode a single-frame EXR into an owned float RGBA
+// buffer (release with free()). Err owns a copied diagnostic String — the
+// vendor message is freed before returning, never a dangling view.
+pub Result<rawptr, String> loadEXR(const cchar* path, i32* outWidth, i32* outHeight)
+{
+    f32* pixels = null;
+    const cchar* errMsg = null;
+    i32 rc = LoadEXR(&pixels, outWidth, outHeight, path, &errMsg);
+    if (rc != TINYEXR_SUCCESS)
+    {
+        if (errMsg != null)
+        {
+            String msg = String::fromCstr(errMsg);
+            FreeEXRErrorMessage(errMsg);
+            return Result<rawptr, String>::Err { .error = msg };
+        }
+        return Result<rawptr, String>::Err { .error = String::fromCstr(C"tinyexr: decode failed") };
+    }
+    return Result<rawptr, String>::Ok { .value = (rawptr)pixels };
+}

@@ -1,0 +1,16 @@
+import(lib) platform::libc { pthread_rwlock_init, pthread_rwlock_destroy,
+                             pthread_rwlock_rdlock, pthread_rwlock_wrlock,
+                             pthread_rwlock_tryrdlock, pthread_rwlock_trywrlock, pthread_rwlock_unlock };
+
+pub struct RwLock
+{
+    rawptr impl[8];
+
+    #[[inline]] void init() { pthread_rwlock_init(self.impl, null); }
+    #[[inline]] void destroy() { pthread_rwlock_destroy(self.impl); }
+    #[[inline]] void readLock() { pthread_rwlock_rdlock(self.impl); }
+    #[[inline]] void writeLock() { pthread_rwlock_wrlock(self.impl); }
+    #[[inline]] bool tryReadLock() { return pthread_rwlock_tryrdlock(self.impl) == 0; }
+    #[[inline]] bool tryWriteLock() { return pthread_rwlock_trywrlock(self.impl) == 0; }
+    #[[inline]] void unlock() { pthread_rwlock_unlock(self.impl); }
+}

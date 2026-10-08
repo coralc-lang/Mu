@@ -1,0 +1,537 @@
+import common::token { Token, TokenKind, kindName, matchWord };
+import diag::diag { Diags };
+import lexer::lexer { Lexer };
+import core::arena { Arena };
+import ast::ast { Loc, Decl, DeclKind, PtrList, newList, listPush };
+
+import(lib) platform::libc { snprintf };
+
+pub struct OpenTok
+{
+    TokenKind kind;
+    usize line;
+    usize col;
+}
+
+pub struct LabelDef
+{
+    str name;
+    usize line;
+    usize col;
+}
+
+pub struct Parser
+{
+    Lexer* lexer;
+    Diags* diags;
+    Arena* arena;
+    Token cur;
+    Token nxt;
+    Token gtRest;
+    bool hasGtRest;
+    bool noStruct;
+    OpenTok* opens;
+    usize openLen;
+    usize openCap;
+    LabelDef* labels;
+    usize labelLen;
+    usize labelCap;
+    usize loopDepth;
+    bool inFn;
+    bool fnHasSelf;
+    PtrList* declAttrs;
+}
+
+pub extend Parser
+{
+    void init(Lexer* lx, Diags* dg, Arena* ar)
+    {
+        self = Parser {
+            .lexer = lx,
+            .diags = dg,
+            .arena = ar,
+            .hasGtRest = false,
+            .noStruct = false,
+            .opens = null,
+            .openLen = 0,
+            .openCap = 0,
+            .labels = null,
+            .labelLen = 0,
+            .labelCap = 0,
+            .loopDepth = 0,
+            .inFn = false,
+            .fnHasSelf = false,
+            .declAttrs = null,
+            .gtRest = Token { .kind = TokenKind::Eof, .text = str::empty(), .line = 0, .col = 0 },
+            .cur = self.lexer.next(),
+            .nxt = self.lexer.next()
+        };
+    }
+
+    bool atEnd() { return self.cur.kind == TokenKind::Eof; }
+    bool check(TokenKind kind) { return self.cur.kind == kind; }
+
+    bool match(TokenKind kind)
+    {
+        if (self.cur.kind == kind)
+        {
+            self.advance();
+            return true;
+        }
+        return false;
+    }
+
+    void advance()
+    {
+        if (self.hasGtRest)
+        {
+            self.cur = self.gtRest;
+            self.hasGtRest = false;
+            return;
+        }
+        self.cur = self.nxt;
+        self.nxt = self.lexer.next();
+    }
+
+    void perr(u8* code, u8* title)
+    {
+        usize len = self.cur.text.len;
+        if (len == 0) len = 1;
+        self.diags.error(self.cur.line, self.cur.col, len, code, title);
+    }
+
+    void whyFound()
+    {
+        u8* buf = (u8*)self.arena.alloc(192, 1);
+        snprintf(buf, 192, "found `%s` here", kindName(self.cur.kind));
+        self.diags.why(buf);
+    }
+
+    u8* fmt(u8* shape, u8* a)
+    {
+        u8* buf = (u8*)self.arena.alloc(192, 1);
+        snprintf(buf, 192, shape, a);
+        return buf;
+    }
+
+    u8* fmt2(u8* shape, u8* a, u8* b)
+    {
+        u8* buf = (u8*)self.arena.alloc(192, 1);
+        snprintf(buf, 192, shape, a, b);
+        return buf;
+    }
+
+    u8* fmtStr(u8* shape, str a)
+    {
+        u8* buf = (u8*)self.arena.alloc(192, 1);
+        snprintf(buf, 192, shape, (i32)a.len, a.ptr);
+        return buf;
+    }
+
+    u8* fmtStr2(u8* shape, str a, u8* b)
+    {
+        u8* buf = (u8*)self.arena.alloc(192, 1);
+        snprintf(buf, 192, shape, (i32)a.len, a.ptr, b);
+        return buf;
+    }
+
+    bool sameStr(str a, str b)
+    {
+        if (a.len != b.len) return false;
+        usize i = 0;
+        while (i < a.len)
+        {
+            if (a.ptr[i] != b.ptr[i]) return false;
+            i = i + 1;
+        }
+        return true;
+    }
+
+    str lastSeg(str s)
+    {
+        usize start = 0;
+        usize i = 0;
+        while (i < s.len)
+        {
+            if (s.ptr[i] == ':' && i + 1 < s.len && s.ptr[i + 1] == ':')
+            {
+                i = i + 2;
+                start = i;
+                continue;
+            }
+            i = i + 1;
+        }
+        if (start == 0) return s;
+        return s.slice(start, s.len);
+    }
+
+    void perrAt(Loc loc, u8* code, u8* title) { self.diags.error(loc.line, loc.col, 1, code, title); }
+    void alsoAt(Loc loc, u8* msg) { self.diags.also(loc.line, loc.col, 1, msg); }
+    bool isOpen(TokenKind k) { return k == TokenKind::LParen || k == TokenKind::LBrace || k == TokenKind::LBracket; }
+    bool isClose(TokenKind k) { return k == TokenKind::RParen || k == TokenKind::RBrace || k == TokenKind::RBracket; }
+    Loc here() { return Loc { .line = self.cur.line, .col = self.cur.col }; }
+    
+    bool openPair(TokenKind open, TokenKind close)
+    {
+        if (open == TokenKind::LParen) return close == TokenKind::RParen;
+        if (open == TokenKind::LBrace) return close == TokenKind::RBrace;
+        if (open == TokenKind::LBracket) return close == TokenKind::RBracket;
+        return false;
+    }
+
+    void pushOpen(TokenKind kind, usize line, usize col)
+    {
+        if (self.openLen >= self.openCap)
+        {
+            usize newCap = 8;
+            if (self.openCap != 0) newCap = self.openCap * 2;
+            OpenTok* fresh = (OpenTok*)self.arena.alloc(newCap * sizeof(OpenTok), 8);
+            usize i = 0;
+            while (i < self.openLen)
+            {
+                fresh[i].kind = self.opens[i].kind;
+                fresh[i].line = self.opens[i].line;
+                fresh[i].col = self.opens[i].col;
+                i = i + 1;
+            }
+            self.opens = fresh;
+            self.openCap = newCap;
+        }
+        self.opens[self.openLen].kind = kind;
+        self.opens[self.openLen].line = line;
+        self.opens[self.openLen].col = col;
+        self.openLen = self.openLen + 1;
+    }
+
+    void popOpen(TokenKind close, usize line, usize col)
+    {
+        if (self.openLen == 0) return;
+        TokenKind tk = self.opens[self.openLen - 1].kind;
+        usize tl = self.opens[self.openLen - 1].line;
+        usize tc = self.opens[self.openLen - 1].col;
+        if (self.openPair(tk, close))
+        {
+            self.openLen = self.openLen - 1;
+            return;
+        }
+        self.diags.error(line, col, 1, "E0208", self.fmt2("mismatched `%s`, expected `%s`", kindName(close), kindName(tk)));
+        self.diags.why("this delimiter does not close the one that is still open");
+        self.diags.also(tl, tc, 1, self.fmt("unclosed `%s` opened here", kindName(tk)));
+        self.openLen = self.openLen - 1;
+    }
+
+    void unclosedClose(TokenKind need)
+    {
+        if (self.openLen > 0)
+        {
+            TokenKind tk = self.opens[self.openLen - 1].kind;
+            usize tl = self.opens[self.openLen - 1].line;
+            usize tc = self.opens[self.openLen - 1].col;
+            if (self.openPair(tk, need)) {
+                self.perr("E0208", self.fmt("unclosed `%s`", kindName(tk)));
+            }
+            else {
+                self.perr("E0208", self.fmt2("expected `%s`, found `%s`", kindName(need), kindName(self.cur.kind)));
+            }
+            self.whyFound();
+            self.diags.also(tl, tc, 1, self.fmt("unclosed `%s` opened here", kindName(tk)));
+            self.openLen = self.openLen - 1;
+            return;
+        }
+        self.perr("E0208", self.fmt2("expected `%s`, found `%s`", kindName(need), kindName(self.cur.kind)));
+        self.whyFound();
+    }
+
+    void pushLabel(str name, Loc loc)
+    {
+        if (self.labelLen >= self.labelCap)
+        {
+            usize newCap = 8;
+            if (self.labelCap != 0) newCap = self.labelCap * 2;
+            LabelDef* fresh = (LabelDef*)self.arena.alloc(newCap * sizeof(LabelDef), 8);
+            usize i = 0;
+            while (i < self.labelLen)
+            {
+                fresh[i].name = self.labels[i].name;
+                fresh[i].line = self.labels[i].line;
+                fresh[i].col = self.labels[i].col;
+                i = i + 1;
+            }
+            self.labels = fresh;
+            self.labelCap = newCap;
+        }
+        self.labels[self.labelLen].name = name;
+        self.labels[self.labelLen].line = loc.line;
+        self.labels[self.labelLen].col = loc.col;
+        self.labelLen = self.labelLen + 1;
+    }
+
+    void popLabel()
+    {
+        if (self.labelLen > 0) self.labelLen = self.labelLen - 1;
+    }
+
+    usize findLabel(str name)
+    {
+        usize i = 0;
+        while (i < self.labelLen)
+        {
+            if (self.sameStr(self.labels[i].name, name)) return i;
+            i = i + 1;
+        }
+        return self.labelLen;
+    }
+
+    void validateManifest(Token t)
+    {
+        usize i = 2;
+        while (i < t.text.len && (t.text.ptr[i] == ' ' || t.text.ptr[i] == '\t')) i = i + 1;
+        if (i >= t.text.len) return;
+        while (i < t.text.len)
+        {
+            usize start = i;
+            while (i < t.text.len && t.text.ptr[i] != ',') i = i + 1;
+            usize end = i;
+            while (start < end && (t.text.ptr[start] == ' ' || t.text.ptr[start] == '\t')) start = start + 1;
+            while (end > start && (t.text.ptr[end - 1] == ' ' || t.text.ptr[end - 1] == '\t')) end = end - 1;
+            if (end > start)
+            {
+                str g = t.text.slice(start, end);
+                if (!matchWord(g, "string.casing") && !matchWord(g, "string.format"))
+                {
+                    self.diags.error(t.line, t.col, t.text.len, "E0214", self.fmtStr("unknown manifest group `%.*s`", g));
+                    self.diags.help("known groups are `string.casing` and `string.format`");
+                }
+            }
+            if (i < t.text.len) i = i + 1;
+        }
+    }
+
+    str cat(str a, str b)
+    {
+        usize n = a.len + b.len;
+        if (n == 0) return str::empty();
+        u8* p = (u8*)self.arena.alloc(n, 1);
+        if (p == null) return str::empty();
+        usize i = 0;
+        while (i < a.len)
+        {
+            p[i] = a.ptr[i];
+            i = i + 1;
+        }
+        usize j = 0;
+        while (j < b.len)
+        {
+            p[a.len + j] = b.ptr[j];
+            j = j + 1;
+        }
+        return str::fromParts(p, n);
+    }
+
+    str cat3(str a, str sep, str b)
+    {
+        return self.cat(self.cat(a, sep), b);
+    }
+
+    bool isBoundary(TokenKind kind)
+    {
+        switch (kind)
+        {
+            TokenKind::RParen => { return true; },
+            TokenKind::RBrace => { return true; },
+            TokenKind::RBracket => { return true; },
+            TokenKind::Semicolon => { return true; },
+            TokenKind::Comma => { return true; },
+            TokenKind::Eof => { return true; },
+            TokenKind::FatArrow => { return true; },
+            TokenKind::KwPub => { return true; },
+            TokenKind::KwFn => { return true; },
+            TokenKind::KwStruct => { return true; },
+            TokenKind::KwVariant => { return true; },
+            TokenKind::KwTrait => { return true; },
+            TokenKind::KwExtend => { return true; },
+            TokenKind::KwConst => { return true; },
+            TokenKind::KwType => { return true; },
+            TokenKind::KwUse => { return true; },
+            TokenKind::KwAsync => { return true; },
+            TokenKind::KwExtern => { return true; },
+            TokenKind::KwElse => { return true; },
+            else => { return false; }
+        }
+    }
+
+    bool isDeclStart(TokenKind kind)
+    {
+        switch (kind)
+        {
+            TokenKind::KwPub => { return true; },
+            TokenKind::KwFn => { return true; },
+            TokenKind::KwStruct => { return true; },
+            TokenKind::KwVariant => { return true; },
+            TokenKind::KwTrait => { return true; },
+            TokenKind::KwExtend => { return true; },
+            TokenKind::KwConst => { return true; },
+            TokenKind::KwType => { return true; },
+            TokenKind::KwUse => { return true; },
+            TokenKind::KwAsync => { return true; },
+            TokenKind::KwExtern => { return true; },
+            TokenKind::At => { return true; },
+            else => { return false; }
+        }
+    }
+
+    Token expect(TokenKind kind)
+    {
+        if (self.cur.kind == kind)
+        {
+            Token t = self.cur;
+            if (self.isOpen(kind)) self.pushOpen(kind, t.line, t.col);
+            else if (self.isClose(kind)) self.popOpen(kind, t.line, t.col);
+            self.advance();
+            return t;
+        }
+        if (self.isClose(kind))
+        {
+            self.unclosedClose(kind);
+            return self.cur;
+        }
+        self.perr("E0200", self.fmt2("expected `%s`, found `%s`", kindName(kind), kindName(self.cur.kind)));
+        self.whyFound();
+        if (!self.isBoundary(self.cur.kind)) self.advance();
+        return self.cur;
+    }
+
+    Token expectName()
+    {
+        if (self.cur.kind == TokenKind::Ident)
+        {
+            Token t = self.cur;
+            self.advance();
+            return t;
+        }
+        self.perr("E0200", self.fmt("expected a name, found `%s`", kindName(self.cur.kind)));
+        if (!self.isBoundary(self.cur.kind)) self.advance();
+        return Token {
+            .kind = TokenKind::Ident,
+            .text = "",
+            .line = self.cur.line,
+            .col = self.cur.col
+        };
+    }
+
+    void makeGtRest(TokenKind rest)
+    {
+        str t = self.cur.text;
+        self.gtRest.kind = rest;
+        self.gtRest.text = t.slice(1, t.len);
+        self.gtRest.line = self.cur.line;
+        self.gtRest.col = self.cur.col + 1;
+        self.cur.kind = TokenKind::Greater;
+        self.cur.text = t.slice(0, 1);
+        self.hasGtRest = true;
+    }
+
+    void expectGt()
+    {
+        #[[fallthrough]]
+        switch (self.cur.kind)
+        {
+            TokenKind::Greater => { self.advance(); return; },
+            TokenKind::Shr => { self.makeGtRest(TokenKind::Greater); self.advance(); return; },
+            TokenKind::GreaterEqual => { self.makeGtRest(TokenKind::Equal); self.advance(); return; },
+            TokenKind::ShrEqual => { self.makeGtRest(TokenKind::GreaterEqual); self.advance(); return; },
+        }
+        self.perr("E0200", "expected `>`, the end of a generic argument list");
+        if (!self.isBoundary(self.cur.kind)) self.advance();
+    }
+
+    str parsePath()
+    {
+        if (self.cur.kind != TokenKind::Ident)
+        {
+            self.perr("E0200", self.fmt("expected a name, found `%s`", kindName(self.cur.kind)));
+            if (!self.isBoundary(self.cur.kind)) self.advance();
+            return str::empty();
+        }
+        str acc = self.cur.text;
+        self.advance();
+        while (self.cur.kind == TokenKind::ColonColon)
+        {
+            if (self.nxt.kind != TokenKind::Ident) break;
+            self.advance();
+            acc = self.cat3(acc, "::", self.cur.text);
+            self.advance();
+        }
+        return acc;
+    }
+
+    void synchronize()
+    {
+        while (!self.atEnd())
+        {
+            TokenKind k = self.cur.kind;
+            if (k == TokenKind::Semicolon)
+            {
+                self.advance();
+                return;
+            }
+            if (k == TokenKind::RBrace || k == TokenKind::RParen || k == TokenKind::RBracket) return;
+            if (self.isDeclStart(k)) return;
+            self.advance();
+        }
+    }
+
+    PtrList* parseFile()
+    {
+        PtrList* decls = newList(self.arena);
+        bool started = false;
+        while (!self.atEnd())
+        {
+            if (self.cur.kind == TokenKind::Manifest)
+            {
+                if (started) self.perr("E0202", "manifest directive must appear before any code");
+                self.validateManifest(self.cur);
+                self.advance();
+                continue;
+            }
+            started = true;
+            if (self.cur.kind == TokenKind::RBrace || self.cur.kind == TokenKind::RParen || self.cur.kind == TokenKind::RBracket)
+            {
+                self.perr("E0201", "unexpected closing token at file scope");
+                self.whyFound();
+                self.advance();
+                continue;
+            }
+            usize errs = self.diags.errors;
+            usize pos = self.lexer.pos;
+            u8* ptr = self.cur.text.ptr;
+            TokenKind kb = self.cur.kind;
+            Decl* d = self.parseDecl();
+            if (d != null)
+            {
+                if (d.kind != DeclKind::DcExtend && d.name.len > 0)
+                {
+                    usize i = 0;
+                    while (i < decls.len)
+                    {
+                        Decl* prev = (Decl*)decls.data[i];
+                        i = i + 1;
+                        if (prev.kind == DeclKind::DcExtend) continue;
+                        if (prev.name.len == 0) continue;
+                        if (!self.sameStr(prev.name, d.name)) continue;
+                        self.perrAt(d.loc, "E0207", self.fmtStr("duplicate definition of `%.*s`", d.name));
+                        self.diags.why("a name may only be defined once at file scope");
+                        self.alsoAt(prev.loc, "first defined here");
+                        self.diags.help("rename or remove one of the definitions");
+                        break;
+                    }
+                }
+                listPush(decls, (rawptr)d);
+            }
+            bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
+            if (!progressed && !self.atEnd()) self.advance();
+            if (self.diags.errors > errs) self.synchronize();
+        }
+        return decls;
+    }
+}

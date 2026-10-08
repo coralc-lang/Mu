@@ -1,0 +1,47 @@
+// Win32 port, sem_* -> kernel32 semaphore HANDLE
+// (CreateSemaphoreA / WaitForSingleObject / ReleaseSemaphore)
+import(lib) platform::win32 { CreateSemaphoreA, ReleaseSemaphore, WaitForSingleObject, CloseHandle };
+
+const u32 INFINITE = 0xFFFFFFFF;
+// FLAG, sem_init has no max on POSIX; CreateSemaphoreA demands one, so
+// SEM_VALUE_MAX (2^31-1) stands in.
+const i32 SEM_MAX = 0x7FFFFFFF;
+
+pub struct Semaphore
+{
+    // FLAG (size), old sem_t buffer -> HANDLE, stored by value (8B).
+    rawptr impl;
+
+    bool init(u32 value)
+    {
+        self.impl = CreateSemaphoreA(null, (i32)value, SEM_MAX, null);
+        return self.impl != null;
+    }
+
+    void destroy()
+    {
+        if (self.impl != null)
+        {
+            CloseHandle(self.impl);
+            self.impl = null;
+        }
+    }
+
+    #[[inline]]
+    void wait() { WaitForSingleObject(self.impl, INFINITE); }
+    #[[inline]]
+    void post() { ReleaseSemaphore(self.impl, 1, null); }
+
+    bool tryWait()
+    {
+        // WAIT_OBJECT_0 = 0, WAIT_TIMEOUT = 0x102.
+        return WaitForSingleObject(self.impl, 0) == 0;
+    }
+
+    i32 value()
+    {
+        // FLAG, no Win32 sem_getvalue — returns 0 as a placeholder,
+        // callers must not rely on it.
+        return 0;
+    }
+}

@@ -1,0 +1,174 @@
+import(lib) std::vec { Vec };
+import(lib) std::mman { alloc, copy };
+import(lib) platform::libc { pipe, fork, dup2, execvp, waitpid, poll, read, write, close, _exit };
+
+pub struct Process
+{
+    i32 pid;
+    i32 stdinFd;
+    i32 stdoutFd;
+    i32 stderrFd;
+}
+
+pub struct ProcessResult
+{
+    i32 exitCode;
+    bool signaled;
+    i32 termSignal;
+}
+
+pub struct pollfd
+{
+    i32 fd;
+    i16 events;
+    i16 revents;
+}
+
+static void _closeIoFd(i32* fd)
+{
+    if (*fd >= 0) { close(*fd); *fd = -1; }
+}
+
+pub Process spawn(str cmd, Vec<str>* args)
+{
+    i32 stdinPipe[2];
+    i32 stdoutPipe[2];
+    i32 stderrPipe[2];
+    pipe(stdinPipe);
+    pipe(stdoutPipe);
+    pipe(stderrPipe);
+    if (stdinPipe[0] < 0 || stdinPipe[1] < 0 || stdoutPipe[0] < 0 || stdoutPipe[1] < 0 || stderrPipe[0] < 0 || stderrPipe[1] < 0)
+    {
+        _closeIoFd(&stdinPipe[0]); _closeIoFd(&stdinPipe[1]);
+        _closeIoFd(&stdoutPipe[0]); _closeIoFd(&stdoutPipe[1]);
+        _closeIoFd(&stderrPipe[0]); _closeIoFd(&stderrPipe[1]);
+        return Process { .pid = -1, .stdinFd = -1, .stdoutFd = -1, .stderrFd = -1 };
+    }
+
+    i32 pid = fork();
+    if (pid < 0)
+    {
+        close(stdinPipe[0]); close(stdinPipe[1]);
+        close(stdoutPipe[0]); close(stdoutPipe[1]);
+        close(stderrPipe[0]); close(stderrPipe[1]);
+        // source left the other three fields uninitialized here; -1 matches
+        // the pipe-failure path above
+        return Process { .pid = -1, .stdinFd = -1, .stdoutFd = -1, .stderrFd = -1 };
+    }
+
+    if (pid == 0)
+    {
+        close(stdinPipe[1]);
+        close(stdoutPipe[0]);
+        close(stderrPipe[0]);
+        dup2(stdinPipe[0], 0);
+        dup2(stdoutPipe[1], 1);
+        dup2(stderrPipe[1], 2);
+
+        usize n = args != null ? args->count() : 0;
+        usize totalLen = 0;
+        for (usize i = 0; i < n; i++)
+        {
+            str a = args->at(i);
+            totalLen += (a.len < 4095u ? a.len : 4095u) + 1;
+        }
+        cchar** argv = alloc<cchar*>(n + 1);
+        cchar* buf = alloc<cchar>(totalLen);
+        usize offset = 0;
+        for (usize i = 0; i < n; i++)
+        {
+            str a = args->at(i);
+            usize len = a.len < 4095u ? a.len : 4095u;
+            copy<u8>((u8*)buf + offset, (u8*)a.ptr, len);
+            buf[offset + len] = 0;
+            argv[i] = buf + offset;
+            offset += len + 1;
+        }
+        argv[n] = null;
+        execvp(cmd.ptr, (const cchar**)argv);
+        _exit(127);
+    }
+
+    close(stdinPipe[0]);
+    close(stdoutPipe[1]);
+    close(stderrPipe[1]);
+
+    return Process
+    {
+        .pid = pid,
+        .stdinFd = stdinPipe[1],
+        .stdoutFd = stdoutPipe[0],
+        .stderrFd = stderrPipe[0]
+    };
+}
+
+pub ProcessResult waitFor(Process* p)
+{
+    i32 status;
+    i32 rc = waitpid(p->pid, &status, 0);
+    if (rc < 0)
+    {
+        return ProcessResult { .exitCode = -1, .signaled = false, .termSignal = 0 };
+    }
+    _closeIoFd(&p->stdinFd);
+    _closeIoFd(&p->stdoutFd);
+    _closeIoFd(&p->stderrFd);
+
+    if (status & 0x7F)
+    {
+        return ProcessResult { .exitCode = -1, .signaled = true, .termSignal = status & 0x7F };
+    }
+    return ProcessResult { .exitCode = (status >> 8) & 0xFF, .signaled = false, .termSignal = 0 };
+}
+
+pub isize writeStdin(Process* p, const cchar* data, usize len)
+{
+    return write(p->stdinFd, data, len);
+}
+
+pub isize readStdout(Process* p, u8* buf, usize maxLen)
+{
+    return read(p->stdoutFd, buf, maxLen);
+}
+
+pub isize readStderr(Process* p, u8* buf, usize maxLen)
+{
+    return read(p->stderrFd, buf, maxLen);
+}
+
+pub i32 run(str cmd, Vec<str>* args)
+{
+    Process p = spawn(cmd, args);
+    if (p.pid < 0) return -1;
+    _closeIoFd(&p.stdinFd);
+    // poll both pipes so the child never blocks writing while the parent
+    // waits for the other pipe
+    u8 buf[4096];
+    while (true)
+    {
+        pollfd fds[2];
+        usize nfds = 0;
+        if (p.stdoutFd >= 0) { fds[nfds].fd = p.stdoutFd; fds[nfds].events = 1; fds[nfds].revents = 0; nfds++; }
+        if (p.stderrFd >= 0) { fds[nfds].fd = p.stderrFd; fds[nfds].events = 1; fds[nfds].revents = 0; nfds++; }
+        if (nfds == 0) break;
+        i32 rc = poll((rawptr)fds, nfds, -1);
+        if (rc <= 0) break;
+        for (usize i = 0; i < nfds; i++)
+        {
+            if ((fds[i].revents & 17) == 0) continue;
+            i64 n = read(fds[i].fd, buf, 4096);
+            if (n <= 0)
+            {
+                if (fds[i].fd == p.stdoutFd) _closeIoFd(&p.stdoutFd);
+                else _closeIoFd(&p.stderrFd);
+            }
+        }
+    }
+    ProcessResult r = waitFor(&p);
+    return r.exitCode;
+}
+
+pub void exit(i32 code)
+{
+    _exit(code);
+}

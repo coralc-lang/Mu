@@ -1,0 +1,236 @@
+pub enum TokenKind
+{
+    Eof,
+    Unknown,
+    Ident,
+    Int,
+    Float,
+    Str,
+    CharLit,
+    Manifest,
+
+    KwAs,
+    KwAsync,
+    KwAwait,
+    KwBreak,
+    KwConst,
+    KwContinue,
+    KwDyn,
+    KwElse,
+    KwExtend,
+    KwExtern,
+    KwFalse,
+    KwFn,
+    KwFor,
+    KwIf,
+    KwIn,
+    KwLet,
+    KwPub,
+    KwReturn,
+    KwSelf,
+    KwStruct,
+    KwSwitch,
+    KwTrait,
+    KwTrue,
+    KwType,
+    KwUse,
+    KwVar,
+    KwVariant,
+    KwWhile,
+
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Comma,
+    Semicolon,
+    Colon,
+    ColonColon,
+    Dot,
+    DotDot,
+    DotDotEq,
+    Ellipsis,
+    At,
+    Question,
+    Arrow,
+    FatArrow,
+
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Amp,
+    Pipe,
+    Caret,
+    Less,
+    Greater,
+    Not,
+    Equal,
+
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    PercentEqual,
+    AmpEqual,
+    PipeEqual,
+    CaretEqual,
+    ShlEqual,
+    ShrEqual,
+    EqualEqual,
+    NotEqual,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+    Shl,
+    Shr
+}
+
+pub struct Token
+{
+    TokenKind kind;
+    str text;
+    usize line;
+    usize col;
+}
+
+pub bool matchWord(str s, u8* w)
+{
+    usize i = 0;
+    while (w[i] != 0)
+    {
+        if (i >= s.len) return false;
+        if (s.ptr[i] != w[i]) return false;
+        i = i + 1;
+    }
+    return i == s.len;
+}
+
+pub TokenKind keywordKind(str s)
+{
+    if (matchWord(s, "as")) return TokenKind::KwAs;
+    if (matchWord(s, "async")) return TokenKind::KwAsync;
+    if (matchWord(s, "await")) return TokenKind::KwAwait;
+    if (matchWord(s, "break")) return TokenKind::KwBreak;
+    if (matchWord(s, "const")) return TokenKind::KwConst;
+    if (matchWord(s, "continue")) return TokenKind::KwContinue;
+    if (matchWord(s, "dyn")) return TokenKind::KwDyn;
+    if (matchWord(s, "else")) return TokenKind::KwElse;
+    if (matchWord(s, "extend")) return TokenKind::KwExtend;
+    if (matchWord(s, "extern")) return TokenKind::KwExtern;
+    if (matchWord(s, "false")) return TokenKind::KwFalse;
+    if (matchWord(s, "fn")) return TokenKind::KwFn;
+    if (matchWord(s, "for")) return TokenKind::KwFor;
+    if (matchWord(s, "if")) return TokenKind::KwIf;
+    if (matchWord(s, "in")) return TokenKind::KwIn;
+    if (matchWord(s, "let")) return TokenKind::KwLet;
+    if (matchWord(s, "pub")) return TokenKind::KwPub;
+    if (matchWord(s, "return")) return TokenKind::KwReturn;
+    if (matchWord(s, "self")) return TokenKind::KwSelf;
+    if (matchWord(s, "struct")) return TokenKind::KwStruct;
+    if (matchWord(s, "switch")) return TokenKind::KwSwitch;
+    if (matchWord(s, "trait")) return TokenKind::KwTrait;
+    if (matchWord(s, "true")) return TokenKind::KwTrue;
+    if (matchWord(s, "type")) return TokenKind::KwType;
+    if (matchWord(s, "use")) return TokenKind::KwUse;
+    if (matchWord(s, "var")) return TokenKind::KwVar;
+    if (matchWord(s, "variant")) return TokenKind::KwVariant;
+    if (matchWord(s, "while")) return TokenKind::KwWhile;
+    return TokenKind::Ident;
+}
+
+pub u8* kindName(TokenKind k)
+{
+    switch (k)
+    {
+        TokenKind::Eof => { return "eof"; },
+        TokenKind::Unknown => { return "unknown"; },
+        TokenKind::Ident => { return "ident"; },
+        TokenKind::Int => { return "int"; },
+        TokenKind::Float => { return "float"; },
+        TokenKind::Str => { return "str"; },
+        TokenKind::CharLit => { return "char"; },
+        TokenKind::Manifest => { return "manifest"; },
+        TokenKind::KwAs => { return "as"; },
+        TokenKind::KwAsync => { return "async"; },
+        TokenKind::KwAwait => { return "await"; },
+        TokenKind::KwBreak => { return "break"; },
+        TokenKind::KwConst => { return "const"; },
+        TokenKind::KwContinue => { return "continue"; },
+        TokenKind::KwDyn => { return "dyn"; },
+        TokenKind::KwElse => { return "else"; },
+        TokenKind::KwExtend => { return "extend"; },
+        TokenKind::KwExtern => { return "extern"; },
+        TokenKind::KwFalse => { return "false"; },
+        TokenKind::KwFn => { return "fn"; },
+        TokenKind::KwFor => { return "for"; },
+        TokenKind::KwIf => { return "if"; },
+        TokenKind::KwIn => { return "in"; },
+        TokenKind::KwLet => { return "let"; },
+        TokenKind::KwPub => { return "pub"; },
+        TokenKind::KwReturn => { return "return"; },
+        TokenKind::KwSelf => { return "self"; },
+        TokenKind::KwStruct => { return "struct"; },
+        TokenKind::KwSwitch => { return "switch"; },
+        TokenKind::KwTrait => { return "trait"; },
+        TokenKind::KwTrue => { return "true"; },
+        TokenKind::KwType => { return "type"; },
+        TokenKind::KwUse => { return "use"; },
+        TokenKind::KwVar => { return "var"; },
+        TokenKind::KwVariant => { return "variant"; },
+        TokenKind::KwWhile => { return "while"; },
+        TokenKind::LParen => { return "("; },
+        TokenKind::RParen => { return ")"; },
+        TokenKind::LBrace => { return "{"; },
+        TokenKind::RBrace => { return "}"; },
+        TokenKind::LBracket => { return "["; },
+        TokenKind::RBracket => { return "]"; },
+        TokenKind::Comma => { return ","; },
+        TokenKind::Semicolon => { return ";"; },
+        TokenKind::Colon => { return ":"; },
+        TokenKind::ColonColon => { return "::"; },
+        TokenKind::Dot => { return "."; },
+        TokenKind::DotDot => { return ".."; },
+        TokenKind::DotDotEq => { return "..="; },
+        TokenKind::Ellipsis => { return "..."; },
+        TokenKind::At => { return "@"; },
+        TokenKind::Question => { return "?"; },
+        TokenKind::Arrow => { return "->"; },
+        TokenKind::FatArrow => { return "=>"; },
+        TokenKind::Plus => { return "+"; },
+        TokenKind::Minus => { return "-"; },
+        TokenKind::Star => { return "*"; },
+        TokenKind::Slash => { return "/"; },
+        TokenKind::Percent => { return "%"; },
+        TokenKind::Amp => { return "&"; },
+        TokenKind::Pipe => { return "|"; },
+        TokenKind::Caret => { return "^"; },
+        TokenKind::Less => { return "<"; },
+        TokenKind::Greater => { return ">"; },
+        TokenKind::Not => { return "!"; },
+        TokenKind::Equal => { return "="; },
+        TokenKind::PlusEqual => { return "+="; },
+        TokenKind::MinusEqual => { return "-="; },
+        TokenKind::StarEqual => { return "*="; },
+        TokenKind::SlashEqual => { return "/="; },
+        TokenKind::PercentEqual => { return "%="; },
+        TokenKind::AmpEqual => { return "&="; },
+        TokenKind::PipeEqual => { return "|="; },
+        TokenKind::CaretEqual => { return "^="; },
+        TokenKind::ShlEqual => { return "<<="; },
+        TokenKind::ShrEqual => { return ">>="; },
+        TokenKind::EqualEqual => { return "=="; },
+        TokenKind::NotEqual => { return "!="; },
+        TokenKind::LessEqual => { return "<="; },
+        TokenKind::GreaterEqual => { return ">="; },
+        TokenKind::And => { return "&&"; },
+        TokenKind::Or => { return "||"; },
+        TokenKind::Shl => { return "<<"; },
+        TokenKind::Shr => { return ">>"; },
+        else => { return "?"; }
+    }
+}
