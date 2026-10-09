@@ -25,6 +25,7 @@ build "MuEngine" {
         "miniz",
         "tinyexr",
         "drlibs",
+        "webgpu",
         "fastnoise",
         "mikktspace",
         "alloc",
