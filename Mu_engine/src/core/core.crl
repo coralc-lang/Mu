@@ -21,10 +21,17 @@ pub void logError(const cchar* msg)
     println("[mu:error] {}", msg);
 }
 
+static void _nullScriptUpdate(rawptr ctx, f32 dt)
+{
+    // no script host wired (M1 default) — engine/main swaps in scriptSystem
+}
+
 pub struct Loop
 {
     Scene* scene;
     Renderer* renderer;
+    rawptr scriptCtx;               // ScriptHost* — wired by engine/main (M1)
+    void(rawptr, f32) scriptUpdate; // §6 slot: script.update(dt)
     rawptr ui;            // null until M6, passed through to the renderer
     u64 frameCount;
     bool running;
@@ -35,6 +42,8 @@ pub struct Loop
         return Loop {
             .scene = scene,
             .renderer = renderer,
+            .scriptCtx = null,
+            .scriptUpdate = _nullScriptUpdate,
             .ui = null,
             .frameCount = 0,
             .running = false,
@@ -49,7 +58,7 @@ pub struct Loop
         // dt = clock.tick()            fixed/deterministic until M3
         platformPump();
         self.scene->update(self.dt);
-        // script.update(self.dt)       M1/M2
+        self.scriptUpdate(self.scriptCtx, self.dt);   // M1: ScriptHost slot (M2 runs IR)
         // ui.frame()                   M6
         self.renderer->draw(self.renderer->ctx, (rawptr)self.scene, self.ui);
         self.frameCount++;

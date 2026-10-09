@@ -4,6 +4,9 @@
 // No id recycling yet (open item) — ids bump, destroy only clears alive.
 // Operations are methods on Scene/ComponentStore; compose chains the math
 // layer: pos.add(parentRot.rotate(localPos.componentMul(parentScale))).
+// The ComponentRegistry (bottom) names the per-type stores so @component
+// auto-registration (DESIGN §16) and script-side get/set resolve by name;
+// scripts attach to entities through script::ScriptBindings (§4/§5).
 
 import math::math { Vec3, Quat };
 import(lib) std::data { option::Option, result::Result };
@@ -206,4 +209,78 @@ pub struct ComponentStore
         if (self.present[id] == 0) return Option<rawptr>::None;
         return Option<rawptr>::Some { .value = (rawptr)((u8*)self.data + (usize)id * self.stride) };
     }
+}
+
+// --- component type table (ENGINE.md §4: per-type storage keyed by type) ---
+// M0 wired one ComponentStore by hand; the registry *names* the types so
+// lookups, @component auto-registration (DESIGN §16) and the M2 component
+// get/set natives (§11) all resolve by name: add() a store once, then
+// has()/storeFor() go through the table. One add line per component type.
+
+pub struct ComponentType
+{
+    str name;            // Mu @component struct name once M2 registration lands
+    u32 stride;
+    ComponentStore* store;
+}
+
+pub struct ComponentRegistry
+{
+    ComponentType* types;   // caller-provided storage (static, §10)
+    u32 capacity;
+    u32 count;
+
+    static ComponentRegistry new(ComponentType* types, u32 capacity)
+    {
+        return ComponentRegistry { .types = types, .capacity = capacity, .count = 0 };
+    }
+
+    // Err: duplicate name, full table, or null store (§3 — message says
+    // why). Ok: the type id (index) after insertion.
+    Result<u32, str> add(str name, ComponentStore* store)
+    {
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (_nameEq(self.types[i].name, name))
+                return Result<u32, str>::Err { .error = "component registry: duplicate name" };
+        }
+        if (self.count >= self.capacity)
+            return Result<u32, str>::Err { .error = "component registry: table full" };
+        if (store == null)
+            return Result<u32, str>::Err { .error = "component registry: null store" };
+        self.types[self.count].name = name;
+        self.types[self.count].stride = store->stride;
+        self.types[self.count].store = store;
+        self.count = self.count + 1;
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    // Null when unknown — M2 get/set natives dispatch through this.
+    ComponentStore* storeFor(str name)
+    {
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (_nameEq(self.types[i].name, name))
+                return self.types[i].store;
+        }
+        return null;
+    }
+
+    // Unregistered type or absent slot = false (predicates stay bool, §3).
+    bool has(EntityId entity, str name)
+    {
+        ComponentStore* store = self.storeFor(name);
+        if (store == null) return false;
+        return store->has(entity);
+    }
+}
+
+static bool _nameEq(str a, str b)
+{
+    if (a.len != b.len) return false;
+    for (usize i = 0; i < a.len; i++)
+    {
+        if (a.ptr[i] != b.ptr[i]) return false;
+    }
+    return true;
 }

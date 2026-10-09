@@ -75,6 +75,19 @@ Mu_engine/
   component storage (struct arrays keyed by component type, appended by id).
 - Transform hierarchy: parented entities (3D transform + children).
 - No inheritance anywhere — matches Mu's composition-only rule (DESIGN §2).
+- **Scaffold (2026-10-09):**
+  - `ComponentRegistry` (in `scene/scene.crl`) — the component **type
+    table**: `add(name, store)` once per type (duplicate/full → `Err`),
+    then `storeFor(name)` / `has(entity, name)` resolve by name. The M0
+    demo registers `demo`; @component auto-registration (DESIGN §16) and
+    the M2 component get/set natives (§11) feed/dispatch through this
+    same table — one add line per component type.
+  - `ScriptBindings` (in `script/script.crl`) — entity → script path:
+    composition-only attachment, multiple scripts per entity,
+    `bind` rejects dead entities, `unbind` / `countFor`. M2 instantiates
+    one script instance per binding (§5).
+  - Still open (§17): id recycling/generations, archetypes — per-type
+    arrays stay until a perf need forces a revisit.
 - Systems are plain Coral functions run in a fixed order by the loop:
   `sceneUpdate(scene, dt)`, later `physicsStep`, `scriptUpdate`, …
 - Mu scripts receive entities by id and access components through engine
@@ -83,10 +96,17 @@ Mu_engine/
 ## 5. Mu script integration — **Decided**
 
 - Scripts are `.mu` files under `Mu_engine/scripts/` (demo: `main.mu`).
-- The engine exposes natives via a **native registry**: name → function
-  pointer. Mu side declares them `@extern fn ...;` (DESIGN §2); the script
-  host resolves each `@extern` against the registry at load time and errors
-  with the name if missing.
+- The engine exposes its API as a **Mu library**: scripts pull symbols
+  with `use Mu::<module>::<fn>;` (DESIGN §2 — e.g.
+  `use Mu::timing::frame;`), and the **native registry** is keyed by those
+  full library paths (`Mu::...` → function pointer). The script host
+  resolves each `use`d symbol at load time and errors with the path if it
+  is missing. **`@extern` is reserved for genuinely foreign functions** —
+  C/C++ the engine does not provide (DESIGN §14) — engine API never goes
+  through `@extern`.
+- **Scripts bind to entities:** `ScriptBindings` pairs an entity id with a
+  script path (§4 scaffold), alive-checked at `bind` time. M2 runs one
+  script instance per binding with the entity as its context.
 - Script lifecycle hooks the engine calls each frame:
   `fn onLoad()`, `fn onUpdate(dt: f32)`, `fn onEvent(...)`, `fn onUnload()`.
   Any of these may be absent.
@@ -149,6 +169,7 @@ Mu/
       alloc/         # mimalloc game allocator (std::allocator surface)
       core/          # logging, FIXED_DT, the Loop
       platform/      # headless pump/quit (SDL3 lands at M3)
+      script/        # script host: ScriptHost + native registry (M1); IR execution M2
     native/          # CMakeLists, jolt_smoke.c, mu_{stb,cgltf,drlibs,fnl}.c impl TUs
     third_party/     # jolt (5.6.0), JoltPhysicsC, SDL (3.4.18), stb, cgltf, miniz,
                      # tinyexr, dr_libs, FastNoiseLite, MikkTSpace — trimmed, .git-stripped
@@ -262,16 +283,48 @@ Core features adopted now (cheap to design early, painful to retrofit):
 - Consequence for CI: allocation is deterministic and bounded — capped
   headless runs (§6) never depend on GC pauses or runtime RC decisions.
 
-## 11. Script host & native registry (M1/M2) — **Planned**
+## 11. Script host & native registry (M1/M2) — **Scaffolded (M1) / Planned (M2)**
+
+- **Scaffold (2026-10-09, `src/script/`):**
+  - `NativeRegistry` — name → function-pointer table; values are
+    signature-tagged (`variant Native`, **one arm per signature**, not per
+    native); caller-provided static storage like Scene (§10); `resolve`
+    for lookups, `lookup` for the M2 dispatch path (pointer into the table).
+  - `ScriptHost` — `load` / `update` / `free` stubs (M2 replaces bodies
+    with IR execution) plus `require(name)`, which resolves a script's
+    @extern list up front and fails with the missing name (DESIGN §14).
+  - Engine-library natives (Mu:: paths, DESIGN §2 `use`):
+    `Mu::log::info`, `Mu::log::error`, `Mu::timing::frame`,
+    `Mu::scene::spawn`, `Mu::scene::despawn`, `Mu::scene::setParent`,
+    `Mu::platform::quit` (the cross-layer request `platform/` always
+    anticipated). Context (scene, frame counter) is bound host-side —
+    plain fn pointers, no closures cross the boundary (§5); `@extern`
+    is not involved (foreign-only). Entity→script binding lives here too
+    (`ScriptBindings`, §4/§5).
+  - `scriptSystem` — ticked by `Loop` through a fn-ptr slot in `frame()`
+    at the §6 position; `engine/main` wires ctx+fn, so core never imports
+    script (same pattern as `Renderer.draw`).
+  - Demo: `Mu_engine/scripts/main.mu` (written, compiled by muc at M2);
+    `engine/main` exercises require/resolve/load, the negative
+    missing-native probe, and reports `script updates: 600` from the run.
+- **Growth path (incremental by construction):** a native that fits an
+  existing signature = one static fn + one `natives->add(...)` line; a new
+  boundary signature = one new `Native` arm + the add line. Registry,
+  host, and loop call sites never change — lifecycle hook bodies (§5),
+  `@component` get/set natives (below), and further natives slot in behind
+  the same API. Boundary types only (§5): `EntityId (u32)`, scalars,
+  `Vec2/Vec3`, `str`.
 
 - `ScriptHost` with `load()`, `update(dt)`, `free()` — stubs at M1, real
   execution at M2 (§8).
-- **Native registry:** name → function-pointer table owned by the host.
-  Mu declares `@extern fn ...;` (DESIGN §2); at load the host resolves
-  each symbol against the table and fails with the missing name.
-- Initial natives: `log(msg)`, `frame()` → current frame count,
-  `spawn()` / `despawn(id)`, `setParent(child, parent)`, plus
-  component get/set for `@component` types (§9).
+- **Native registry:** library path → function-pointer table owned by the
+  host. Scripts `use Mu::...;` (DESIGN §2); at load the host resolves each
+  used symbol against the table and fails with the path. `@extern fn ...;`
+  stays for foreign C functions only (DESIGN §14).
+- Initial natives (the `Mu::` library): `Mu::log::info`, `Mu::log::error`,
+  `Mu::timing::frame`, `Mu::scene::spawn` / `Mu::scene::despawn`,
+  `Mu::scene::setParent`, `Mu::platform::quit`, plus component get/set
+  for `@component` types (§9).
 - Boundary types only (§5): `EntityId (u32)`, scalars, `Vec2/Vec3`, `str`.
   No Coral structs, no pointers cross.
 - Lifecycle hooks driven by the loop (§6): `onLoad`, `onUpdate(dt)`,
