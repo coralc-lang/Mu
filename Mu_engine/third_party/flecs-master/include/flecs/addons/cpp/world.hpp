@@ -1,0 +1,1014 @@
+/**
+ * @file addons/cpp/world.hpp
+ * @brief World class.
+ */
+
+#pragma once
+
+namespace flecs
+{
+
+namespace _ {
+
+template <auto Write, typename T>
+void write_component(world_t *world, flecs::entity_t entity, T&& value, flecs::id_t id) {
+    using A = std::remove_const_t<remove_reference_t<T>>;
+    ecs_assert(_::type<A>::size() != 0, ECS_INVALID_PARAMETER,
+        "operation invalid for empty type");
+    auto res = Write(world, entity, id, &value, sizeof(A));
+    A& dst = *static_cast<A*>(res.ptr);
+    if constexpr (std::is_copy_assignable_v<T> || std::is_const_v<remove_reference_t<T>>) {
+        dst = FLECS_FWD(value);
+    } else {
+        dst = FLECS_MOV(value);
+    }
+    if (res.stage) {
+        flecs_defer_end(res.world, res.stage);
+    }
+    if (res.call_modified) {
+        ecs_modified_id(world, entity, id);
+    }
+}
+
+}
+
+template <typename T>
+inline void set(world_t *world, flecs::entity_t entity, T&& value, flecs::id_t id) {
+    _::write_component<ecs_cpp_set>(world, entity, FLECS_FWD(value), id);
+}
+
+template <typename T>
+inline void set(world_t *world, flecs::entity_t entity, const T& value, flecs::id_t id) {
+    _::write_component<ecs_cpp_set>(world, entity, value, id);
+}
+
+template <typename T, typename A>
+inline void set(world_t *world, entity_t entity, A&& value) {
+    flecs::set(world, entity, FLECS_FWD(value), _::type<T>::id(world));
+}
+
+template <typename T, typename A>
+inline void set(world_t *world, entity_t entity, const A& value) {
+    flecs::set(world, entity, value, _::type<T>::id(world));
+}
+
+template <typename T>
+inline void assign(world_t *world, flecs::entity_t entity, T&& value, flecs::id_t id) {
+    _::write_component<ecs_cpp_assign>(world, entity, FLECS_FWD(value), id);
+}
+
+template <typename T>
+inline void assign(world_t *world, flecs::entity_t entity, const T& value, flecs::id_t id) {
+    _::write_component<ecs_cpp_assign>(world, entity, value, id);
+}
+
+template <typename T, typename A>
+inline void assign(world_t *world, entity_t entity, A&& value) {
+    flecs::assign(world, entity, FLECS_FWD(value), _::type<T>::id(world));
+}
+
+template <typename T, typename A>
+inline void assign(world_t *world, entity_t entity, const A& value) {
+    flecs::assign(world, entity, value, _::type<T>::id(world));
+}
+
+/** Emplace a component value, constructing it in place.
+ *
+ * @tparam T The component type.
+ * @tparam Args Constructor argument types.
+ * @param world The world.
+ * @param entity The entity.
+ * @param id The component ID.
+ * @param args Constructor arguments.
+ */
+template <typename T, typename ... Args, if_t<
+    std::is_constructible<actual_type_t<T>, Args...>::value ||
+    std::is_default_constructible<actual_type_t<T>>::value > = 0>
+inline void emplace(world_t *world, flecs::entity_t entity, flecs::id_t id, Args&&... args) {
+    ecs_assert(_::type<T>::size() != 0, ECS_INVALID_PARAMETER,
+            "operation invalid for empty type");
+    T& dst = *static_cast<T*>(ecs_emplace_id(world, entity, id, sizeof(T), nullptr));
+
+    FLECS_PLACEMENT_NEW(&dst, T{FLECS_FWD(args)...});
+
+    ecs_modified_id(world, entity, id);
+}
+
+/** Return the ID without generation.
+ *
+ * @param e The entity ID.
+ * @return The entity ID without generation.
+ *
+ * @see ecs_strip_generation()
+ */
+inline flecs::id_t strip_generation(flecs::entity_t e) {
+    return ecs_strip_generation(e);
+}
+
+/** Return the entity generation.
+ *
+ * @param e The entity ID.
+ * @return The generation of the entity.
+ */
+inline uint32_t get_generation(flecs::entity_t e) {
+    return ECS_GENERATION(e);
+}
+
+/**
+ * @defgroup cpp_world World
+ * @ingroup cpp_core
+ * World operations.
+ *
+ * @{
+ */
+
+/** The world.
+ * The world is the container of all ECS data and systems. If the world is
+ * deleted, all data in the world will be deleted as well.
+ */
+struct world {
+    /** Create a world.
+     */
+    explicit world()
+        : world_( ecs_init() ) {
+            init_builtin_components();
+        }
+
+    /** Create a world with command-line arguments.
+     * Currently, command-line arguments are not interpreted, but they may be
+     * used in the future to configure Flecs parameters.
+     */
+    explicit world(int argc, char *argv[])
+        : world_( ecs_init_w_args(argc, argv) ) { 
+            init_builtin_components(); 
+        }
+
+    /** Create a world from a C world.
+     */
+    explicit world(world_t *w)
+        : world_( w ) { 
+            if (w) {
+                flecs_poly_claim(w);
+            }
+        }
+
+    /** Copy constructor. Increases reference count on the world.
+     */
+    world(const world& obj) {
+        this->world_ = obj.world_;
+        flecs_poly_claim(this->world_);
+    }
+
+    /** Copy assignment operator. Increases reference count on the world. */
+    world& operator=(const world& obj) noexcept {
+        release();
+        this->world_ = obj.world_;
+        flecs_poly_claim(this->world_);
+        return *this;
+    }
+
+    /** Move constructor. Transfers world ownership. */
+    world(world&& obj) noexcept {
+        world_ = obj.world_;
+        obj.world_ = nullptr;
+    }
+
+    /** Move assignment operator. Transfers world ownership. */
+    world& operator=(world&& obj) noexcept {
+        release();
+        world_ = obj.world_;
+        obj.world_ = nullptr;
+        return *this;
+    }
+
+    /** Release the underlying world object.
+     * If this is the last handle, the world will be finalized.
+     */
+    void release() {
+        if (world_) {
+            if (!flecs_poly_release(world_)) {
+                if (ecs_stage_get_id(world_) == -1) {
+                    ecs_stage_free(world_);
+                } else {
+                    // Before we call ecs_fini(), we increment the reference count back to 1.
+                    // Otherwise, copies of this object created during ecs_fini() (e.g., a component on_remove hook)
+                    // would again call this destructor and ecs_fini().
+                    flecs_poly_claim(world_);
+                    ecs_fini(world_);
+                }
+            }
+            world_ = nullptr;
+        }        
+    }
+
+    /** Destructor. Releases the world reference. */
+    ~world() {
+        release();
+    }
+
+    /** Implicit conversion to world_t*. */
+    operator world_t*() const { return world_; }
+
+    /** Make the current world object the owner of the world. This may only be called on
+     * one flecs::world object, and may only be called once. Failing to do so
+     * will result in undefined behavior.
+     * 
+     * This operation allows a custom (C) world to be wrapped by a C++ object,
+     * and transfer ownership so that the world is automatically cleaned up.
+     */
+    void make_owner() {
+        flecs_poly_release(world_);
+    }
+
+    /** Delete and recreate the world. */
+    void reset() {
+        /* Make sure there's only one reference to the world. */
+        ecs_assert(flecs_poly_refcount(world_) == 1, ECS_INVALID_OPERATION,
+            "reset would invalidate other handles");
+        ecs_fini(world_);
+        world_ = ecs_init();
+        init_builtin_components();
+    }
+
+    /** Obtain a pointer to the C world object.
+     */
+    world_t* c_ptr() const {
+        return world_;
+    }
+
+    /** Register action to be executed when world is destroyed.
+     */
+    void atfini(ecs_fini_action_t action, void *ctx = nullptr) const {
+        ecs_atfini(world_, action, ctx);
+    }
+
+    /** Begin readonly mode.
+     *
+     * @param multi_threaded Whether to enable readonly/multi-threaded mode.
+     * 
+     * @return Whether world is currently readonly.
+     *
+     * @see ecs_readonly_begin()
+     * @see flecs::world::is_readonly()
+     * @see flecs::world::readonly_end()
+     */
+    bool readonly_begin(bool multi_threaded = false) const {
+        return ecs_readonly_begin(world_, multi_threaded);
+    }
+
+    /** End readonly mode.
+     * 
+     * @see ecs_readonly_end()
+     * @see flecs::world::is_readonly()
+     * @see flecs::world::readonly_begin()
+     */
+    void readonly_end() const {
+        ecs_readonly_end(world_);
+    }
+
+    /** Defer operations until end of frame.
+     * When this operation is invoked while iterating, operations in between the
+     * defer_begin() and defer_end() operations are executed at the end of the frame.
+     *
+     * This operation is thread-safe.
+     *
+     * @return true if world changed from non-deferred mode to deferred mode.
+     *
+     * @see ecs_defer_begin()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_resume()
+     * @see flecs::world::defer_suspend()
+     * @see flecs::world::is_defer_suspended()
+     */
+    bool defer_begin() const {
+        return ecs_defer_begin(world_);
+    }
+
+    /** End block of operations to defer.
+     * See defer_begin().
+     *
+     * This operation is thread-safe.
+     *
+     * @return true if world changed from deferred mode to non-deferred mode.
+     *
+     * @see ecs_defer_end()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_resume()
+     * @see flecs::world::defer_suspend()
+     * @see flecs::world::is_defer_suspended()
+     */
+    bool defer_end() const {
+        return ecs_defer_end(world_);
+    }
+
+    /** Test whether deferring is enabled.
+     *
+     * @return True if deferred, false if not.
+     *
+     * @see ecs_is_deferred()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::defer_resume()
+     * @see flecs::world::defer_suspend()
+     * @see flecs::world::is_defer_suspended()
+     */
+    bool is_deferred() const {
+        return ecs_is_deferred(world_);
+    }
+
+    /** Test whether deferring is suspended.
+     *
+     * @return True if defer is suspended, false if not.
+     *
+     * @see ecs_is_defer_suspended()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_resume()
+     * @see flecs::world::defer_suspend()
+     */
+    bool is_defer_suspended() const {
+        return ecs_is_defer_suspended(world_);
+    }
+
+    /** Configure world to have N stages.
+     * This initializes N stages, which allows applications to defer operations to
+     * multiple isolated defer queues. This is typically used for applications with
+     * multiple threads, where each thread gets its own queue, and commands are
+     * merged when threads are synchronized.
+     *
+     * Note that set_threads() already creates the appropriate number of stages.
+     * The set_stage_count() operation is useful for applications that want to manage
+     * their own stages and/or threads.
+     *
+     * @param stages The number of stages.
+     *
+     * @see ecs_set_stage_count()
+     * @see flecs::world::get_stage_count()
+     */
+    void set_stage_count(int32_t stages) const {
+        ecs_set_stage_count(world_, stages);
+    }
+
+    /** Get the number of configured stages.
+     * Return the number of stages set by set_stage_count().
+     *
+     * @return The number of stages used for threading.
+     *
+     * @see ecs_get_stage_count()
+     * @see flecs::world::set_stage_count()
+     */
+    int32_t get_stage_count() const {
+        return ecs_get_stage_count(world_);
+    }
+
+    /** Get current stage ID.
+     * The stage ID can be used by an application to learn about which stage it
+     * is using, which typically corresponds with the worker thread ID.
+     *
+     * @return The stage ID.
+     */
+    int32_t get_stage_id() const {
+        return ecs_stage_get_id(world_);
+    }
+
+    /** Test if this is a stage.
+     * If this function returns false, it is guaranteed that this is a valid
+     * world object.
+     *
+     * @return True if the world is a stage, false if not.
+     */
+    bool is_stage() const {
+        ecs_assert(
+            flecs_poly_is(world_, ecs_world_t) ||
+            flecs_poly_is(world_, ecs_stage_t), 
+                ECS_INVALID_PARAMETER, 
+                "flecs::world instance contains invalid reference to world or stage");
+        return flecs_poly_is(world_, ecs_stage_t);
+    }
+
+    /** Merge world or stage.
+     * When automatic merging is disabled, an application can call this
+     * operation on either an individual stage, or on the world which will merge
+     * all stages. This operation may only be called when staging is not enabled
+     * (either after progress() or after readonly_end()).
+     *
+     * This operation may be called on an already merged stage or world.
+     *
+     * @see ecs_merge()
+     */
+    void merge() const {
+        ecs_merge(world_);
+    }
+
+    /** Get stage-specific world pointer.
+     * Flecs threads can safely invoke the API as long as they have a private
+     * context to write to, also referred to as the stage. This function returns a
+     * pointer to a stage, disguised as a world pointer.
+     *
+     * Note that this function does not(!) create a new world. It simply wraps the
+     * existing world in a thread-specific context, which the API knows how to
+     * unwrap. The reason the stage is returned as an ecs_world_t is so that it
+     * can be passed transparently to the existing API functions, vs. having to
+     * create a dedicated API for threading.
+     *
+     * @param stage_id The index of the stage to retrieve.
+     * @return A thread-specific pointer to the world.
+     */
+    flecs::world get_stage(int32_t stage_id) const {
+        return flecs::world(ecs_get_stage(world_, stage_id));
+    }
+
+    /** Create an asynchronous stage.
+     * An asynchronous stage can be used to asynchronously queue operations for
+     * later merging with the world. An asynchronous stage is similar to a regular
+     * stage, except that it does not allow reading from the world.
+     *
+     * Asynchronous stages are never merged automatically, and must therefore be
+     * manually merged with the ecs_merge() function. It is not necessary to call
+     * defer_begin() or defer_end() before and after enqueuing commands, as an
+     * asynchronous stage unconditionally defers operations.
+     *
+     * The application must ensure that no commands are added to the stage while the
+     * stage is being merged.
+     *
+     * @return The stage.
+     */
+    flecs::world async_stage() const {
+        ecs_world_t *as = ecs_stage_new(world_);
+        flecs_poly_release(as); // World object will claim.
+        return flecs::world(as);
+    }
+
+    /** Get actual world.
+     * If the current object points to a stage, this operation will return the
+     * actual world.
+     *
+     * @return The actual world.
+     */
+    flecs::world get_world() const {
+        /* Safe cast, mutability is checked. */
+        return flecs::world(
+            world_ ? const_cast<flecs::world_t*>(ecs_get_world(world_)) : nullptr);
+    }
+
+    /** Test whether the current world object is readonly.
+     * This function allows the code to test whether the currently used world
+     * object is readonly or whether it allows for writing.
+     *
+     * @return True if the world or stage is readonly.
+     *
+     * @see ecs_stage_is_readonly()
+     * @see flecs::world::readonly_begin()
+     * @see flecs::world::readonly_end()
+     */
+    bool is_readonly() const {
+        return ecs_stage_is_readonly(world_);
+    }
+
+    /** Set world context.
+     * Set a context value that can be accessed by anyone that has a reference
+     * to the world.
+     *
+     * @param ctx A pointer to a user-defined structure.
+     * @param ctx_free A function that is invoked with ctx when the world is freed.
+     *
+     * @see ecs_set_ctx()
+     * @see flecs::world::get_ctx()
+     */
+    void set_ctx(void* ctx, ecs_ctx_free_t ctx_free = nullptr) const {
+        ecs_set_ctx(world_, ctx, ctx_free);
+    }
+
+    /** Get world context.
+     * This operation retrieves a previously set world context.
+     *
+     * @return The context set with set_ctx(). If no context was set, the
+     *         function returns nullptr.
+     *
+     * @see ecs_get_ctx()
+     * @see flecs::world::set_ctx()
+     */
+    void* get_ctx() const {
+        return ecs_get_ctx(world_);
+    }
+
+    /** Set world binding context.
+     *
+     * Same as set_ctx() but for binding context. A binding context is intended
+     * specifically for language bindings to store binding-specific data.
+     *
+     * @param ctx A pointer to a user-defined structure.
+     * @param ctx_free A function that is invoked with ctx when the world is freed.
+     *
+     * @see ecs_set_binding_ctx()
+     * @see flecs::world::get_binding_ctx()
+     */
+    void set_binding_ctx(void* ctx, ecs_ctx_free_t ctx_free = nullptr) const {
+        ecs_set_binding_ctx(world_, ctx, ctx_free);
+    }
+
+    /** Get world binding context.
+     * This operation retrieves a previously set world binding context.
+     *
+     * @return The context set with set_binding_ctx(). If no context was set, the
+     *         function returns nullptr.
+     *
+     * @see ecs_get_binding_ctx()
+     * @see flecs::world::set_binding_ctx()
+     */
+    void* get_binding_ctx() const {
+        return ecs_get_binding_ctx(world_);
+    }
+
+    /** Preallocate memory for a number of entities.
+     * This function preallocates memory for the entity index.
+     *
+     * @param entity_count Number of entities to preallocate memory for.
+     *
+     * @see ecs_dim()
+     */
+    void dim(int32_t entity_count) const {
+        ecs_dim(world_, entity_count);
+    }
+
+    /** Set current scope.
+     *
+     * @param scope The scope to set.
+     * @return The previous scope.
+     *
+     * @see ecs_set_scope()
+     * @see flecs::world::get_scope()
+     */
+    flecs::entity set_scope(const flecs::entity_t scope) const;
+
+    /** Get current scope.
+     *
+     * @return The current scope.
+     *
+     * @see ecs_get_scope()
+     * @see flecs::world::set_scope()
+     */
+    flecs::entity get_scope() const;
+
+    /** Same as set_scope(), but with type.
+     *
+     * @see ecs_set_scope()
+     * @see flecs::world::get_scope()
+     */
+    template <typename T>
+    flecs::entity set_scope() const;
+
+    /** Set search path.
+     *
+     * @see ecs_set_lookup_path()
+     * @see flecs::world::lookup()
+     */
+    flecs::entity_t* set_lookup_path(const flecs::entity_t *search_path) const {
+        return ecs_set_lookup_path(world_, search_path);
+    }
+
+    /** Lookup entity by name.
+     *
+     * @param name Entity name.
+     * @param sep The scope separator.
+     * @param root_sep The root scope separator.
+     * @param recursive When false, only the current scope is searched.
+     * @return The entity if found, or 0 if not found.
+     */
+    flecs::entity lookup(const char *name, const char *sep = "::", const char *root_sep = "::", bool recursive = true) const;
+
+    template <typename... T, typename A = _::value_type_t<T...>, if_not_t<is_callable<A>::value> = 0>
+    void set(A&& value) const {
+        auto id = _::value_id<T...>(world_, value);
+        flecs::set(world_, id.owner(world_), FLECS_FWD(value), id.id);
+    }
+
+    template <typename... T, typename A = _::value_type_t<T...>, if_not_t<is_callable<A>::value> = 0>
+    void set(const A& value) const {
+        auto id = _::value_id<T...>(world_, value);
+        flecs::set(world_, id.owner(world_), value, id.id);
+    }
+
+    template <typename First, typename Second>
+    void set(Second second, First&& value) const {
+        auto id = _::make_id<First>(world_, second);
+        flecs::set(world_, id.owner(world_), value, id.id);
+    }
+
+    template <typename First, typename Second>
+    void set(Second second, const First& value) const {
+        auto id = _::make_id<First>(world_, second);
+        flecs::set(world_, id.owner(world_), value, id.id);
+    }
+
+    /** Set singleton component inside a callback.
+     */
+    template <typename Func, if_t< is_callable<Func>::value > = 0 >
+    void set(const Func& func) const;
+
+    template <typename T, typename ... Args>
+    void emplace(Args&&... args) const {
+        flecs::id_t component_id = _::type<T>::id(world_);
+        flecs::emplace<T>(world_, component_id, component_id, FLECS_FWD(args)...);
+    }
+
+    #ifndef ensure
+    template <typename... T, typename... Args>
+    decltype(auto) ensure(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::get_component<true, true, true>(world_, id.owner(world_), id);
+    }
+    #endif
+
+    template <typename T>
+    void modified() const {
+        auto id = _::make_id<T>(world_);
+        ecs_assert(_::type<T>::size() != 0, ECS_INVALID_PARAMETER,
+            "operation invalid for empty type");
+        ecs_modified_id(world_, id.owner(world_), id.id);
+    }
+
+    /** Get ref singleton component.
+     */
+    template <typename T>
+    ref<T> get_ref() const;
+
+
+    template <typename Func, if_t<is_callable<Func>::value> = 0>
+    void get(const Func& func) const;
+
+    template <typename... T, typename... Args>
+    decltype(auto) try_get(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::get_component<false, false>(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    decltype(auto) get(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::get_component<false, true>(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    decltype(auto) try_get_mut(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::get_component<true, false>(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    decltype(auto) get_mut(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::get_component<true, true>(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    bool has(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        return _::has_component(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    void add(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        _::add_component(world_, id.owner(world_), id);
+    }
+
+    template <typename... T, typename... Args>
+    void remove(Args... args) const {
+        auto id = _::make_id<T...>(world_, args...);
+        ecs_remove_id(world_, id.owner(world_), id.id);
+    }
+
+    /** Iterate entities in root of world.
+     * Accepts a callback with the following signature:
+     *
+     * @code
+     * void(*)(flecs::entity e);
+     * @endcode
+     */
+    template <typename Func>
+    void children(Func&& f) const;
+
+    /** Get singleton entity for type.
+     */
+    template <typename T>
+    flecs::entity singleton() const;
+
+    /** Get target for a given pair from a singleton entity.
+     * This operation returns the target for a given pair. The optional
+     * index can be used to iterate through targets, in case the entity has
+     * multiple instances for the same relationship.
+     *
+     * @tparam First The first element of the pair.
+     * @param index The index (0 for the first instance of the relationship).
+     * @return The target entity.
+     */
+    template<typename First>
+    flecs::entity target(int32_t index = 0) const;
+
+    /** Get target for a given pair from a singleton entity.
+     * This operation returns the target for a given pair. The optional
+     * index can be used to iterate through targets, in case the entity has
+     * multiple instances for the same relationship.
+     *
+     * @tparam T The singleton type.
+     * @param first The first element of the pair for which to retrieve the target.
+     * @param index The index (0 for the first instance of the relationship).
+     * @return The target entity.
+     */
+    template<typename T>
+    flecs::entity target(flecs::entity_t first, int32_t index = 0) const;
+
+    /** Get target for a given pair from a singleton entity.
+     * This operation returns the target for a given pair. The optional
+     * index can be used to iterate through targets, in case the entity has
+     * multiple instances for the same relationship.
+     *
+     * @param first The first element of the pair for which to retrieve the target.
+     * @param index The index (0 for the first instance of the relationship).
+     * @return The target entity.
+     */
+    flecs::entity target(flecs::entity_t first, int32_t index = 0) const;
+
+    /** Create an alias for a component.
+     *
+     * @tparam T The type to create an alias for.
+     * @param alias Alias for the component.
+     * @return Entity representing the component.
+     */
+    template <typename T>
+    flecs::entity use(const char *alias = nullptr) const;
+
+    /** Create an alias for an entity.
+     *
+     * @param name Name of the entity.
+     * @param alias Alias for the entity.
+     */
+    flecs::entity use(const char *name, const char *alias = nullptr) const;
+
+    /** Create an alias for an entity.
+     *
+     * @param entity Entity for which to create the alias.
+     * @param alias Alias for the entity.
+     */
+    void use(flecs::entity entity, const char *alias = nullptr) const;
+
+    template <typename... T, typename... Args>
+    int count(Args... args) const {
+        return ecs_count_id(world_, _::make_id<T...>(world_, args...).id);
+    }
+
+    /** All entities created in the function are created in the scope. All operations
+     * called in the function (such as lookup()) are relative to the scope.
+     */
+    template <typename Func>
+    void scope(id_t parent, const Func& func) const {
+        ecs_entity_t prev = ecs_set_scope(world_, parent);
+        func();
+        ecs_set_scope(world_, prev);
+    }
+
+    /** Same as scope(parent, func), but with T as parent.
+     */
+    template <typename T, typename Func>
+    void scope(const Func& func) const {
+        flecs::id_t parent = _::type<T>::id(world_);
+        scope(parent, func);
+    }
+
+    template <typename... T, typename... Args>
+    void delete_with(Args... args) const {
+        ecs_delete_with(world_, _::make_id<T...>(world_, args...).id);
+    }
+
+    template <typename... T, typename... Args>
+    void remove_all(Args... args) const {
+        ecs_remove_all(world_, _::make_id<T...>(world_, args...).id);
+    }
+
+    /** Defer all operations called in function.
+     *
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_resume()
+     * @see flecs::world::defer_suspend()
+     */
+    template <typename Func>
+    void defer(const Func& func) const {
+        ecs_defer_begin(world_);
+        func();
+        ecs_defer_end(world_);
+    }
+
+    /** Suspend deferring operations.
+     *
+     * @see ecs_defer_suspend()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_resume()
+     */
+    void defer_suspend() const {
+        ecs_defer_suspend(world_);
+    }
+
+    /** Resume deferring operations.
+     *
+     * @see ecs_defer_resume()
+     * @see flecs::world::defer()
+     * @see flecs::world::defer_begin()
+     * @see flecs::world::defer_end()
+     * @see flecs::world::is_deferred()
+     * @see flecs::world::defer_suspend()
+     */
+    void defer_resume() const {
+        ecs_defer_resume(world_);
+    }
+
+    /** Check if entity ID exists in the world.
+     *
+     * @see ecs_exists()
+     * @see flecs::world::is_alive()
+     * @see flecs::world::is_valid()
+     */
+    bool exists(flecs::entity_t e) const {
+        return ecs_exists(world_, e);
+    }
+
+    /** Check if entity is alive.
+     *
+     * @see ecs_is_alive()
+     * @see flecs::world::exists()
+     * @see flecs::world::is_valid()
+     */
+    bool is_alive(flecs::entity_t e) const {
+        return ecs_is_alive(world_, e);
+    }
+
+    /** Check if entity ID is valid.
+     * Invalid entities cannot be used with API functions.
+     *
+     * @see ecs_is_valid()
+     * @see flecs::world::exists()
+     * @see flecs::world::is_alive()
+     */
+    bool is_valid(flecs::entity_t e) const {
+        return ecs_is_valid(world_, e);
+    }
+
+    /** Get alive entity for ID.
+     * Return the entity with the current generation.
+     *
+     * @see ecs_get_alive()
+     */
+    flecs::entity get_alive(flecs::entity_t e) const;
+
+    /**
+     * @see ecs_make_alive()
+     */
+    flecs::entity make_alive(flecs::entity_t e) const;
+
+    /** Set the version of an entity to the provided value.
+     * 
+     * @see ecs_set_version()
+     */
+    void set_version(flecs::entity_t e) const {
+        ecs_set_version(world_, e);
+    }
+
+    /** Get the version of the provided entity.
+     * 
+     * @see ecs_get_version()
+     */
+    uint32_t get_version(flecs::entity_t e) const {
+        return ecs_get_version(e);
+    }
+
+    /** Get the world info.
+     *
+     * @see ecs_get_world_info()
+     */
+    const flecs::world_info_t* get_info() const {
+        return ecs_get_world_info(world_);
+    }
+
+    /** Get delta_time. */
+    ecs_ftime_t delta_time() const {
+        return get_info()->delta_time;
+    }
+
+    /** Free unused memory. 
+     * 
+     * @see ecs_shrink()
+     */
+    void shrink() const {
+        ecs_shrink(world_);
+    }
+
+    /** Begin exclusive access.
+     *
+     * @param thread_name Optional thread name for improved debug messages.
+     * @see ecs_exclusive_access_begin()
+     */
+    void exclusive_access_begin(const char *thread_name = nullptr) {
+        ecs_exclusive_access_begin(world_, thread_name);
+    }
+
+    /** End exclusive access.
+     *
+     * @param lock_world Lock world for all threads, allow readonly operations.
+     * @see ecs_exclusive_access_end()
+     */
+    void exclusive_access_end(bool lock_world = false) {
+        ecs_exclusive_access_end(world_, lock_world);
+    }
+
+    /** Return the component ID if it has been registered.
+     * This operation is similar to world::id(), but will never automatically
+     * register the component.
+     *
+     * @tparam T The type for which to obtain the ID.
+     */
+    template <typename T>
+    flecs::id_t id_if_registered() {
+        if (_::type<T>::registered(world_)) {
+            return _::type<T>::id(world_);
+        }
+        else {
+            return 0;
+        }
+    }
+
+    template <typename... T, typename... Args>
+    const flecs::type_info_t* type_info(Args... args) {
+        return ecs_get_type_info(world_, _::make_id<T...>(world_, args...).id);
+    }
+
+#   include "mixins/id/mixin.inl"
+#   include "mixins/component/mixin.inl"
+#   include "mixins/entity/mixin.inl"
+#   include "mixins/event/mixin.inl"
+#   include "mixins/term/mixin.inl"
+#   include "mixins/observer/mixin.inl"
+#   include "mixins/query/mixin.inl"
+#   include "mixins/enum/mixin.inl"
+
+#   ifdef FLECS_PREFAB
+#   include "mixins/prefab/mixin.inl"
+#   endif
+#   ifdef FLECS_ENTITY_RANGES
+#   include "mixins/entity_ranges/mixin.inl"
+#   endif
+#   ifdef FLECS_FRAME
+#   include "mixins/frame/mixin.inl"
+#   endif
+#   ifdef FLECS_MODULE
+#   include "mixins/module/mixin.inl"
+#   endif
+#   ifdef FLECS_PIPELINE
+#   include "mixins/pipeline/mixin.inl"
+#   endif
+#   ifdef FLECS_SYSTEM
+#   include "mixins/system/mixin.inl"
+#   endif
+#   ifdef FLECS_TIMER
+#   include "mixins/timer/mixin.inl"
+#   endif
+#   ifdef FLECS_SCRIPT
+#   include "mixins/script/mixin.inl"
+#   endif
+#   ifdef FLECS_META
+#   include "mixins/meta/world.inl"
+#   endif
+#   ifdef FLECS_JSON
+#   include "mixins/json/world.inl"
+#   endif
+#   ifdef FLECS_APP
+#   include "mixins/app/mixin.inl"
+#   endif
+#   ifdef FLECS_METRICS
+#   include "mixins/metrics/mixin.inl"
+#   endif
+#   ifdef FLECS_ALERTS
+#   include "mixins/alerts/mixin.inl"
+#   endif
+
+public:
+    /** Initialize built-in components. */
+    void init_builtin_components();
+
+    world_t *world_; /**< Pointer to the underlying C world. */
+};
+
+/** @} */
+
+} // namespace flecs

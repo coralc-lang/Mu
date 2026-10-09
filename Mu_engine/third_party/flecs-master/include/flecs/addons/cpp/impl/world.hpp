@@ -1,0 +1,214 @@
+/**
+ * @file addons/cpp/impl/world.hpp
+ * @brief World implementation.
+ */
+
+#pragma once
+
+namespace flecs
+{
+
+/** Initialize built-in components. */
+inline void world::init_builtin_components() {
+    this->component<Component>();
+    this->component<Identifier>();
+    this->component<Poly>();
+    this->component<Parent>();
+
+    /* If meta is not defined and we're using enum reflection, make sure that
+     * primitive types are registered. This ensures we can set components of
+     * underlying_type_t<E> when registering constants. */
+#   if !defined(FLECS_META) && !defined(FLECS_CPP_NO_ENUM_REFLECTION)
+    this->component<uint8_t>("flecs::meta::u8");
+    this->component<uint16_t>("flecs::meta::u16");
+    this->component<uint32_t>("flecs::meta::u32");
+    this->component<uint64_t>("flecs::meta::u64");
+    this->component<int8_t>("flecs::meta::i8");
+    this->component<int16_t>("flecs::meta::i16");
+    this->component<int32_t>("flecs::meta::i32");
+    this->component<int64_t>("flecs::meta::i64");
+#   endif
+
+#   ifdef FLECS_SYSTEM
+    _::system_init(*this);
+#   endif
+#   ifdef FLECS_TIMER
+    _::timer_init(*this);
+#   endif
+#   ifdef FLECS_DOC
+    doc::_::init(*this);
+#   endif
+#   ifdef FLECS_REST
+    rest::_::init(*this);
+#   endif
+#   ifdef FLECS_META
+    meta::_::init(*this);
+#   endif
+#   ifdef FLECS_SCRIPT
+    script::_::init(*this);
+#   endif
+}
+
+/** Import a type (entity/component) as an alias. */
+template <typename T>
+inline flecs::entity world::use(const char *alias) const {
+    entity_t e = _::type<T>::id(world_);
+    const char *name = alias;
+    if (!name) {
+        // If no name is defined, use the entity name without the scope.
+        name = ecs_get_name(world_, e);
+    }
+    ecs_set_alias(world_, e, name);
+    return flecs::entity(world_, e);
+}
+
+/** Import an entity by name as an alias. */
+inline flecs::entity world::use(const char *name, const char *alias) const {
+    entity_t e = ecs_lookup_path_w_sep(world_, 0, name, "::", "::", true);
+    ecs_assert(e != 0, ECS_INVALID_PARAMETER, nullptr);
+
+    ecs_set_alias(world_, e, alias);
+    return flecs::entity(world_, e);
+}
+
+/** Import an entity as an alias. */
+inline void world::use(flecs::entity e, const char *alias) const {
+    entity_t eid = e.id();
+    const char *name = alias;
+    if (!name) {
+        // If no name is defined, use the entity name without the scope.
+        name = ecs_get_name(world_, eid);
+    }
+    ecs_set_alias(world_, eid, name);
+}
+
+/** Set the current scope. */
+inline flecs::entity world::set_scope(const flecs::entity_t s) const {
+    return flecs::entity(ecs_set_scope(world_, s));
+}
+
+/** Get the current scope. */
+inline flecs::entity world::get_scope() const {
+    return flecs::entity(world_, ecs_get_scope(world_));
+}
+
+/** Set the current scope to a type. */
+template <typename T>
+inline flecs::entity world::set_scope() const {
+    return set_scope( _::type<T>::id(world_) );
+}
+
+/** Look up an entity by name. */
+inline entity world::lookup(const char *name, const char *sep, const char *root_sep, bool recursive) const {
+    auto e = ecs_lookup_path_w_sep(world_, 0, name, sep, root_sep, recursive);
+    return flecs::entity(*this, e);
+}
+
+/** Get a ref for a singleton component. */
+template <typename T>
+inline ref<T> world::get_ref() const {
+    flecs::entity e(world_, _::type<T>::id(world_));
+    return e.get_ref<T>();
+}
+
+/** Try to get a singleton value by component ID (returns nullptr if not found). */
+template <typename Func>
+inline void world::children(Func&& f) const {
+    this->entity(0).children(FLECS_FWD(f));
+}
+
+/** Get the singleton entity for a component type. */
+template <typename T>
+inline flecs::entity world::singleton() const {
+    return flecs::entity(world_, _::type<T>::id(world_));
+}
+
+/** Get the target entity for a relationship on a singleton. */
+template <typename First>
+inline flecs::entity world::target(int32_t index) const
+{
+    return flecs::entity(world_,
+        ecs_get_target(world_, _::type<First>::id(world_), _::type<First>::id(world_), index));
+}
+
+/** Get the target entity for a relationship on a component entity. */
+template <typename T>
+inline flecs::entity world::target(
+    flecs::entity_t relationship,
+    int32_t index) const
+{
+    return flecs::entity(world_,
+        ecs_get_target(world_, _::type<T>::id(world_), relationship, index));
+}
+
+/** Get the target entity for a relationship. */
+inline flecs::entity world::target(
+    flecs::entity_t relationship,
+    int32_t index) const
+{
+    return flecs::entity(world_,
+        ecs_get_target(world_, relationship, relationship, index));
+}
+
+/** Get a singleton component using a callback. */
+template <typename Func, if_t< is_callable<Func>::value > >
+inline void world::get(const Func& func) const {
+    static_assert(arity<Func>::value == 1, "singleton component must be the only argument");
+    _::entity_with_delegate<Func>::invoke_get(
+        this->world_, this->singleton<first_arg_t<Func>>(), func);
+}
+
+/** Set a singleton component using a callback. */
+template <typename Func, if_t< is_callable<Func>::value > >
+inline void world::set(const Func& func) const {
+    static_assert(arity<Func>::value == 1, "singleton component must be the only argument");
+    _::entity_with_delegate<Func>::invoke_ensure(
+        this->world_, this->singleton<first_arg_t<Func>>(), func);
+}
+
+/** Get an alive entity from an ID. */
+inline flecs::entity world::get_alive(flecs::entity_t e) const {
+    e = ecs_get_alive(world_, e);
+    return flecs::entity(world_, e);
+}
+
+/** Ensure an entity ID is alive. */
+inline flecs::entity world::make_alive(flecs::entity_t e) const {
+    ecs_make_alive(world_, e);
+    return flecs::entity(world_, e);
+}
+
+/** Get the entity for an enum type. */
+template <typename E>
+inline flecs::entity enum_data<E>::entity() const {
+    return flecs::entity(world_, _::type<E>::id(world_));
+}
+
+/** Get the entity for an enum constant by underlying_type value. */
+template <typename E>
+inline flecs::entity enum_data<E>::entity(underlying_type_t<E> value) const {
+    int index = index_by_value(value);
+    if (index >= 0) {
+#ifdef FLECS_MULTI_WORLD
+        int32_t constant_i = impl_.constants[index].index;
+        flecs::entity_t entity = flecs_component_ids_get(world_, constant_i);
+#else
+        flecs::entity_t entity = impl_.constants[index].id;
+#endif
+        return flecs::entity(world_, entity);
+    }
+#ifdef FLECS_META
+    return flecs::entity(world_, ecs_constant_to_entity_id(
+        world_, _::type<E>::id(world_), static_cast<int64_t>(value)));
+#else
+    return flecs::entity::null(world_);
+#endif
+}
+
+/** Get the entity for an enum constant. */
+template <typename E>
+inline flecs::entity enum_data<E>::entity(E value) const {
+    return entity(static_cast<underlying_type_t<E>>(value));
+}
+
+} // namespace flecs

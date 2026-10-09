@@ -43,7 +43,7 @@ listed under Open items.
 ```
 scripts/            Mu gameplay scripts (*.mu)
 Mu_engine/
-  script/           script host: loads WallVM IR, exposes natives, drives lifecycle
+  script/           script host: loads WallVM IR, exposes natives, drives lifecycleA
   scene/            entities, components, transform hierarchy
   render/           renderer interface (stub → GL backend at M3+)
   input/            input abstraction over SDL3 events
