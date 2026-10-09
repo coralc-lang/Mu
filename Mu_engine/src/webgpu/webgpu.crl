@@ -1,8 +1,8 @@
-// wgpu-native extern port — hand transcription of packaged/*/include/webgpu/
+// wgpu-native extern port - hand transcription of packaged/*/include/webgpu/
 // webgpu.h + wgpu.h (wgpu-native headers, BSD-3-Clause). All four packaged
 // copies are byte-identical apart from CRLF, so this one declaration covers
 // every platform. Links against libwgpu_native.a (packaged/*/lib); not added
-// to `link` until a renderer backend milestone needs it — same policy as gl.
+// to `link` until a renderer backend milestone needs it - same policy as gl.
 //
 // ABI notes: object handles are opaque pointers (rawptr); WGPUBool = u32,
 // WGPUFlags and all flag sets = u64, size_t = usize, char const* = const
@@ -15,7 +15,7 @@
 // WGPU_SKIP_PROCS; we link functions directly).
 //
 // Platform notes: the headers have zero platform-conditional content, so
-// this port is deliberately platform-agnostic — no flag(PLAT) here; the
+// this port is deliberately platform-agnostic - no flag(PLAT) here; the
 // platform layer picks the surface source struct (WGPUSurfaceSource*) at
 // each call site.
 //
@@ -1714,7 +1714,7 @@ pub extern void wgpuTextureViewAddRef(WGPUTextureView textureView);
 pub extern void wgpuTextureViewRelease(WGPUTextureView textureView);
 
 // =============================================================================
-// wgpu.h — wgpu-native extensions (second header of the pair; also drives the
+// wgpu.h - wgpu-native extensions (second header of the pair; also drives the
 // native half of the packaged static library).
 // =============================================================================
 
@@ -1938,7 +1938,7 @@ pub struct WGPUWaylandDisplayHandle
 // C layout: u32 type, then an anonymous union { xlib, xcb, wayland } of 16
 // bytes at offset 8 (max member size 16, align 8). Coral has no in-struct
 // union syntax in use anywhere in this repo, so the union is reserved as
-// pad0/data0/data1 — same approach as SDL_Event in sdl.crl. Decode the
+// pad0/data0/data1 - same approach as SDL_Event in sdl.crl. Decode the
 // active member at the call site against WGPUNativeDisplayHandleType.
 pub struct WGPUNativeDisplayHandle
 {

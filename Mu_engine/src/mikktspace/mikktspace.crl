@@ -1,16 +1,16 @@
-// MikkTSpace extern port — vendored pair from github.com/mmikk/MikkTSpace
+// MikkTSpace extern port - vendored pair from github.com/mmikk/MikkTSpace
 // (zlib license): the reference tangent-space generator. Normal-mapped glTF
 // meshes want MikkTSpace-compatible tangents (ENGINE.md §9/§15). The .c
 // compiles straight into libmualibs.a via native/CMakeLists.txt.
 //
 // ABI notes: tbool = C int = i32; float = f32. Callbacks receive
-// `const SMikkTSpaceContext*` — the C header forward-declares that struct,
+// `const SMikkTSpaceContext*` - the C header forward-declares that struct,
 // so the fn-ptr params are typed rawptr here (pointer-sized either way);
 // keep the typed SMikkTSpaceContext on the Coral side for filling in.
-// Results are UNINDEXED (one output row per face-vertex) — never average an
+// Results are UNINDEXED (one output row per face-vertex) - never average an
 // existing tangent list; see the vendored header for the full contract.
 //
-// Failure site: genTangSpace* return tbool — a valueless, message-less
+// Failure site: genTangSpace* return tbool - a valueless, message-less
 // status, so the raw int stays until the importer (M4) lands and picks the
 // Ok shape per the ENGINE.md §3 error convention.
 

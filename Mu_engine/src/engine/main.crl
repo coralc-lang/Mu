@@ -1,7 +1,7 @@
 // M0 demo entry: headless loop over a small scene with a hierarchy,
 // 600 frames (CI cap per ENGINE.md §6), then a summary line.
 // M1 (ENGINE.md §8): native registry (Mu:: library), ScriptHost, entity→
-// script binding, and the ECS component type table — main.mu itself
+// script binding, and the ECS component type table - main.mu itself
 // compiles at M2.
 
 import(lib) std::io { ios::println };
@@ -45,7 +45,7 @@ pub i32 main()
     comps.add(child).unwrap();
     comps.add(grandchild).unwrap();
 
-    // ECS type table (ENGINE.md §4): name the per-type stores — M2's
+    // ECS type table (ENGINE.md §4): name the per-type stores - M2's
     // @component registration (DESIGN §16) and get/set natives resolve
     // through this the same way.
     ComponentRegistry compTypes = ComponentRegistry.new(MuCompTypes, 16);
@@ -60,7 +60,7 @@ pub i32 main()
     ScriptBindings bindings = ScriptBindings.new(&MuScene, MuBindings, 8);
     bindings.bind(child, "scripts/main.mu").unwrap();
 
-    // Resolve what main.mu `use`s (Mu:: library) up front — a missing
+    // Resolve what main.mu `use`s (Mu:: library) up front - a missing
     // symbol fails here, with its path, never mid-frame (§11).
     MuHost.require("Mu::log::info").unwrap();
     MuHost.require("Mu::timing::frame").unwrap();
@@ -73,7 +73,7 @@ pub i32 main()
     Result<Native, str> missing = MuHost.require("Mu::no_such::native");
     if (missing.isErr()) println("negative probe: unknown library symbol rejected");
 
-    // Natives are callable today, typed through their arm — no IR yet.
+    // Natives are callable today, typed through their arm - no IR yet.
     Native* frameNative = MuNatives.lookup("Mu::timing::frame");
     if (frameNative == null)
     {
@@ -103,7 +103,7 @@ pub i32 main()
         MuScene.entities[grandchild].world.position.z);
     println("script: updates={}  bindings={} (entity {})  natives: {}  component types: {}",
         MuHost.updateCalls, bindings.count, child, MuNatives.count, compTypes.count);
-    // §11 lifecycle unload (runs onUnload) — NOT a memory free: ScriptHost
+    // §11 lifecycle unload (runs onUnload) - NOT a memory free: ScriptHost
     // owns no heap at M1; M2's IR state will drop through @drop instead.
     MuHost.free();
 

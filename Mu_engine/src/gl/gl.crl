@@ -1,4 +1,4 @@
-// OpenGL 3.3 core / GLES3 extern port — the rendering backend API behind
+// OpenGL 3.3 core / GLES3 extern port - the rendering backend API behind
 // the Renderer interface (ENGINE.md §2: GL 3.3 desktop, GLES3 on Web).
 // Declarations transcribed from the GL 4.6 / GLES3 specs (the core subset
 // M4 needs); function signatures are identical in GLES3 where shared.

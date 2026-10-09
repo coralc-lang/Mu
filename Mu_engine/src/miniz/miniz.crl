@@ -1,11 +1,11 @@
-// miniz extern port — vendored from github.com/richgel999/miniz (MIT):
+// miniz extern port - vendored from github.com/richgel999/miniz (MIT):
 // deflate compression + zip reading, the cooked-pack building block
-// (ENGINE.md §17 open item — this is the codec underneath whatever container
+// (ENGINE.md §17 open item - this is the codec underneath whatever container
 // format is chosen). Sources compiled directly into libmualibs.a from
 // native/CMakeLists.txt.
 //
 // ABI notes: mz_ulong = unsigned long = u64 on LP64 (Linux x86_64, the
-// current target); on Win64 unsigned long is 32-bit — revisit this typedef
+// current target); on Win64 unsigned long is 32-bit - revisit this typedef
 // when the Windows target lands (M3 multiplatform). mz_bool = C int (i32).
 // mz_zip_archive is opaque here: give it rawptr storage of at least 512
 // 8-aligned bytes, zero it with mz_zip_zero_struct first.

@@ -60,10 +60,9 @@ pub extern void stb_vorbis_close(rawptr f);
 
 // --- engine wrappers (ENGINE.md §3 error convention) ---
 
-// Decoded image buffer owned by @drop (DESIGN §6 — the leak guard): when
-// an Image goes out of scope the pixels free automatically, so the manual
-// `stbi_image_free` call at the use site is gone on purpose — never
-// reintroduce it.
+// Decoded image buffer. @drop owns it (DESIGN §6): pixels free when the
+// Image goes out of scope, so don't call stbi_image_free yourself — the
+// wrapper used to expect that and it was easy to forget.
 pub struct Image
 {
     rawptr pixels;
@@ -87,7 +86,7 @@ pub extend Image : @drop
 //
 //   Result<Image, String> decoded = stb::loadImage(C"hero.png", 0).unwrap();
 //   ... use decoded.value.pixels ...
-//   decoded goes out of scope here — pixels freed automatically (@drop)
+//   (decoded goes out of scope at the end - pixels freed with it)
 pub Result<Image, String> loadImage(const cchar* path, i32 wantChannels)
 {
     i32 w = 0;

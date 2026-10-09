@@ -1,4 +1,4 @@
-// JoltC C API port — JoltC v5.6.0 (EvergineTeam/JoltPhysicsC, MIT),
+// JoltC C API port - JoltC v5.6.0 (EvergineTeam/JoltPhysicsC, MIT),
 // bound against Jolt 5.6.0 in third_party/jolt.
 // ABI note: RVec3/Vec3/Quat are single precision (JOLTC_DOUBLE_PRECISION OFF).
 

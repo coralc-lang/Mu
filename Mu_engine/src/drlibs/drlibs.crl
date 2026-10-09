@@ -1,4 +1,4 @@
-// dr_libs engine port — vendored single headers from github.com/mackron/dr_libs
+// dr_libs engine port - vendored single headers from github.com/mackron/dr_libs
 // (public domain / MIT-0): WAV, MP3 and FLAC whole-file decoders for the
 // audio layer (M6, ENGINE.md §14). The raw externs are declared beside this
 // file, one per upstream header (dr_wav.crl / dr_mp3.crl / dr_flac.crl),
@@ -6,20 +6,21 @@
 // compiled from native/mu_drlibs.c into libmualibs.a.
 //
 // Decoders return a malloc'd interleaved f32 PCM buffer, wrapped as an
-// owned Pcm: @drop (DESIGN §6) calls the vendor-matching free when the Pcm
-// goes out of scope — the old wavFree/mp3Free/flacFree manual-free wrappers
-// were removed on purpose, never free PCM by hand. Load wrappers return
-// Option: the vendor gives no error string, so absence IS the diagnostic
-// (the caller knows which file failed).
+// owned Pcm (see below): @drop runs the vendor-matching free when the
+// Pcm goes out of scope. There used to be wavFree/mp3Free/flacFree
+// helpers for this; they're gone, so nobody frees PCM by hand. Loaders
+// return Option because the vendor has no error string - absence is the
+// diagnostic, and the caller knows which file it asked for.
 
 import dr_wav { drwav_open_memory_and_read_pcm_frames_f32, drwav_free };
 import dr_mp3 { drmp3_config, drmp3_open_memory_and_read_pcm_frames_f32, drmp3_free };
 import dr_flac { drflac_open_memory_and_read_pcm_frames_f32, drflac_free };
 import(lib) std::data { option::Option };
 
-// Owned decode result — buffer, metadata and the matching vendor free in
-// one struct. `release` is set by the loader (drwav_free / drmp3_free /
-// drflac_free), so @drop always pairs alloc and free correctly.
+// Owned decode result: buffer, metadata, and the vendor free it pairs
+// with. `release` is set by whichever loader built the struct
+// (drwav_free / drmp3_free / drflac_free), so @drop can't get the
+// pairing wrong.
 pub struct Pcm
 {
     rawptr data;
@@ -41,7 +42,7 @@ pub extend Pcm : @drop
 
 //   Option<Pcm> clip = drlibs::loadWavF32(bytes, len).unwrap();
 //   ... use clip.value.data ...
-//   clip goes out of scope here — buffer freed automatically (@drop)
+//   (clip goes out of scope at the end - buffer freed with it)
 pub Option<Pcm> loadWavF32(const rawptr data, usize len)
 {
     u32 channels = 0;

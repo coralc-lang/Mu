@@ -1,17 +1,17 @@
-// tinyexr extern port — vendored from github.com/syoyo/tinyexr (BSD-3):
+// tinyexr extern port - vendored from github.com/syoyo/tinyexr (BSD-3):
 // OpenEXR decode/encode for HDR textures, lightmaps and editor exchange
 // (ENGINE.md §9). The implementation is third_party/tinyexr/tinyexr.cc
 // (C++ TU, TINYEXR_IMPLEMENTATION) compiled into libmualibs.a; deflate
-// comes from OUR miniz — tinyexr does `#include <miniz.h>` off the include
+// comes from OUR miniz - tinyexr does `#include <miniz.h>` off the include
 // path and only calls mz_compress / mz_compressBound / mz_uncompress, so
 // the binary keeps exactly one copy of mz_*.
 //
 // ABI notes: int = i32; the `const char** err` out-param is declared
-// `const cchar**` (heap message — copy it, then FreeEXRErrorMessage).
+// `const cchar**` (heap message - copy it, then FreeEXRErrorMessage).
 // EXRVersion mirrors the C struct (5 x i32, no padding). The struct-heavy
 // parse API (EXRHeader / EXRImage / multipart) is ported when M5 needs it;
 // LoadEXR covers single-frame RGBA load for now (deprecated upstream but
-// still supported — revisit at M5).
+// still supported - revisit at M5).
 
 import(lib) std::data { result::Result };
 import(lib) std::text::string { String };
@@ -33,11 +33,10 @@ pub extern i32 LoadEXR(f32** out_rgba, i32* width, i32* height, const cchar* fil
 pub extern i32 SaveEXR(const rawptr data, i32 width, i32 height, const cchar* filename, const cchar** err);
 pub extern void FreeEXRErrorMessage(const cchar* msg);
 
-// Owned float RGBA buffer — @drop (DESIGN §6, the leak guard) frees it
-// when the ExrImage goes out of scope. The manual free is gone on purpose:
-// LoadEXR allocates with the vendor's libc malloc, so the pair is
-// libc::free — NOT dealloc (Coral's default allocator is mimalloc, a
-// different heap).
+// Owned float RGBA buffer; @drop frees it when the ExrImage goes out of
+// scope (DESIGN §6). Note the pairing: LoadEXR allocates with the
+// vendor's libc malloc, so the free is libc::free - dealloc would hit
+// Coral's default allocator (mimalloc), which is a different heap.
 pub struct ExrImage
 {
     rawptr rgba; // f32 x width x height x 4
@@ -54,13 +53,13 @@ pub extend ExrImage : @drop
 }
 
 // Engine wrapper: decode a single-frame EXR into an owned RGBA buffer.
-// Err owns a copied diagnostic String — the vendor message is freed before
+// Err owns a copied diagnostic String - the vendor message is freed before
 // returning (that call is tinyexr's own error-buffer protocol, not a
 // scope-lifetime free), never a dangling view.
 //
 //   Result<ExrImage, String> hdr = tinyexr::loadEXR(C"sky.exr").unwrap();
 //   ... use hdr.value.rgba ...
-//   hdr goes out of scope here — pixels freed automatically (@drop)
+//   (hdr goes out of scope at the end - pixels freed with it)
 pub Result<ExrImage, String> loadEXR(const cchar* path)
 {
     f32* pixels = null;

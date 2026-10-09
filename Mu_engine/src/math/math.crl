@@ -1,4 +1,4 @@
-// math glue (ENGINE.md §3, core layer) — Vec3/Quat/RVec3 + the ops the
+// math glue (ENGINE.md §3, core layer) - Vec3/Quat/RVec3 + the ops the
 // scene/transform and physics layers share. Single definition: physics.crl
 // and scene.crl both import from here, so types never need casting.
 // Vector ops are methods so call sites chain: pos.add(q.rotate(off)).

@@ -1,7 +1,7 @@
 // Scene model (ENGINE.md §4): entity records (stable u32 id, alive flag),
 // transform hierarchy (parent pointers, composed top-down each update),
 // per-type component storage appended by entity id.
-// No id recycling yet (open item) — ids bump, destroy only clears alive.
+// No id recycling yet (open item) - ids bump, destroy only clears alive.
 // Operations are methods on Scene/ComponentStore; compose chains the math
 // layer: pos.add(parentRot.rotate(localPos.componentMul(parentScale))).
 // The ComponentRegistry (bottom) names the per-type stores so @component
@@ -84,7 +84,7 @@ pub struct Scene
         e->world.scale = p->world.scale.componentMul(e->local.scale);
     }
 
-    // None when storage is full — no id to hand out (ENGINE.md §3 error
+    // None when storage is full - no id to hand out (ENGINE.md §3 error
     // convention: absence has no message, so Option).
     Option<EntityId> create()
     {
@@ -121,7 +121,7 @@ pub struct Scene
     }
 
     // parent = NIL roots the child. Rejects cycles (parent is a descendant).
-    // Ok carries the child id; Err carries why the reparent was rejected —
+    // Ok carries the child id; Err carries why the reparent was rejected -
     // the caller may log it (ENGINE.md §3 error convention).
     Result<EntityId, str> setParent(EntityId child, EntityId parent)
     {
@@ -132,7 +132,7 @@ pub struct Scene
             if (parent >= self.count || !self.entities[parent].alive)
                 return Result<EntityId, str>::Err { .error = "setParent: parent is dead or invalid" };
             if (self._ancestorOf(parent, child))
-                return Result<EntityId, str>::Err { .error = "setParent: cycle rejected — parent is a descendant of child" };
+                return Result<EntityId, str>::Err { .error = "setParent: cycle rejected - parent is a descendant of child" };
         }
         self.entities[child].parent = parent;
         return Result<EntityId, str>::Ok { .value = child };
@@ -201,7 +201,7 @@ pub struct ComponentStore
         return self.present[id] != 0;
     }
 
-    // None when absent (lookup miss is data, not a failure — Option).
+    // None when absent (lookup miss is data, not a failure - Option).
     // Caller casts to its component type.
     Option<rawptr> get(EntityId id)
     {
@@ -235,8 +235,8 @@ pub struct ComponentRegistry
         return ComponentRegistry { .types = types, .capacity = capacity, .count = 0 };
     }
 
-    // Err: duplicate name, full table, or null store (§3 — message says
-    // why). Ok: the type id (index) after insertion.
+    // Ok: the type id (index) after insertion; Err describes the problem
+    // (duplicate name, full table, null store).
     Result<u32, str> add(str name, ComponentStore* store)
     {
         for (u32 i = 0; i < self.count; i++)
@@ -255,7 +255,7 @@ pub struct ComponentRegistry
         return Result<u32, str>::Ok { .value = self.count };
     }
 
-    // Null when unknown — M2 get/set natives dispatch through this.
+    // Null when unknown - M2 get/set natives dispatch through this.
     ComponentStore* storeFor(str name)
     {
         for (u32 i = 0; i < self.count; i++)

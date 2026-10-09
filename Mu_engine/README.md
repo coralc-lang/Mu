@@ -1,12 +1,12 @@
 # Mu Engine
 
-**Mu Engine** — a 3D-first, multiplatform game engine written in **Coral**,
+**Mu Engine** - a 3D-first, multiplatform game engine written in **Coral**,
 with **Mu** as its scripting language
 (Mu scripts : engine = GDScript : Godot). One repo holds the language
 (`Mu_coral/`), the specs (`DESIGN.md`, `grammar.md`, `IR.md`), and this
 engine.
 
-- **[`../ENGINE.md`](../ENGINE.md)** — the authoritative design document:
+- **[`../ENGINE.md`](../ENGINE.md)** - the authoritative design document:
   every architecture, feature, and milestone section is marked *Decided*
   unless listed under Open items. Read that first; this README is the
   **state + usage** view.
@@ -22,7 +22,7 @@ engine.
 | Milestone | What | State |
 |---|---|---|
 | **M0** | Build file, modules, headless loop, scene + system | ✅ done |
-| **M1** | Script host API: native registry (`Mu::` library), entity→script bindings, ECS type table | 🟡 scaffold written — pending build verification |
+| **M1** | Script host API: native registry (`Mu::` library), entity→script bindings, ECS type table | 🟡 scaffold written - pending build verification |
 | **M2** | `muc` ↔ host: WallVM IR executed, `main.mu` runs in the loop | ⬜ planned |
 | **M3** | SDL3 window + GL 3.3/GLES3 backend, live input | ⬜ planned |
 | **M4** | 3D scene basics: camera, meshes, materials, lighting | ⬜ planned |
@@ -57,7 +57,7 @@ coralc build                          # -> build/muengine, regenerates .coral/mo
   bindings=1 ... natives: 7 component types: 1`, plus `Mu::` library
   probes and the (intentional) negative missing-symbol message.
 - **Prebuilt archives** for shipping/cross targets live in
-  `packaged/<platform>/lib/` — inventory and rebuild notes:
+  `packaged/<platform>/lib/` - inventory and rebuild notes:
   [`../Mu_docs/prebuilt-libs.md`](../Mu_docs/prebuilt-libs.md).
 
 ---
@@ -81,41 +81,41 @@ Mu_engine/
 | Layer | Dir | Status |
 |---|---|---|
 | entry / main loop demo | `src/engine/` | live (M0) |
-| core — `Loop`, logging, `FIXED_DT` | `src/core/` | live |
-| math — Vec3/Quat, chainable | `src/math/` | live |
-| **scene (ECS)** — entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
-| **script** — ScriptHost, `Mu::` natives, bindings | `src/script/` | M1 scaffold (IR at M2) |
-| render — fn-ptr interface, null backend | `src/render/` | live interface, stub impl (GL at M3) |
-| platform — headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
-| alloc — mimalloc game allocator | `src/alloc/` | live |
+| core - `Loop`, logging, `FIXED_DT` | `src/core/` | live |
+| math - Vec3/Quat, chainable | `src/math/` | live |
+| **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
+| **script** - ScriptHost, `Mu::` natives, bindings | `src/script/` | M1 scaffold (IR at M2) |
+| render - fn-ptr interface, null backend | `src/render/` | live interface, stub impl (GL at M3) |
+| platform - headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
+| alloc - mimalloc game allocator | `src/alloc/` | live |
 | vendor extern ports | `src/{sdl,gl,webgpu,stb,cgltf,miniz,tinyexr,drlibs,fastnoise,mikktspace,physics}/` | ports ready, gated by milestones |
 
-<!-- FUTURE LAYERS (not implemented — ENGINE.md §3/§8):
-| input — input state + named action map (§13) | `src/input/` | planned M3 |
-| audio — SDL3 streams + bus mixer (§14) | `src/audio/` | planned M6 |
-| ui — immediate-mode UI, theme tokens (§9) | `src/ui/` | planned M6 |
-| assets — handle table, aliases, hot reload (M5) | `src/assets/` | planned M5 |
+<!-- FUTURE LAYERS (not implemented - ENGINE.md §3/§8):
+| input - input state + named action map (§13) | `src/input/` | planned M3 |
+| audio - SDL3 streams + bus mixer (§14) | `src/audio/` | planned M6 |
+| ui - immediate-mode UI, theme tokens (§9) | `src/ui/` | planned M6 |
+| assets - handle table, aliases, hot reload (M5) | `src/assets/` | planned M5 |
 -->
 
 ---
 
-## ECS — scene model (`src/scene/`)
+## ECS - scene model (`src/scene/`)
 
-Composition-only (DESIGN §2 — no inheritance anywhere), keyed by stable
+Composition-only (DESIGN §2 - no inheritance anywhere), keyed by stable
 `u32` entity ids:
 
-- **`Entity`** — `{ id, alive, parent, local, world }`. `scene.create()`
+- **`Entity`** - `{ id, alive, parent, local, world }`. `scene.create()`
   bumps an id (`Option` when storage is full); `destroy()` marks dead and
   detaches children. *Id recycling / generations are an open item
   (ENGINE.md §17).*
-- **Transform hierarchy** — `setParent(child, parent)` is cycle-checked
+- **Transform hierarchy** - `setParent(child, parent)` is cycle-checked
   (`Err` carries why); each `scene.update(dt)` composes world transforms
   top-down. Uniform-scale exact; non-uniform scale under rotation is
   intentionally unsupported at M0.
-- **`ComponentStore`** — one store per component type: fixed-stride slots
+- **`ComponentStore`** - one store per component type: fixed-stride slots
   indexed by entity id + a `present` flag (`add`/`remove`/`has`/`get`).
   Caller-provided static storage (ENGINE.md §10).
-- **`ComponentRegistry`** — the component **type table** (M1 scaffold):
+- **`ComponentRegistry`** - the component **type table** (M1 scaffold):
   stores are *named* so everything downstream resolves by name:
 
 ```coral
@@ -125,14 +125,14 @@ types.add("demo", &comps).unwrap();     // one line per component type
 if (types.has(entity, "demo")) { ... }  // storeFor("demo") under the hood
 ```
 
-  M2 plugs `@component` auto-registration (DESIGN §16) into this table —
-  a Mu struct registers itself under its name — and the script-side
+  M2 plugs `@component` auto-registration (DESIGN §16) into this table -
+  a Mu struct registers itself under its name - and the script-side
   component get/set natives (ENGINE.md §11) dispatch through
   `storeFor`.
 - **Systems** are plain Coral functions in fixed order (`scene.update`,
-  later `physicsStep`, `scriptUpdate`) — no scheduler until a real need
+  later `physicsStep`, `scriptUpdate`) - no scheduler until a real need
   (job system is backlog, ENGINE.md §16).
-- **Scripts attach to entities** — `ScriptBindings` (M1 scaffold, in
+- **Scripts attach to entities** - `ScriptBindings` (M1 scaffold, in
   `src/script/`) pairs an entity with a script path, composition-only and
   multiple per entity:
 
@@ -143,11 +143,11 @@ bindings.countFor(entity);                          // M2: instance count
 bindings.unbind(entity);                            // detach all scripts
 ```
 
-<!-- FUTURE ECS (not implemented — ENGINE.md §15/§16/§17):
+<!-- FUTURE ECS (not implemented - ENGINE.md §15/§16/§17):
 - Prefab/instance system: entity templates + per-instance overrides.
 - Scene/prefab file format: text, diffable, versioned; same grammar for
   runtime loader (M5) and editor writer (M7+).
-- Entity id recycling with generation counters (dangling-id safety) —
+- Entity id recycling with generation counters (dangling-id safety) -
   DESIGN §14: using a despawned handle panics, never corrupts.
 - Archetype storage revisit at first perf need (§17).
 -->
@@ -156,11 +156,11 @@ bindings.unbind(entity);                            // detach all scripts
 
 ## Scripting (`src/script/`, `scripts/`)
 
-Scripts are `.mu` files under `scripts/`. Two ways to reach the engine —
+Scripts are `.mu` files under `scripts/`. Two ways to reach the engine -
 **know which is which:**
 
-1. **The `Mu::` library — engine API (prelude-style).** Built-ins are
-   always in scope: `frame()` just works — bare call, no declaration, no
+1. **The `Mu::` library - engine API (prelude-style).** Built-ins are
+   always in scope: `frame()` just works - bare call, no declaration, no
    `@` prefix (`@` never starts an expression, DESIGN §1). The `use`
    lines below are the **explicit prelude** (like Rust's): they don't
    unlock anything, they *record* which library symbols the script
@@ -183,12 +183,12 @@ Scripts are `.mu` files under `scripts/`. Two ways to reach the engine —
    }
    ```
 
-2. **`@extern fn ...;` — genuinely foreign functions only** (C/C++ the
+2. **`@extern fn ...;` - genuinely foreign functions only** (C/C++ the
    engine does not provide, DESIGN §14). Engine API **never** goes
    through `@extern`.
 
 **Lifecycle hooks** (any may be absent): `fn onLoad()`,
-`fn onUpdate(dt: f32)`, `fn onEvent(...)`, `fn onUnload()` — called from
+`fn onUpdate(dt: f32)`, `fn onEvent(...)`, `fn onUnload()` - called from
 the loop's script phase between `scene.update` and `render.draw`
 (ENGINE.md §6). **Bound scripts** run per entity: the binding
 (`ScriptBindings` above) decides which entity a script instance is for;
@@ -196,15 +196,15 @@ M2 gives the instance that context.
 
 **Value boundary** (ENGINE.md §5): only `EntityId (u32)`, scalars,
 `Vec2/Vec3`, `str` cross. No Coral structs, no pointers, no allocator
-access — Mu heap traffic routes through the engine game allocator.
+access - Mu heap traffic routes through the engine game allocator.
 
-**Memory:** nothing is freed by hand — the compiler injects scope frees
+**Memory:** nothing is freed by hand. The compiler injects scope frees
 (DESIGN §6), and types that own resources implement the inbuilt
-**`@drop` trait**: `drop()` runs at scope end (early returns included) —
-the **leak guard**. Where a manual free used to sit, leave the marker
-comment instead: `// x goes out of scope here — freed automatically`.
-Engine Coral follows the same rule (ENGINE.md §10): static storage where
-the shape is fixed, `gameAllocator()` elsewhere.
+**`@drop` trait**: `drop()` runs at scope end, early returns included.
+Where a manual free used to sit, a short marker comment is nice to
+leave behind, e.g. `// clip goes out of scope - freed`. Engine Coral
+follows the same rule (ENGINE.md §10): static storage where the shape
+is fixed, `gameAllocator()` elsewhere.
 
 ### M1 `Mu::` native library
 
@@ -218,7 +218,7 @@ the shape is fixed, `gameAllocator()` elsewhere.
 | `Mu::scene::setParent` | `fn(u32, u32) bool` | cycle-checked reparent |
 | `Mu::platform::quit` | `fn()` | requests loop exit |
 
-<!-- FUTURE NATIVES (not implemented — ENGINE.md §11/§13/§14):
+<!-- FUTURE NATIVES (not implemented - ENGINE.md §11/§13/§14):
 | Mu::input::isDown / action     | keyboard/gamepad via named action map (§13) |
 | Mu::render::*                  | camera/mesh/material queries once M4 lands |
 | Mu::physics::step / raycast    | Jolt-backed (§9, M7)                        |
@@ -233,7 +233,7 @@ Everything is one-line incremental (see the header of
 
 1. write a plain `static` fn in `script.crl`;
 2. one `natives->add("Mu::module::name", Native::XxxFn { .f = fn })` line
-   — existing signature arms cover most cases; a genuinely new signature
+   - existing signature arms cover most cases; a genuinely new signature
    is one new arm in `variant Native`;
 3. `use Mu::module::name;` in the script.
 
@@ -252,10 +252,10 @@ contract) with lifecycle hooks inside `load`/`update`/`free`.
 ## Milestones detail + roadmap
 
 M0/M1 above; M2 executes IR, M3 opens the window, M4 makes it 3D, M5
-assets, M6 audio+UI, M7 physics features+editor — full definitions in
+assets, M6 audio+UI, M7 physics features+editor - full definitions in
 [ENGINE.md §8](../ENGINE.md).
 
-<!-- FUTURE — NOT IMPLEMENTED (tracked in ENGINE.md §9/§12-§16):
+<!-- FUTURE - NOT IMPLEMENTED (tracked in ENGINE.md §9/§12-§16):
 - Input (M3): SDL3 events → down/pressed/released state, mouse, gamepad;
   named rebindable action map (never raw keys); synthetic-event injection
   for headless tests.
@@ -265,7 +265,7 @@ assets, M6 audio+UI, M7 physics features+editor — full definitions in
 - Assets (M5): handle table + aliases, loaders (stb/cgltf/exr/dr_libs),
   hot reload, GUID sidecar metadata, cooked packs (miniz).
 - Audio (M6): SDL3 streams, stb_vorbis/dr_libs decode, bus mixer
-  (master/music/sfx/ui + user buses) — architecture decided now (§14).
+  (master/music/sfx/ui + user buses) - architecture decided now (§14).
 - UI (M6): custom immediate-mode UI, SDF fonts (stb_truetype), theme
   tokens, dark-first; UI quality is a milestone gate (§9).
 - Signals (§12): name → subscribers, connect/disconnect by name, queued

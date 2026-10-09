@@ -1,51 +1,37 @@
-// Script host (ENGINE.md §5/§8/§11) — M1 scaffold.
+// Script host: natives, loader, entity bindings (ENGINE.md §5/§8/§11).
+// M1 — everything below is wired, but scripts don't execute yet; IR
+// execution lands at M2 (IR.md is the contract).
 //
-// Exists today:
-//   * NativeRegistry — Mu:: path → function-pointer table (§11); values
-//     are signature-tagged (variant Native, one arm per signature);
-//     storage is caller-provided static (§10), like Scene.
-//   * ScriptHost — load / update / free stubs with the §6 call site live;
-//     require() pre-resolves the Mu:: library symbols a script `use`s,
-//     so a miss fails at load, with the path (DESIGN §2), never mid-frame.
-//   * registerDefaultNatives — the M1 engine library (§11), keyed by Mu::
-//     paths: log::{info,error}, timing::frame, scene::{spawn,despawn,
-//     setParent}, platform::quit. Built-ins are prelude (always in
-//     scope); `use Mu::...` in scripts records dependencies (DESIGN
-//     §2/§14). @extern stays reserved for genuinely foreign functions —
-//     C the engine does not provide — never for engine API.
-//   * ScriptBindings — entity → script path (§4/§5): scripts attach to
-//     entities composition-only; M2 runs one instance per binding with
-//     the entity as its context.
-//   * scriptSystem — the fn-ptr Loop ticks; engine/main wires ctx+fn so
-//     core never imports this module (layering §3, Renderer.draw pattern).
+// Natives are signature-tagged fn pointers in a caller-provided static
+// table. At load, the host pre-resolves every Mu:: symbol a script
+// `use`s, so a miss fails there and then, with the path, instead of
+// mid-frame. Built-ins are prelude (always in scope); `use Mu::...` in a
+// script just records what it depends on, and @extern stays reserved for
+// foreign C the engine doesn't provide.
 //
-// How to grow it (incremental by construction):
-//   * Native with an existing signature: write a plain static fn, add one
-//     `natives->add("Mu::module::name", Native::XxxFn { .f = fn })` line.
-//     Registry, host, and loop call sites stay untouched.
-//   * New signature: one new arm in `Native` + the add line. Keep to the
-//     boundary types (§5): EntityId (u32), scalars, str, Vec2/Vec3 — no
-//     Coral structs cross.
-//   * M2 slots in behind this same API: lifecycle bodies (onLoad at the
-//     end of load, onUpdate inside update, onUnload inside free, §5),
-//     IR dispatch through lookup(), and @component get/set natives
-//     joining registerDefaultNatives (§11).
-//   * Multiple contexts (DESIGN §15): each host owns its registry storage;
-//     registerDefaultNatives rebinds scene/frame per host.
+// Bindings map entities to script paths (composition only; M2 runs one
+// instance per binding with the entity as context). scriptSystem is the
+// Loop fn-ptr slot, wired from engine/main so core never imports this
+// module (Renderer.draw pattern).
+//
+// Growing it: a native that fits an existing signature arm is one plain
+// static fn plus one `natives->add(...)` line. A new signature means a
+// new arm + the add line, kept to the §5 boundary types (EntityId,
+// scalars, str, Vec2/Vec3).
 
 import(lib) std::io { ios::println };
 import(lib) std::data { option::Option, result::Result };
 import scene::scene { Scene, EntityId, NIL };
 import platform::platform { platformRequestQuit };
 
-// Engine state the default natives read. Natives are plain fn pointers —
-// no closures cross the boundary (§5) — so context lives host-side here,
-// never in script-visible values.
+// Engine state the default natives read. Plain fn pointers cross the
+// boundary, no closures (§5), so context lives host-side and stays out
+// of script-visible values.
 static Scene* MuNativeScene;
 static u64* MuNativeFrame;   // &Loop.frameCount
 
-// One arm per *signature*, not per native: a new native that fits an
-// existing shape never touches this enum.
+// One arm per *signature*, not per native: a new native in an existing
+// shape doesn't touch this enum.
 pub variant Native
 {
     UnitFn { void() f; }                        // fn()
@@ -62,9 +48,9 @@ pub struct NativeEntry
     Native native;
 }
 
-// library path → function pointer (§11). The loader resolves every
-// `use Mu::...;` a script makes against this table at load and fails
-// with the path if it is missing.
+// library path → function pointer. The loader checks every `use
+// Mu::...;` a script makes against this table and fails with the path
+// when one's missing.
 pub struct NativeRegistry
 {
     NativeEntry* entries;   // caller-provided storage (static, §10)
@@ -80,8 +66,8 @@ pub struct NativeRegistry
         };
     }
 
-    // Err: duplicate name or full table (§3 — the message says why).
-    // Ok: the entry count after insertion.
+    // Ok: entry count after insertion. Err strings say which of the two
+    // things went wrong (duplicate name vs full table).
     Result<u32, str> add(str name, Native native)
     {
         for (u32 i = 0; i < self.count; i++)
@@ -97,9 +83,8 @@ pub struct NativeRegistry
         return Result<u32, str>::Ok { .value = self.count };
     }
 
-    // M2 fast path: a pointer into the table for dispatch — the IR host
-    // resolves each `use`d symbol once at load, then calls through it
-    // each frame. Null when unknown.
+    // M2 fast path: a pointer into the table, resolved once at load;
+    // the IR host then calls through it every frame. Null when unknown.
     Native* lookup(str name)
     {
         for (u32 i = 0; i < self.count; i++)
@@ -110,7 +95,7 @@ pub struct NativeRegistry
         return null;
     }
 
-    // None when unknown — a lookup miss is data, not a failure (§3).
+    // None when unknown; a lookup miss is data, not failure
     Option<Native> resolve(str name)
     {
         Native* native = self.lookup(name);
@@ -129,10 +114,10 @@ static bool _strEq(str a, str b)
     return true;
 }
 
-// ENGINE.md §11: load / update / free — stubs at M1, real execution at M2
-// (IR.md is the contract). Lifecycle hooks (onLoad / onUpdate / onEvent /
-// onUnload, §5) run inside these bodies once the IR executes; the §6 call
-// site and ordering are already live.
+// ENGINE.md §11: load / update / free. Stubs at M1; at M2 the IR runs
+// and the lifecycle hooks (onLoad / onUpdate / onEvent / onUnload, §5)
+// slot in inside these bodies. The §6 call site and ordering are already
+// live, so the frame path doesn't change shape then.
 pub struct ScriptHost
 {
     NativeRegistry* natives;
