@@ -1,70 +1,99 @@
-// dr_libs extern port — vendored single headers from github.com/mackron/dr_libs
+// dr_libs engine port — vendored single headers from github.com/mackron/dr_libs
 // (public domain / MIT-0): WAV, MP3 and FLAC whole-file decoders for the
-// audio layer (M6, ENGINE.md §14). Implementations compiled from
-// native/mu_drlibs.c into libmualibs.a.
+// audio layer (M6, ENGINE.md §14). The raw externs are declared beside this
+// file, one per upstream header (dr_wav.crl / dr_mp3.crl / dr_flac.crl),
+// and imported here as though written in this file; implementations are
+// compiled from native/mu_drlibs.c into libmualibs.a.
 //
-// ABI notes: size_t = usize, drwav/drmp3/drflac_uint64 = u64, channels and
-// sample rate are unsigned int out-params = u32*. The *_allocation_callbacks
-// params are engine-null (default malloc). Decoders return a malloc'd
-// interleaved f32 PCM buffer — release with the matching wavFree/mp3Free/
-// flacFree. Load wrappers return Option: the vendor gives no error string,
-// so absence IS the diagnostic (the caller knows which file failed).
+// Decoders return a malloc'd interleaved f32 PCM buffer, wrapped as an
+// owned Pcm: @drop (DESIGN §6) calls the vendor-matching free when the Pcm
+// goes out of scope — the old wavFree/mp3Free/flacFree manual-free wrappers
+// were removed on purpose, never free PCM by hand. Load wrappers return
+// Option: the vendor gives no error string, so absence IS the diagnostic
+// (the caller knows which file failed).
 
+import dr_wav { drwav_open_memory_and_read_pcm_frames_f32, drwav_free };
+import dr_mp3 { drmp3_config, drmp3_open_memory_and_read_pcm_frames_f32, drmp3_free };
+import dr_flac { drflac_open_memory_and_read_pcm_frames_f32, drflac_free };
 import(lib) std::data { option::Option };
 
-pub struct drmp3_config
+// Owned decode result — buffer, metadata and the matching vendor free in
+// one struct. `release` is set by the loader (drwav_free / drmp3_free /
+// drflac_free), so @drop always pairs alloc and free correctly.
+pub struct Pcm
 {
+    rawptr data;
     u32 channels;
     u32 sampleRate;
+    u64 frames;
+    void(rawptr, rawptr) release;
 }
 
-// --- whole-file decode to interleaved f32 ---
-
-pub extern rawptr drwav_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, u32* channelsOut, u32* sampleRateOut, u64* totalFrameCountOut, rawptr pAllocationCallbacks);
-pub extern rawptr drmp3_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, drmp3_config* pConfig, u64* pTotalFrameCount, rawptr pAllocationCallbacks);
-pub extern rawptr drflac_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, u32* channels, u32* sampleRate, u64* totalPCMFrameCount, rawptr pAllocationCallbacks);
-
-pub extern void drwav_free(rawptr p, rawptr pAllocationCallbacks);
-pub extern void drmp3_free(rawptr p, rawptr pAllocationCallbacks);
-pub extern void drflac_free(rawptr p, rawptr pAllocationCallbacks);
+pub extend Pcm : @drop
+{
+    void drop()
+    {
+        self.release(self.data, null);
+    }
+}
 
 // --- engine wrappers: Option, since decode failure carries no message ---
 
-pub Option<rawptr> loadWavF32(const rawptr data, usize len, u32* channels, u32* sampleRate, u64* frames)
+//   Option<Pcm> clip = drlibs::loadWavF32(bytes, len).unwrap();
+//   ... use clip.value.data ...
+//   clip goes out of scope here — buffer freed automatically (@drop)
+pub Option<Pcm> loadWavF32(const rawptr data, usize len)
 {
-    rawptr pcm = drwav_open_memory_and_read_pcm_frames_f32(data, len, channels, sampleRate, frames, null);
-    if (pcm == null) return Option<rawptr>::None;
-    return Option<rawptr>::Some { .value = pcm };
+    u32 channels = 0;
+    u32 sampleRate = 0;
+    u64 frames = 0;
+    rawptr pcm = drwav_open_memory_and_read_pcm_frames_f32(data, len, &channels, &sampleRate, &frames, null);
+    if (pcm == null) return Option<Pcm>::None;
+    
+    return Option<Pcm>::Some {
+        .value = Pcm {
+            .data = pcm,
+            .channels = channels,
+            .sampleRate = sampleRate,
+            .frames = frames,
+            .release = drwav_free
+        }
+    };
 }
 
-pub Option<rawptr> loadMp3F32(const rawptr data, usize len, u32* channels, u32* sampleRate, u64* frames)
+pub Option<Pcm> loadMp3F32(const rawptr data, usize len)
 {
     drmp3_config cfg = drmp3_config { .channels = 0, .sampleRate = 0 };
-    rawptr pcm = drmp3_open_memory_and_read_pcm_frames_f32(data, len, &cfg, frames, null);
-    if (pcm == null) return Option<rawptr>::None;
-    *channels = cfg.channels;
-    *sampleRate = cfg.sampleRate;
-    return Option<rawptr>::Some { .value = pcm };
+    u64 frames = 0;
+    rawptr pcm = drmp3_open_memory_and_read_pcm_frames_f32(data, len, &cfg, &frames, null);
+    if (pcm == null) return Option<Pcm>::None;
+    
+    return Option<Pcm>::Some {
+        .value = Pcm {
+            .data = pcm,
+            .channels = cfg.channels,
+            .sampleRate = cfg.sampleRate,
+            .frames = frames,
+            .release = drmp3_free
+        }
+    };
 }
 
-pub Option<rawptr> loadFlacF32(const rawptr data, usize len, u32* channels, u32* sampleRate, u64* frames)
+pub Option<Pcm> loadFlacF32(const rawptr data, usize len)
 {
-    rawptr pcm = drflac_open_memory_and_read_pcm_frames_f32(data, len, channels, sampleRate, frames, null);
-    if (pcm == null) return Option<rawptr>::None;
-    return Option<rawptr>::Some { .value = pcm };
-}
-
-pub void wavFree(rawptr pcm)
-{
-    drwav_free(pcm, null);
-}
-
-pub void mp3Free(rawptr pcm)
-{
-    drmp3_free(pcm, null);
-}
-
-pub void flacFree(rawptr pcm)
-{
-    drflac_free(pcm, null);
+    u32 channels = 0;
+    u32 sampleRate = 0;
+    u64 frames = 0;
+    rawptr pcm = drflac_open_memory_and_read_pcm_frames_f32(data, len, &channels, &sampleRate, &frames, null);
+    if (pcm == null) return Option<Pcm>::None;
+    
+    return Option<Pcm>::Some {
+        .value = Pcm {
+            .data = pcm,
+            .channels = channels,
+            .sampleRate = sampleRate,
+            .frames = frames,
+            .release = drflac_free
+        }
+    };
 }

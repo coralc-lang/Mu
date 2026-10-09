@@ -9,8 +9,9 @@
 
 pub const i32 CGLTF_RESULT_SUCCESS = 0;
 
-// options: null for defaults. out_data receives an owned handle for
-// cgltf_load_buffers / cgltf_validate / cgltf_free.
+// options: null for defaults. out_data receives an owned handle — the M5
+// parse wrapper returns it as a Gltf with @drop (DESIGN §6), so call sites
+// never invoke cgltf_free by hand; this extern stays the vendor pair.
 pub extern i32 cgltf_parse(rawptr options, const rawptr data, usize size, rawptr* out_data);
 pub extern i32 cgltf_load_buffers(rawptr options, rawptr data, const cchar* gltf_path);
 pub extern i32 cgltf_validate(rawptr data);

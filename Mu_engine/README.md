@@ -201,8 +201,10 @@ access — Mu heap traffic routes through the engine game allocator.
 **Memory:** nothing is freed by hand — the compiler injects scope frees
 (DESIGN §6), and types that own resources implement the inbuilt
 **`@drop` trait**: `drop()` runs at scope end (early returns included) —
-the **leak guard**. Engine Coral follows the same rule (ENGINE.md §10):
-static storage where the shape is fixed, `gameAllocator()` elsewhere.
+the **leak guard**. Where a manual free used to sit, leave the marker
+comment instead: `// x goes out of scope here — freed automatically`.
+Engine Coral follows the same rule (ENGINE.md §10): static storage where
+the shape is fixed, `gameAllocator()` elsewhere.
 
 ### M1 `Mu::` native library
 

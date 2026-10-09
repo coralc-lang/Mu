@@ -278,7 +278,10 @@ Core features adopted now (cheap to design early, painful to retrofit):
 - **Drop trait:** types that need freeing implement `@drop` (DESIGN §6) —
   `drop()` runs from the injected scope-free: the **leak guard** for
   owned resources (release at scope end, early returns included), so
-  neither scripts nor engine code frees drop-types by hand.
+  neither scripts nor engine code frees drop-types by hand. Where a drop
+  type replaces an old manual free, leave a marker comment at the scope
+  end instead: `// x goes out of scope here — freed automatically`, so
+  reviewers see ownership rather than hunt for a missing free.
 - Every Mu heap allocation (escaping objects, arrays, strings) goes
   through **the engine game allocator** — mimalloc behind std's `Allocator`
   (`src/alloc`, §9). The script host hands `gameAllocator()` to the

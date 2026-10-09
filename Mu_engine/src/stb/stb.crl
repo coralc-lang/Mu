@@ -41,7 +41,7 @@ pub extern i32 stbtt_GetCodepointAdvance(const rawptr info, i32 codepoint);
 pub extern i32 stbtt_GetCodepointKernAdvance(const rawptr info, i32 ch1, i32 ch2);
 pub extern rawptr stbtt_GetCodepointBitmap(const rawptr info, f32 scale_x, f32 scale_y, i32 codepoint, i32* width, i32* height, i32* xoff, i32* yoff);
 pub extern rawptr stbtt_GetGlyphSDF(const rawptr info, f32 scale, i32 glyph, i32 padding, u8 onedge_value, f32 pixel_dist_scale, i32* width, i32* height, i32* xoff, i32* yoff);
-pub extern void stbtt_FreeBitmap(rawptr bitmap, rawptr userdata);
+pub extern void stbtt_FreeBitmap(rawptr bitmap, rawptr userdata); // vendor pair for the two bitmap getters — the M6 font wrapper hands these out as a @drop type instead (no manual free at call sites)
 
 // --- stb_vorbis: Ogg Vorbis decode (audio, M6 — SDL3 outputs, stb decodes) ---
 // Returns >0 samples-per-channel on success; error codes are the enum in
@@ -60,20 +60,46 @@ pub extern void stb_vorbis_close(rawptr f);
 
 // --- engine wrappers (ENGINE.md §3 error convention) ---
 
-// Decode any stb_image format (PNG, JPEG, BMP, TGA, GIF, HDR, ...) in one
-// shot. wantChannels 0 keeps the file's own channel count; on success the
-// out-params describe the buffer (free with stbi_image_free). Err owns a
-// copied diagnostic — stbi_failure_reason() is a static buffer reused by
-// the next load, hence the String copy.
-pub Result<rawptr, String> loadImage(const cchar* path, i32 wantChannels, i32* outWidth, i32* outHeight, i32* outChannels)
+// Decoded image buffer owned by @drop (DESIGN §6 — the leak guard): when
+// an Image goes out of scope the pixels free automatically, so the manual
+// `stbi_image_free` call at the use site is gone on purpose — never
+// reintroduce it.
+pub struct Image
 {
-    rawptr px = stbi_load(path, outWidth, outHeight, outChannels, wantChannels);
+    rawptr pixels;
+    i32 width;
+    i32 height;
+    i32 channels;
+}
+
+pub extend Image : @drop
+{
+    void drop()
+    {
+        stbi_image_free(self.pixels);
+    }
+}
+
+// Decode any stb_image format (PNG, JPEG, BMP, TGA, GIF, HDR, ...) in one
+// shot. wantChannels 0 keeps the file's own channel count; dimensions ride
+// on the Image itself. Err owns a copied diagnostic — stbi_failure_reason()
+// is a static buffer reused by the next load, hence the String copy.
+//
+//   Result<Image, String> decoded = stb::loadImage(C"hero.png", 0).unwrap();
+//   ... use decoded.value.pixels ...
+//   decoded goes out of scope here — pixels freed automatically (@drop)
+pub Result<Image, String> loadImage(const cchar* path, i32 wantChannels)
+{
+    i32 w = 0;
+    i32 h = 0;
+    i32 c = 0;
+    rawptr px = stbi_load(path, &w, &h, &c, wantChannels);
     if (px == null)
     {
         const cchar* why = stbi_failure_reason();
         if (why != null)
-            return Result<rawptr, String>::Err { .error = String::fromCstr(why) };
-        return Result<rawptr, String>::Err { .error = String::fromCstr(C"stb_image: decode failed") };
+            return Result<Image, String>::Err { .error = String::fromCstr(why) };
+        return Result<Image, String>::Err { .error = String::fromView("stb_image: decode failed") };
     }
-    return Result<rawptr, String>::Ok { .value = px };
+    return Result<Image, String>::Ok { .value = Image { .pixels = px, .width = w, .height = h, .channels = c } };
 }

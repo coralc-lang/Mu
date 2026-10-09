@@ -15,6 +15,7 @@
 
 import(lib) std::data { result::Result };
 import(lib) std::text::string { String };
+import(lib) platform::libc;
 
 pub const i32 TINYEXR_SUCCESS = 0;
 
@@ -32,23 +33,50 @@ pub extern i32 LoadEXR(f32** out_rgba, i32* width, i32* height, const cchar* fil
 pub extern i32 SaveEXR(const rawptr data, i32 width, i32 height, const cchar* filename, const cchar** err);
 pub extern void FreeEXRErrorMessage(const cchar* msg);
 
-// Engine wrapper: decode a single-frame EXR into an owned float RGBA
-// buffer (release with free()). Err owns a copied diagnostic String — the
-// vendor message is freed before returning, never a dangling view.
-pub Result<rawptr, String> loadEXR(const cchar* path, i32* outWidth, i32* outHeight)
+// Owned float RGBA buffer — @drop (DESIGN §6, the leak guard) frees it
+// when the ExrImage goes out of scope. The manual free is gone on purpose:
+// LoadEXR allocates with the vendor's libc malloc, so the pair is
+// libc::free — NOT dealloc (Coral's default allocator is mimalloc, a
+// different heap).
+pub struct ExrImage
+{
+    rawptr rgba; // f32 x width x height x 4
+    i32 width;
+    i32 height;
+}
+
+pub extend ExrImage : @drop
+{
+    void drop()
+    {
+        libc::free(self.rgba);
+    }
+}
+
+// Engine wrapper: decode a single-frame EXR into an owned RGBA buffer.
+// Err owns a copied diagnostic String — the vendor message is freed before
+// returning (that call is tinyexr's own error-buffer protocol, not a
+// scope-lifetime free), never a dangling view.
+//
+//   Result<ExrImage, String> hdr = tinyexr::loadEXR(C"sky.exr").unwrap();
+//   ... use hdr.value.rgba ...
+//   hdr goes out of scope here — pixels freed automatically (@drop)
+pub Result<ExrImage, String> loadEXR(const cchar* path)
 {
     f32* pixels = null;
+    i32 w = 0;
+    i32 h = 0;
     const cchar* errMsg = null;
-    i32 rc = LoadEXR(&pixels, outWidth, outHeight, path, &errMsg);
+    i32 rc = LoadEXR(&pixels, &w, &h, path, &errMsg);
     if (rc != TINYEXR_SUCCESS)
     {
         if (errMsg != null)
         {
             String msg = String::fromCstr(errMsg);
             FreeEXRErrorMessage(errMsg);
-            return Result<rawptr, String>::Err { .error = msg };
+            return Result<ExrImage, String>::Err { .error = msg };
         }
-        return Result<rawptr, String>::Err { .error = String::fromCstr(C"tinyexr: decode failed") };
+        return Result<ExrImage, String>::Err { .error = String::fromView("tinyexr: decode failed") };
     }
-    return Result<rawptr, String>::Ok { .value = (rawptr)pixels };
+    return Result<ExrImage, String>::Ok { .value = ExrImage { .rgba = (rawptr)pixels, .width = w, .height = h } };
 }

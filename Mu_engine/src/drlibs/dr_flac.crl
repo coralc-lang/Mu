@@ -1,0 +1,12 @@
+// dr_flac extern port — vendored from github.com/mackron/dr_libs (public
+// domain / MIT-0): FLAC whole-file decode for the audio layer (M6,
+// ENGINE.md §14). Declared here — the file named after upstream
+// dr_flac.h — and imported by drlibs.crl as though written there.
+// Implementation compiled from native/mu_drlibs.c into libmualibs.a.
+//
+// ABI notes: size_t = usize, drflac_uint64 = u64, channels and sample rate
+// are unsigned int out-params (u32*), *_allocation_callbacks are
+// engine-null (default malloc).
+
+pub extern rawptr drflac_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, u32* channels, u32* sampleRate, u64* totalPCMFrameCount, rawptr pAllocationCallbacks);
+pub extern void drflac_free(rawptr p, rawptr pAllocationCallbacks);

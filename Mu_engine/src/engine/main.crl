@@ -103,6 +103,8 @@ pub i32 main()
         MuScene.entities[grandchild].world.position.z);
     println("script: updates={}  bindings={} (entity {})  natives: {}  component types: {}",
         MuHost.updateCalls, bindings.count, child, MuNatives.count, compTypes.count);
+    // §11 lifecycle unload (runs onUnload) — NOT a memory free: ScriptHost
+    // owns no heap at M1; M2's IR state will drop through @drop instead.
     MuHost.free();
 
     MuRenderer.shutdown(MuRenderer.ctx);

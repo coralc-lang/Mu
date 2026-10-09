@@ -1,0 +1,12 @@
+// dr_wav extern port — vendored from github.com/mackron/dr_libs (public
+// domain / MIT-0): WAV whole-file decode for the audio layer (M6,
+// ENGINE.md §14). Declared here — the file named after upstream
+// dr_wav.h — and imported by drlibs.crl as though written there.
+// Implementation compiled from native/mu_drlibs.c into libmualibs.a.
+//
+// ABI notes: size_t = usize, drwav_uint64 = u64, channels and sample rate
+// are unsigned int out-params (u32*), *_allocation_callbacks are
+// engine-null (default malloc).
+
+pub extern rawptr drwav_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, u32* channelsOut, u32* sampleRateOut, u64* totalFrameCountOut, rawptr pAllocationCallbacks);
+pub extern void drwav_free(rawptr p, rawptr pAllocationCallbacks);
