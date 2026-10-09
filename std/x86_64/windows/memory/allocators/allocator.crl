@@ -1,7 +1,0 @@
-pub struct Allocator
-{
-    rawptr ctx;
-    rawptr(rawptr, usize) alloc;
-    void(rawptr, rawptr) free;
-    rawptr(rawptr, rawptr, usize) realloc;
-}
