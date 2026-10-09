@@ -8,10 +8,11 @@
 //     require() pre-resolves the Mu:: library symbols a script `use`s,
 //     so a miss fails at load, with the path (DESIGN §2), never mid-frame.
 //   * registerDefaultNatives — the M1 engine library (§11), keyed by Mu::
-//     paths (scripts `use Mu::...` them, DESIGN §2): log::{info,error},
-//     timing::frame, scene::{spawn,despawn,setParent}, platform::quit.
-//     @extern stays reserved for genuinely foreign functions — C the
-//     engine does not provide (DESIGN §14) — never for engine API.
+//     paths: log::{info,error}, timing::frame, scene::{spawn,despawn,
+//     setParent}, platform::quit. Built-ins are prelude (always in
+//     scope); `use Mu::...` in scripts records dependencies (DESIGN
+//     §2/§14). @extern stays reserved for genuinely foreign functions —
+//     C the engine does not provide — never for engine API.
 //   * ScriptBindings — entity → script path (§4/§5): scripts attach to
 //     entities composition-only; M2 runs one instance per binding with
 //     the entity as its context.

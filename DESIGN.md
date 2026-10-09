@@ -226,6 +226,12 @@ compiler-internal; there is nothing for the programmer to write.
 - **Scope-based free + escape analysis**: values die at end of owning scope;
   escaping values are heap-allocated with ownership transferred.
 - Backed by a **mimalloc-based allocator**.
+- **Drop trait, not manual cleanup:** types that own resources implement
+  the inbuilt **`@drop`** (a `drop()` method — the same trait Coral's std
+  uses); the injected scope-free runs it automatically — **the leak
+  guard**: owned resources are released at scope end even on early
+  returns, so nothing waits for a hand-written free that might be
+  forgotten. Scripts never write alloc/free/drop calls by hand.
 
 ### Closure capture (consequence of §4/§6)
 - The compiler decides per captured variable:
@@ -466,6 +472,13 @@ const B: i32 = A;
   blob through the binding table.
 - Engine ↔ script interop: **manual binding API.** All engine built-ins
   (`print`, math, …) are always in scope — scripts never declare them.
+  This is **prelude-style** (like Rust's prelude): an explicit
+  `use Mu::<module>::<fn>;` (§2) of a built-in is legal and idiomatic —
+  it changes nothing semantically; it records which library symbols the
+  script depends on and enables `{...}` grouping and `as` aliases.
+  Built-in *calls* stay bare identifiers — `@` never starts an expression
+  (§1), so there is no `@call` form; `@` remains declaration-space
+  (attributes, loop labels, the `@extern` modifier).
   Foreign functions the engine does not provide (C/C++ etc.) are declared
   **`@extern fn ...;`** (no body) and registered by the host with a matching
   name, module path, and signature; the loader verifies the match at load

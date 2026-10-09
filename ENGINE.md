@@ -96,14 +96,18 @@ Mu_engine/
 ## 5. Mu script integration — **Decided**
 
 - Scripts are `.mu` files under `Mu_engine/scripts/` (demo: `main.mu`).
-- The engine exposes its API as a **Mu library**: scripts pull symbols
-  with `use Mu::<module>::<fn>;` (DESIGN §2 — e.g.
-  `use Mu::timing::frame;`), and the **native registry** is keyed by those
-  full library paths (`Mu::...` → function pointer). The script host
-  resolves each `use`d symbol at load time and errors with the path if it
-  is missing. **`@extern` is reserved for genuinely foreign functions** —
-  C/C++ the engine does not provide (DESIGN §14) — engine API never goes
-  through `@extern`.
+- The engine exposes its API as a **Mu library, prelude-style** (DESIGN
+  §14): built-ins like `frame()` are always in scope — scripts never must
+  declare them, and calls are bare identifiers (no `@` prefix; `@` never
+  starts an expression, DESIGN §1). An explicit `use Mu::<module>::<fn>;`
+  (DESIGN §2 — e.g. `use Mu::timing::frame;`) is the idiomatic way to
+  *record* which library symbols a script depends on — reader tracking,
+  `{...}` grouping, `as` aliases — it does not gate access. The **native
+  registry** is keyed by those full library paths (`Mu::...` → function
+  pointer); the host resolves every referenced symbol at load and errors
+  with the path if missing. **`@extern` is reserved for genuinely foreign
+  functions** — C/C++ the engine does not provide (DESIGN §14) — engine
+  API never goes through `@extern`.
 - **Scripts bind to entities:** `ScriptBindings` pairs an entity id with a
   script path (§4 scaffold), alive-checked at `bind` time. M2 runs one
   script instance per binding with the entity as its context.
@@ -271,6 +275,10 @@ Core features adopted now (cheap to design early, painful to retrofit):
   time**: the compiler's smart analysis injects alloc/free where needed —
   scope-based free + escape analysis (DESIGN §6). **No GC, no reference
   counting, no manual alloc/free in script code.**
+- **Drop trait:** types that need freeing implement `@drop` (DESIGN §6) —
+  `drop()` runs from the injected scope-free: the **leak guard** for
+  owned resources (release at scope end, early returns included), so
+  neither scripts nor engine code frees drop-types by hand.
 - Every Mu heap allocation (escaping objects, arrays, strings) goes
   through **the engine game allocator** — mimalloc behind std's `Allocator`
   (`src/alloc`, §9). The script host hands `gameAllocator()` to the

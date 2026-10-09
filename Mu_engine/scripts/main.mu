@@ -1,11 +1,12 @@
 #! engine.main
 
 // Demo script (ENGINE.md §8 M1) — compiled by muc at M2.
-// Engine API arrives as the Mu:: library through `use` (DESIGN §2);
-// `@extern` stays reserved for genuinely foreign functions — C the
-// engine does not provide (DESIGN §14). Lifecycle hooks (§5) run inside
-// the loop's script phase; this script is bound to an entity through
-// ScriptBindings (engine side).
+// Engine built-ins are prelude — always in scope, bare calls, no @
+// prefix; the `use Mu::...` lines below are explicit tracking of what
+// this script depends on (DESIGN §2/§14). `@extern` stays reserved for
+// genuinely foreign functions — C the engine does not provide. Lifecycle
+// hooks (§5) run inside the loop's script phase; this script is bound
+// to an entity through ScriptBindings (engine side).
 
 use Mu::log::info;
 use Mu::timing::frame;

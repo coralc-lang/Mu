@@ -159,8 +159,13 @@ bindings.unbind(entity);                            // detach all scripts
 Scripts are `.mu` files under `scripts/`. Two ways to reach the engine —
 **know which is which:**
 
-1. **The `Mu::` library — engine API.** Scripts import symbols with
-   `use` (DESIGN §2); the host resolves each one at load against its
+1. **The `Mu::` library — engine API (prelude-style).** Built-ins are
+   always in scope: `frame()` just works — bare call, no declaration, no
+   `@` prefix (`@` never starts an expression, DESIGN §1). The `use`
+   lines below are the **explicit prelude** (like Rust's): they don't
+   unlock anything, they *record* which library symbols the script
+   depends on and enable `{...}` grouping / `as` aliases (DESIGN §2/§14).
+   The host also resolves every referenced symbol at load against its
    native registry and fails loudly **with the path** if missing:
 
    ```mu
@@ -192,6 +197,12 @@ M2 gives the instance that context.
 **Value boundary** (ENGINE.md §5): only `EntityId (u32)`, scalars,
 `Vec2/Vec3`, `str` cross. No Coral structs, no pointers, no allocator
 access — Mu heap traffic routes through the engine game allocator.
+
+**Memory:** nothing is freed by hand — the compiler injects scope frees
+(DESIGN §6), and types that own resources implement the inbuilt
+**`@drop` trait**: `drop()` runs at scope end (early returns included) —
+the **leak guard**. Engine Coral follows the same rule (ENGINE.md §10):
+static storage where the shape is fixed, `gameAllocator()` elsewhere.
 
 ### M1 `Mu::` native library
 
