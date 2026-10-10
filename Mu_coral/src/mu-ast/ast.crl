@@ -16,7 +16,7 @@ pub struct PtrList
 
 pub PtrList* newList(Arena* a)
 {
-    PtrList* l = (PtrList*)a.alloc(sizeof(PtrList), 8);
+    PtrList* l = (PtrList*)a.alloc(@sizeof(PtrList), 8);
     l.data = null;
     l.len = 0;
     l.cap = 0;
@@ -30,7 +30,7 @@ pub void listPush(PtrList* l, rawptr item)
     {
         usize newCap = 8;
         if (l.cap != 0) newCap = l.cap * 2;
-        rawptr* fresh = (rawptr*)l.arena.alloc(newCap * sizeof(rawptr), 8);
+        rawptr* fresh = (rawptr*)l.arena.alloc(newCap * @sizeof(rawptr), 8);
         usize i = 0;
         while (i < l.len)
         {
@@ -105,7 +105,7 @@ pub struct Type
 
 pub Type* newType(Arena* a, TypeKind k, Loc loc)
 {
-    Type* t = (Type*)a.alloc(sizeof(Type), 8);
+    Type* t = (Type*)a.alloc(@sizeof(Type), 8);
     t.kind = k;
     t.loc = loc;
     t.text = str::empty();
@@ -158,7 +158,7 @@ pub struct Expr
 
 pub Expr* newExpr(Arena* a, ExprKind k, Loc loc)
 {
-    Expr* e = (Expr*)a.alloc(sizeof(Expr), 8);
+    Expr* e = (Expr*)a.alloc(@sizeof(Expr), 8);
     e.kind = k;
     e.loc = loc;
     e.text = str::empty();
@@ -182,7 +182,7 @@ pub struct FieldInit
 
 pub FieldInit* newFieldInit(Arena* a)
 {
-    FieldInit* f = (FieldInit*)a.alloc(sizeof(FieldInit), 8);
+    FieldInit* f = (FieldInit*)a.alloc(@sizeof(FieldInit), 8);
     f.name = str::empty();
     f.value = null;
     f.spread = false;
@@ -198,7 +198,7 @@ pub struct ArrayItem
 
 pub ArrayItem* newArrayItem(Arena* a)
 {
-    ArrayItem* it = (ArrayItem*)a.alloc(sizeof(ArrayItem), 8);
+    ArrayItem* it = (ArrayItem*)a.alloc(@sizeof(ArrayItem), 8);
     it.key = null;
     it.value = null;
     it.spread = false;
@@ -236,7 +236,7 @@ pub struct Pattern
 
 pub Pattern* newPattern(Arena* a, PatternKind k, Loc loc)
 {
-    Pattern* p = (Pattern*)a.alloc(sizeof(Pattern), 8);
+    Pattern* p = (Pattern*)a.alloc(@sizeof(Pattern), 8);
     p.kind = k;
     p.loc = loc;
     p.text = str::empty();
@@ -280,7 +280,7 @@ pub struct Stmt
 
 pub Stmt* newStmt(Arena* a, StmtKind k, Loc loc)
 {
-    Stmt* s = (Stmt*)a.alloc(sizeof(Stmt), 8);
+    Stmt* s = (Stmt*)a.alloc(@sizeof(Stmt), 8);
     s.kind = k;
     s.loc = loc;
     s.label = str::empty();
@@ -306,7 +306,7 @@ pub struct Prong
 
 pub Prong* newProng(Arena* a)
 {
-    Prong* p = (Prong*)a.alloc(sizeof(Prong), 8);
+    Prong* p = (Prong*)a.alloc(@sizeof(Prong), 8);
     p.loc.line = 0;
     p.loc.col = 0;
     p.pat = null;
@@ -325,7 +325,7 @@ pub struct Attr
 
 pub Attr* newAttr(Arena* a)
 {
-    Attr* at = (Attr*)a.alloc(sizeof(Attr), 8);
+    Attr* at = (Attr*)a.alloc(@sizeof(Attr), 8);
     at.name = str::empty();
     at.loc.line = 0;
     at.loc.col = 0;
@@ -371,7 +371,7 @@ pub struct Decl
 
 pub Decl* newDecl(Arena* a, DeclKind k, Loc loc)
 {
-    Decl* d = (Decl*)a.alloc(sizeof(Decl), 8);
+    Decl* d = (Decl*)a.alloc(@sizeof(Decl), 8);
     d.kind = k;
     d.loc = loc;
     d.name = str::empty();
@@ -405,7 +405,7 @@ pub struct Param
 
 pub Param* newParam(Arena* a)
 {
-    Param* p = (Param*)a.alloc(sizeof(Param), 8);
+    Param* p = (Param*)a.alloc(@sizeof(Param), 8);
     p.name = str::empty();
     p.type = null;
     p.isSelf = false;
@@ -423,7 +423,7 @@ pub struct GenericParam
 
 pub GenericParam* newGenericParam(Arena* a)
 {
-    GenericParam* g = (GenericParam*)a.alloc(sizeof(GenericParam), 8);
+    GenericParam* g = (GenericParam*)a.alloc(@sizeof(GenericParam), 8);
     g.name = str::empty();
     g.bound = null;
     g.loc.line = 0;
@@ -441,7 +441,7 @@ pub struct FieldDecl
 
 pub FieldDecl* newFieldDecl(Arena* a)
 {
-    FieldDecl* f = (FieldDecl*)a.alloc(sizeof(FieldDecl), 8);
+    FieldDecl* f = (FieldDecl*)a.alloc(@sizeof(FieldDecl), 8);
     f.isPub = false;
     f.name = str::empty();
     f.type = null;
@@ -459,7 +459,7 @@ pub struct VariantCase
 
 pub VariantCase* newVariantCase(Arena* a)
 {
-    VariantCase* c = (VariantCase*)a.alloc(sizeof(VariantCase), 8);
+    VariantCase* c = (VariantCase*)a.alloc(@sizeof(VariantCase), 8);
     c.name = str::empty();
     c.payload = null;
     c.loc.line = 0;
@@ -477,7 +477,7 @@ pub struct UseSpec
 
 pub UseSpec* newUseSpec(Arena* a)
 {
-    UseSpec* u = (UseSpec*)a.alloc(sizeof(UseSpec), 8);
+    UseSpec* u = (UseSpec*)a.alloc(@sizeof(UseSpec), 8);
     u.name = str::empty();
     u.alias = str::empty();
     u.specs = null;

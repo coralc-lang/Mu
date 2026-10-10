@@ -13,6 +13,31 @@ import common::token { matchWord };
 
 import(lib) platform::libc { snprintf, printf };
 
+bool strEq(str a, str b)
+{
+    if (a.len != b.len) return false;
+    usize i = 0;
+    while (i < a.len)
+    {
+        if (a.ptr[i] != b.ptr[i]) return false;
+        i = i + 1;
+    }
+    return true;
+}
+
+bool endsWith(str s, str suffix)
+{
+    if (s.len < suffix.len) return false;
+    usize off = s.len - suffix.len;
+    usize i = 0;
+    while (i < suffix.len)
+    {
+        if (s.ptr[off + i] != suffix.ptr[i]) return false;
+        i = i + 1;
+    }
+    return true;
+}
+
 // resolved types
 pub enum RtKind
 {
@@ -45,16 +70,14 @@ pub struct RType
 
 RType* mkType(Arena* a, RtKind k, usize w, str n, RType* e, PtrList* args)
 {
-    RType* t = (RType*)a.alloc(sizeof(RType), 8); // use std::mman
-    t = {
-        .kind = k,
-        .width = w,
-        .name = n,
-        .elem = e,
-        .args = args,
-        .isLitInt = false,
-        .isLitFloat = false
-        };
+    RType* t = (RType*)a.alloc(@sizeof(RType), 8); // use std::mman
+    t.kind = k;
+    t.width = w;
+    t.name = n;
+    t.elem = e;
+    t.args = args;
+    t.isLitInt = false;
+    t.isLitFloat = false;
     return t;
 }
 
@@ -79,7 +102,7 @@ pub struct Sym
 
 Sym* newSym(Arena* a, SymKind k, str n, Decl* d)
 {
-    Sym* s = (Sym*)a.alloc(sizeof(Sym), 8);
+    Sym* s = (Sym*)a.alloc(@sizeof(Sym), 8);
     s.kind = k;
     s.name = n;
     s.decl = d;
@@ -102,7 +125,7 @@ struct Scope
 
 Scope* pushScope(Arena* a, Scope* parent)
 {
-    Scope* s = (Scope*)a.alloc(sizeof(Scope), 8);
+    Scope* s = (Scope*)a.alloc(@sizeof(Scope), 8);
     s.head = null;
     s.parent = parent;
     return s;
@@ -110,7 +133,7 @@ Scope* pushScope(Arena* a, Scope* parent)
 
 void addLocal(Arena* a, Scope* s, str name, RType* type, bool isLet)
 {
-    Local* l = (Local*)a.alloc(sizeof(Local), 8);
+    Local* l = (Local*)a.alloc(@sizeof(Local), 8);
     l.name = name;
     l.type = type;
     l.isLet = isLet;
@@ -145,7 +168,7 @@ bool isNumericName(str s)
 str baseOf(str s)
 {
     usize i = 0;
-    while (i < s.len && s.ptr[i] != '<') i = i + 1;
+    while (i < s.len && s.ptr[i] != (u8)'<') i = i + 1;
     return s.slice(0, i);
 }
 
@@ -175,7 +198,7 @@ pub extend Checker
         };
     }
 
-    void error(Loc loc, u8* code, u8* msg)
+    void error(Loc loc, str code, str msg)
     {
         self.diags.error(loc.line, loc.col, 1, code, msg);
     }
@@ -338,13 +361,13 @@ pub extend Checker
         return false;
     }
 
-    void expectType(RType* got, RType* want, Loc loc, u8* what)
+    void expectType(RType* got, RType* want, Loc loc, str what)
     {
         if (!self.assignable(got, want))
             self.diags.error(loc.line, loc.col, 1, "E0310", self.msg(what));
     }
 
-    u8* msg(u8* what) { return what; }
+    str msg(str what) { return what; }
 
     // globals pass
 
@@ -703,7 +726,7 @@ pub extend Checker
             PatternKind::PatWildcard => {}
             PatternKind::PatBinding =>
             {
-                addLocal(self.arena, self.scope, p.name, expected, isLet);
+                addLocal(self.arena, self.scope, p.text, expected, isLet);
             }
             PatternKind::PatInt =>
             {
@@ -803,7 +826,7 @@ pub extend Checker
                 while (j < d.cases.len)
                 {
                     VariantCase* c = (VariantCase*)d.cases.data[j];
-                    if (strEq(c.name, p.name))
+                    if (strEq(c.name, p.text))
                     {
                         if (expected.kind == RtKind::RtNamed && strEq(expected.name, d.name))
                         {
@@ -1369,7 +1392,7 @@ pub extend Checker
         while (i < e.list.len)
         {
             RType* arg = self.expr((Expr*)e.list.data[i]);
-            usize pi = i + (hasReceiver ? 1 : 0);
+            usize pi = i + (usize)(hasReceiver ? 1 : 0);
             if (m.params != null && pi < m.params.len)
             {
                 Param* p = (Param*)m.params.data[pi];

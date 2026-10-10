@@ -98,16 +98,16 @@ pub struct Token
     usize col;
 }
 
-pub bool matchWord(str s, u8* w)
+pub bool matchWord(str s, str w)
 {
+    if (s.len != w.len) return false;
     usize i = 0;
-    while (w[i] != 0)
+    while (i < s.len)
     {
-        if (i >= s.len) return false;
-        if (s.ptr[i] != w[i]) return false;
+        if (s.ptr[i] != w.ptr[i]) return false;
         i = i + 1;
     }
-    return i == s.len;
+    return true;
 }
 
 pub TokenKind keywordKind(str s)
@@ -143,7 +143,7 @@ pub TokenKind keywordKind(str s)
     return TokenKind::Ident;
 }
 
-pub u8* kindName(TokenKind k)
+pub str kindName(TokenKind k)
 {
     switch (k)
     {

@@ -7,12 +7,12 @@ Option<str> readCmdline()
 {
     u8* buf = alloc<u8>(8192);
     if (buf == null) return Option<str>::None;
-    i32 fd = open("/proc/self/cmdline", 0, 0);
+    i32 fd = open(C"/proc/self/cmdline", 0, 0);
     if (fd < 0) return Option<str>::None;
     usize len = 0;
     while (len + 1 < 8192)
     {
-        i64 got = read(fd, buf + len, 8192 - 1 - len);
+        i64 got = read(fd, buf + len, (u64)((usize)8192 - (1 + len)));
         if (got <= 0) break;
         len = len + (usize)got;
     }
@@ -23,13 +23,13 @@ Option<str> readCmdline()
 Result<str, str> readFile(u8* cpath)
 {
     i32 fd = open(cpath, 0, 0);
-    if (fd < 0) return Result<str, str>::Err { .error = str::fromCstr("cannot open file") };
+    if (fd < 0) return Result<str, str>::Err { .error = "cannot open file" };
     usize cap = 65536;
     u8* buf = alloc<u8>(cap);
     if (buf == null)
     {
         close(fd);
-        return Result<str, str>::Err { .error = str::fromCstr("out of memory") };
+        return Result<str, str>::Err { .error = "out of memory" };
     }
     usize len = 0;
     while (true)
