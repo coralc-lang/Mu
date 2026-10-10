@@ -19,8 +19,6 @@ a verbatim copy of the documentation that ships with the vendored tree.
 | dr_libs | wav / mp3 / flac decoding | Public domain | `third_party/dr_libs` → mualibs | `dr_libs/` |
 | FastNoiseLite | Procedural noise | MIT | `third_party/FastNoiseLite` → mualibs | `FastNoiseLite/` |
 | MikkTSpace | Tangent-space generation | Permissive (Morten M. Mikkelsen — see README/source header) | `third_party/MikkTSpace` → mualibs | `MikkTSpace/` |
-| TinyCC | Runtime C compilation — prebuilt `libtcc.a` + `tcc1/` runtime in `packaged/linux-x86_64/lib/` | LGPL | source tree removed 2026-10-09 | `tinycc/` (README, COPYING, tcc-doc.*) |
-| flecs | **Not used.** Mu has its own ECS (ENGINE.md §4, `src/scene`); flecs was evaluated 2026-10-09 and its source tree deleted. Docs kept as reference. | MIT | — (source removed) | `flecs/` (README, LICENSE, docs/) |
 
 Notes:
 

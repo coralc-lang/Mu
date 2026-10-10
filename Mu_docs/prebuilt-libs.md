@@ -17,12 +17,34 @@ placeholders were never going to be filled separately.
 | `libtcc.a` | 6.4 MB | TinyCC (+ `tcc1/` runtime objects, `win32/` helpers) |
 | `libJolt.a` | 85 MB | Jolt physics — downloaded x64 build (GCC 13.3, `-O3 -g -mavx512f/-mavx2 -flto`). *The engine's dev build links its own copy instead, see below* |
 | `libmualibs.a` | 1.4 MB | Mu's vendor bundle — built 2026-10-09 from `Mu_engine/native/` |
-| `libflecs_static.a` | 4 MB | Reference build from the flecs evaluation — **unused** (Mu uses its own ECS, ENGINE.md §4; two byte-identical copies were deduplicated to one, docs at `Mu_docs/flecs/`) |
 
 ### `packaged/linux-arm64/lib/`, `windows-x64/lib/`, `windows-arm64/lib/`
 
-Only `libwgpu_native.a` (and `wgpu_native.lib` on windows) — built upstream,
-not on this machine.
+`libwgpu_native.a` (and `wgpu_native.lib` on windows) — built upstream,
+not on this machine. `linux-arm64/lib/` also holds a real
+`libmualibs.a` (8 objects) and `windows-x64/lib/` a **partial**
+`mualibs.lib` (2 objects: mikktspace, miniz — full windows build still
+pending); `windows-arm64/` remains wgpu-only.
+
+### `packaged/android-arm64/lib/`
+
+`libmualibs.a` — 5 real objects (miniz, mikktspace, stb_image,
+stb_truetype, cgltf).
+
+### SIMD variants — `packaged/{linux-x86_64,windows-x64}/lib/mualibs/{sse,avx2,avx512}/`
+
+Alternate `libmualibs.a` / `mualibs.lib` builds, 8 objects each, for
+picking a CPU target at link time.
+
+## Reorganization 2026-10-10
+
+The stray nested `packaged/packaged/` tree was merged into
+`packaged/<platform>/lib/` (ISA variants filed under
+`lib/mualibs/<variant>/`). Removed as stubs/empties: `wasm/libmualibs.a`
+and `windows-arm64/mualibs.lib` (both 46-byte empty archives), the empty
+`macos-arm64/` placeholder directory, and the incomplete 2-object
+`linux-x86_64` duplicate `libmualibs.a` (the full 11-object build
+already lives at `linux-x86_64/lib/libmualibs.a`).
 
 ## What `libmualibs.a` is
 

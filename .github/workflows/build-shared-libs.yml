@@ -1,0 +1,112 @@
+name: Build Cross-Platform Game Engine Shared Libraries
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-libs:
+    name: Build for ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+            output_name: libjoltc.so
+            sdl_output: libSDL3.so
+          - os: windows-latest
+            arch: x64
+            platform: windows
+            output_name: joltc.dll
+            sdl_output: SDL3.dll
+          - os: macos-latest
+            arch: arm64
+            platform: macos
+            output_name: libjoltc.dylib
+            sdl_output: libSDL3.dylib
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------
+      # CLONE & BUILD JOLTC INTERFACE
+      # ----------------------------------------
+      - name: Clone JoltC Bindings Layer
+        run: git clone https://github.com/amerkoleci/joltc.git JoltC
+
+      - name: Configure JoltC via CMake
+        run: |
+          cmake -B build_jolt -S JoltC \
+            -DJPH_BUILD_SHARED=ON \
+            -DJPH_SAMPLES=OFF \
+            -DJPH_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile JoltC Shared Object
+        run: cmake --build build_jolt --config Release
+
+      # ----------------------------------------
+      # LINUX BUILD HEADERS FOR SDL BACKENDS
+      # (video/audio dev packages - CI runners have no GPU/display
+      # drivers, so these are header-only: builds compile against the
+      # real APIs, runtime GPU tests still need a driver host)
+      # ----------------------------------------
+      - name: Install Linux Development Headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxkbcommon-dev libwayland-dev \
+            libegl1-mesa-dev libgles2-mesa-dev \
+            libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
+
+      # ----------------------------------------
+      # CLONE & BUILD SDL3
+      # ----------------------------------------
+      - name: Clone SDL3
+        run: git clone https://github.com/libsdl-org/SDL.git SDL
+
+      - name: Configure SDL3 via CMake
+        run: |
+          cmake -B build_sdl -S SDL \
+            -DSDL_SHARED=ON \
+            -DSDL_STATIC=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile SDL3 Shared Object
+        run: cmake --build build_sdl --config Release
+
+      # ----------------------------------------
+      # STAGE AND ARCHIVE BUNDLES
+      # ----------------------------------------
+      - name: Organize Binaries for Packaging
+        shell: bash
+        run: |
+          mkdir -p redist/${{ matrix.platform }}_${{ matrix.arch }}
+
+          # Find and move Jolt binary based on platform structure
+          find build_jolt -name "${{ matrix.output_name }}" -exec cp {} redist/${{ matrix.platform }}_${{ matrix.arch }}/ \;
+
+          # Find and move SDL binary based on platform structure
+          find build_sdl -name "${{ matrix.sdl_output }}" -exec cp {} redist/${{ matrix.platform }}_${{ matrix.arch }}/ \;
+
+          echo "Staged artifacts:"
+          ls -l redist/${{ matrix.platform }}_${{ matrix.arch }}/
+
+      - name: Verify Artifacts Are Non-Empty
+        shell: bash
+        run: |
+          test -s "redist/${{ matrix.platform }}_${{ matrix.arch }}/${{ matrix.output_name }}"
+          test -s "redist/${{ matrix.platform }}_${{ matrix.arch }}/${{ matrix.sdl_output }}"
+
+      - name: Upload Cross-Platform Shared Library Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-libs-${{ matrix.platform }}-${{ matrix.arch }}
+          path: redist/
