@@ -3,7 +3,7 @@ strict = true;
 
 build "muc" {
     root       = "src/";
-    entry      = "mu-frontend";
+    entry      = "mu-frontend/muc";
     target     = "Wallvm";
     opt        = "debug";
     output     = "build/muc";
