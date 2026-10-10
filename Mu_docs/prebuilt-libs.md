@@ -20,23 +20,25 @@ placeholders were never going to be filled separately.
 
 ### `packaged/linux-arm64/lib/`, `windows-x64/lib/`, `windows-arm64/lib/`
 
-`libwgpu_native.a` (and `wgpu_native.lib` on windows) — built upstream,
-not on this machine. `mualibs` archives here are full **11-object**
-builds produced by CI (2026-10-10), replacing the former partials
-(8-object linux-arm64, 2-object windows-x64) and the empty
-windows-arm64 stub.
+`wgpu_native.lib` on windows (windows-x64's archive was renamed from
+`libwgpu_native.a` — same MSVC content, wrong extension), `libwgpu_native.a`
+on linux — built upstream, not on this machine. `mualibs` archives here
+are full **canonical-set** builds produced by CI (2026-10-10), replacing
+the former partials (8-object linux-arm64, 2-object windows-x64) and the
+empty windows-arm64 stub.
 
 ### `packaged/android-arm64/lib/`, `macos-arm64/lib/`, `wasm/lib/`
 
-`libmualibs.a` — full 11-object CI builds (2026-10-10); the android
+`libmualibs.a` — full canonical-set CI builds (2026-10-10); the android
 archive previously held only 5 objects, and the macos/wasm directories
 did not exist (their former placeholders were 46-byte stubs removed in
 the reorganization below).
 
-### SIMD variants — `packaged/{linux-x86_64,windows-x64}/lib/mualibs/{sse,avx2,avx512}/`
+### SIMD variants — removed 2026-10-10
 
-Alternate `libmualibs.a` / `mualibs.lib` builds, 8 objects each, for
-picking a CPU target at link time.
+The stale 8-object alternate builds under
+`packaged/{linux-x86_64,windows-x64}/lib/mualibs/{sse,avx2,avx512}/`
+were dropped; CI produces the canonical archive per platform.
 
 ## Reorganization 2026-10-10
 
@@ -64,6 +66,7 @@ implementations behind the Coral extern ports. One archive instead of seven:
 | `mu_drlibs.c.o` | `src/drlibs` (wav/mp3/flac) |
 | `mu_fnl.c.o` | `src/fastnoise` |
 | `mikktspace.c.o` | `src/mikktspace` |
+| zstd objects (`lib/{common,compress,decompress,dictBuilder}`) | runtime compression — saves, cooked packs |
 
 ## Build / rebuild (linux x64)
 
@@ -89,15 +92,18 @@ pointed at the deleted `Mu/engine` tree) and built with `-j2`; the built
 Two workflows push to `coralc-lang/Mu` (both also dispatchable):
 
 - **`.github/workflows/build-shared-libs.yml`** — JoltC + SDL3 shared
-  libraries for `linux-x64`, `windows-x64`, `macos-arm64` (build-time
-  -dev headers only; runners have no GPU drivers, so no runtime GPU
-  tests). Artifacts: `shared-libs-<platform>-<arch>`.
+  libraries for `linux-x64`, `linux-arm64`, `windows-x64`,
+  `windows-arm64`, `macos-arm64` and `android-arm64` (build-time -dev
+  headers only; runners have no GPU drivers, so no runtime GPU tests;
+  wasm deliberately left out — link SDL/Jolt statically there).
+  Artifacts: `shared-libs-<platform>-<arch>`.
 - **`.github/workflows/build-mualibs.yml`** — `mualibs` (the `--target
   mualibs` slice of `Mu_engine/native/`, vendored JoltC not compiled)
   for `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
   `macos-arm64`, `android-arm64` (NDK toolchain) and `wasm32`
   (Emscripten). Artifacts: `mualibs-<platform>-<arch>`, each verified
-  to contain the full 11-object set.
+  to contain the full canonical object set (stb/cgltf/miniz/tinyexr/
+  dr_libs/FNL/MikkTSpace + zstd).
 
 Fetch a run's outputs with `gh run download <run-id> -D <dir>`, or from
 the run's Artifacts panel on the Actions tab.

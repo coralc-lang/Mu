@@ -13,14 +13,14 @@
 pub const i32 MZ_DEFAULT_COMPRESSION = -1;
 pub const i32 MZ_NO_ERROR = 0;
 
-// --- raw deflate / zlib-style one-shots ---
+// raw deflate / zlib-style one-shots
 
 pub extern u64 mz_crc32(u64 crc, const u8* ptr, usize buf_len);
 pub extern u64 mz_compressBound(u64 source_len);
 pub extern i32 mz_compress2(rawptr p_dest, u64* p_dest_len, const rawptr p_source, u64 source_len, i32 level);
 pub extern i32 mz_uncompress(rawptr p_dest, u64* p_dest_len, const rawptr p_source, u64 source_len);
 
-// --- zip reader (packed assets) ---
+// zip reader (packed assets)
 
 pub extern void mz_zip_zero_struct(rawptr p_zip);
 pub extern i32 mz_zip_reader_init_mem(rawptr p_zip, const rawptr p_mem, usize size, u32 flags);

@@ -19,6 +19,7 @@ a verbatim copy of the documentation that ships with the vendored tree.
 | dr_libs | wav / mp3 / flac decoding | Public domain | `third_party/dr_libs` → mualibs | `dr_libs/` |
 | FastNoiseLite | Procedural noise | MIT | `third_party/FastNoiseLite` → mualibs | `FastNoiseLite/` |
 | MikkTSpace | Tangent-space generation | Permissive (Morten M. Mikkelsen — see README/source header) | `third_party/MikkTSpace` → mualibs | `MikkTSpace/` |
+| zstd 1.5.7 | Runtime compression — saves, cooked asset packs (ENGINE.md §17) | BSD-3-Clause / GPLv2 dual | `third_party/zstd` → mualibs | `zstd/` (README, LICENSE, COPYING) |
 
 Notes:
 
