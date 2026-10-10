@@ -65,9 +65,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxfixes-dev libxkbcommon-dev libxss-dev \
-            libwayland-dev wayland-protocols \
+            build-essential pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libibus-1.0-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libdrm-dev libgbm-dev \
             libegl1-mesa-dev libgles2-mesa-dev \
             libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
 
