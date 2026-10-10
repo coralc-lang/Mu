@@ -21,15 +21,17 @@ placeholders were never going to be filled separately.
 ### `packaged/linux-arm64/lib/`, `windows-x64/lib/`, `windows-arm64/lib/`
 
 `libwgpu_native.a` (and `wgpu_native.lib` on windows) — built upstream,
-not on this machine. `linux-arm64/lib/` also holds a real
-`libmualibs.a` (8 objects) and `windows-x64/lib/` a **partial**
-`mualibs.lib` (2 objects: mikktspace, miniz — full windows build still
-pending); `windows-arm64/` remains wgpu-only.
+not on this machine. `mualibs` archives here are full **11-object**
+builds produced by CI (2026-10-10), replacing the former partials
+(8-object linux-arm64, 2-object windows-x64) and the empty
+windows-arm64 stub.
 
-### `packaged/android-arm64/lib/`
+### `packaged/android-arm64/lib/`, `macos-arm64/lib/`, `wasm/lib/`
 
-`libmualibs.a` — 5 real objects (miniz, mikktspace, stb_image,
-stb_truetype, cgltf).
+`libmualibs.a` — full 11-object CI builds (2026-10-10); the android
+archive previously held only 5 objects, and the macos/wasm directories
+did not exist (their former placeholders were 46-byte stubs removed in
+the reorganization below).
 
 ### SIMD variants — `packaged/{linux-x86_64,windows-x64}/lib/mualibs/{sse,avx2,avx512}/`
 
@@ -44,7 +46,9 @@ The stray nested `packaged/packaged/` tree was merged into
 and `windows-arm64/mualibs.lib` (both 46-byte empty archives), the empty
 `macos-arm64/` placeholder directory, and the incomplete 2-object
 `linux-x86_64` duplicate `libmualibs.a` (the full 11-object build
-already lives at `linux-x86_64/lib/libmualibs.a`).
+already lives at `linux-x86_64/lib/libmualibs.a`). The removed
+platforms came back later the same day as real CI builds — see
+"CI builds" below.
 
 ## What `libmualibs.a` is
 
@@ -80,11 +84,29 @@ cmake --build build/native -j2
 pointed at the deleted `Mu/engine` tree) and built with `-j2`; the built
 `libmualibs.a` was copied into `packaged/linux-x86_64/lib/`.
 
+## CI builds (GitHub Actions)
+
+Two workflows push to `coralc-lang/Mu` (both also dispatchable):
+
+- **`.github/workflows/build-shared-libs.yml`** — JoltC + SDL3 shared
+  libraries for `linux-x64`, `windows-x64`, `macos-arm64` (build-time
+  -dev headers only; runners have no GPU drivers, so no runtime GPU
+  tests). Artifacts: `shared-libs-<platform>-<arch>`.
+- **`.github/workflows/build-mualibs.yml`** — `mualibs` (the `--target
+  mualibs` slice of `Mu_engine/native/`, vendored JoltC not compiled)
+  for `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
+  `macos-arm64`, `android-arm64` (NDK toolchain) and `wasm32`
+  (Emscripten). Artifacts: `mualibs-<platform>-<arch>`, each verified
+  to contain the full 11-object set.
+
+Fetch a run's outputs with `gh run download <run-id> -D <dir>`, or from
+the run's Artifacts panel on the Actions tab.
+
 ## Deliberately not built now
 
-- **SDL3** — linked only from the M3 build phase onward (`src/sdl/sdl.crl`).
-- **windows / wasm / arm64 archives** — need cross toolchains or their host
-  machines; only upstream prebuilts (wgpu) exist for them.
+- **SDL3 static / Jolt static on non-linux hosts** — the packaged
+  statics are prebuilt upstream or linux-local; SDL3 links from the M3
+  build phase onward (`src/sdl/sdl.crl`).
 - **Per-library `libstb.a` & co.** — covered by `libmualibs.a`.
 
 ## Build quirk
