@@ -24,9 +24,9 @@ pub struct Transform
     static Transform zero()
     {
         return Transform {
-            .position = Vec3.zero(),
-            .rotation = Quat.identity(),
-            .scale = Vec3.one()
+            .position = Vec3::zero(),
+            .rotation = Quat::identity(),
+            .scale = Vec3::one()
         };
     }
 }
@@ -248,10 +248,12 @@ pub struct ComponentRegistry
             return Result<u32, str>::Err { .error = "component registry: table full" };
         if (store == null)
             return Result<u32, str>::Err { .error = "component registry: null store" };
+            
         self.types[self.count].name = name;
         self.types[self.count].stride = store->stride;
         self.types[self.count].store = store;
         self.count = self.count + 1;
+        
         return Result<u32, str>::Ok { .value = self.count };
     }
 

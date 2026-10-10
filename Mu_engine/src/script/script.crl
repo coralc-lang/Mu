@@ -237,10 +237,7 @@ pub struct ScriptBindings
                 self.count = self.count - 1;
                 removed = removed + 1;
             }
-            else
-            {
-                i = i + 1;
-            }
+            else { i++; }
         }
         return removed;
     }

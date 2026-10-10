@@ -1,5 +1,4 @@
 // Renderer interface - M0: null backend, engine runs headless.
-// The GL 3.3 / GLES3 backend slots in behind this same struct at M3
 // (ENGINE.md §3/§6: call sites are written against this API from day one).
 
 pub struct Renderer
@@ -14,9 +13,7 @@ static void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
     // headless: nothing to present
 }
 
-static void _nullShutdown(rawptr ctx)
-{
-}
+static void _nullShutdown(rawptr ctx) { }
 
 pub Renderer nullRenderer()
 {
