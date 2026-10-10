@@ -32,7 +32,10 @@ empty windows-arm64 stub.
 `libmualibs.a` — full canonical-set CI builds (2026-10-10); the android
 archive previously held only 5 objects, and the macos/wasm directories
 did not exist (their former placeholders were 46-byte stubs removed in
-the reorganization below).
+the reorganization below). `libwgpu_native.a` was added to
+`android-arm64/` and `macos-arm64/` from the upstream wgpu-native
+v29.0.1.1 release (matching headers now live at
+`Mu_engine/include/webgpu/`).
 
 ### SIMD variants — removed 2026-10-10
 
@@ -67,6 +70,7 @@ implementations behind the Coral extern ports. One archive instead of seven:
 | `mu_fnl.c.o` | `src/fastnoise` |
 | `mikktspace.c.o` | `src/mikktspace` |
 | zstd objects (`lib/{common,compress,decompress,dictBuilder}`) | runtime compression — saves, cooked packs |
+| `TracyClient.o` (+ `client/`, `common/` includes) | `src/tracy` — profiler zones, frame marks, plots |
 
 ## Build / rebuild (linux x64)
 
@@ -98,14 +102,18 @@ Two workflows push to `coralc-lang/Mu` (both also dispatchable):
   `windows-arm64`, `macos-arm64` and `android-arm64` (build-time -dev
   headers only; runners have no GPU drivers, so no runtime GPU tests;
   wasm deliberately left out — link SDL/Jolt statically there).
-  Artifacts: `shared-libs-<platform>-<arch>`.
-- **`.github/workflows/build-mualibs.yml`** — `mualibs` (the `--target
-  mualibs` slice of `Mu_engine/native/`, vendored JoltC not compiled)
-  for `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
+  Artifacts: `shared-libs-<platform>-<arch>`. On a fully green run the
+  final `commit-packaged` job copies the `.so`/`.dll`/`.dylib` files
+  into `packaged/<platform>/lib/` and pushes with `[skip ci]` — the
+  shared runtime libs in the tree are refreshed automatically.
+- **`.github/workflows/build-mualibs.yml`** — `mualibs` **and** `ktx`
+  targets of `Mu_engine/native/` (vendored JoltC not compiled) for
+  `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
   `macos-arm64`, `android-arm64` (NDK toolchain) and `wasm32`
-  (Emscripten). Artifacts: `mualibs-<platform>-<arch>`, each verified
-  to contain the full canonical object set (stb/cgltf/miniz/tinyexr/
-  dr_libs/FNL/MikkTSpace + zstd).
+  (Emscripten). Artifacts: `mualibs-<platform>-<arch>` — each verified
+  to hold the full canonical object set (stb/cgltf/miniz/tinyexr/
+  dr_libs/FNL/MikkTSpace + zstd + Tracy) plus `libktx.a` and its
+  `astcenc` dependency (merged into `libktx.a` on macOS).
 
 Fetch a run's outputs with `gh run download <run-id> -D <dir>`, or from
 the run's Artifacts panel on the Actions tab.

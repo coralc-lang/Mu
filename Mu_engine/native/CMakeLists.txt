@@ -28,6 +28,25 @@ file(GLOB MU_ZSTD_SOURCES
     ${MU_TP}/zstd/lib/decompress/*.c
     ${MU_TP}/zstd/lib/dictBuilder/*.c
 )
+
+# tracy: profiler client - one TU (public/TracyClient.cpp pulls in
+# client/ + common/); TRACY_ENABLE so the src/tracy port's externs link.
+set(MU_TRACY_CLIENT ${MU_TP}/tracy/public/TracyClient.cpp)
+
+# ktx: KTX2/Basis texture reader (port in src/ktx) - own static archive
+# (libktx.a + astcenc) built from the vendored, patched CMake: tests/tools/
+# GL/VK upload off, static only, zstd supplied by mualibs (the bundled
+# basisu zstd.c was removed from its source list to avoid duplicate symbols).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_GL_UPLOAD OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_VK_UPLOAD OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_JNI OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_PY OFF CACHE BOOL "" FORCE)
+add_subdirectory(${MU_TP}/KTX-Software ${CMAKE_BINARY_DIR}/ktx-build)
+
 add_library(mualibs STATIC
     mu_stb.c
     mu_cgltf.c
@@ -41,7 +60,9 @@ add_library(mualibs STATIC
     ${MU_TP}/tinyexr/tinyexr.cc
     ${MU_TP}/MikkTSpace/mikktspace.c
     ${MU_ZSTD_SOURCES}
+    ${MU_TRACY_CLIENT}
 )
+target_compile_definitions(mualibs PRIVATE TRACY_ENABLE)
 target_include_directories(mualibs PUBLIC
     ${MU_TP}/stb
     ${MU_TP}/cgltf
@@ -51,6 +72,7 @@ target_include_directories(mualibs PUBLIC
     ${MU_TP}/FastNoiseLite/C
     ${MU_TP}/MikkTSpace
     ${MU_TP}/zstd/lib
+    ${MU_TP}/tracy/public
 )
 set_target_properties(mualibs PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

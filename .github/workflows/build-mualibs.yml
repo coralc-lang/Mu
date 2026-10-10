@@ -90,7 +90,7 @@ jobs:
       # ----------------------------------------
       - name: Compile mualibs
         shell: bash
-        run: cmake --build build/mualibs --target mualibs --config Release -j 2
+        run: cmake --build build/mualibs --target mualibs ktx --config Release -j 2
 
       # ----------------------------------------
       # STAGE AND UPLOAD
@@ -99,7 +99,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}
-          find build/mualibs -name "${{ matrix.output_name }}" \
+          find build/mualibs \( -name "${{ matrix.output_name }}" \
+            -o -name "libktx.a" -o -name "ktx.lib" \
+            -o -name "libastcenc*.a" -o -name "*astcenc*.lib" \) \
             -exec cp {} redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}/ \;
           echo "Staged:"
           ls -l redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}/
@@ -107,7 +109,10 @@ jobs:
       - name: Verify Archive Is Non-Empty
         shell: bash
         run: |
-          test -s "redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}/${{ matrix.output_name }}"
+          D="redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}"
+          test -s "$D/${{ matrix.output_name }}"
+          K=$(find "$D" \( -name "libktx.a" -o -name "ktx.lib" \))
+          test -n "$K" && test -s "$K"
 
       - name: Upload mualibs Archive Bundle
         uses: actions/upload-artifact@v4
