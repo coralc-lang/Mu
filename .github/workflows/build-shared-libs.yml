@@ -37,9 +37,11 @@ jobs:
       # CLONE & BUILD JOLTC INTERFACE
       # ----------------------------------------
       - name: Clone JoltC Bindings Layer
+        shell: bash
         run: git clone https://github.com/amerkoleci/joltc.git JoltC
 
       - name: Configure JoltC via CMake
+        shell: bash
         run: |
           cmake -B build_jolt -S JoltC \
             -DJPH_BUILD_SHARED=ON \
@@ -48,6 +50,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Compile JoltC Shared Object
+        shell: bash
         run: cmake --build build_jolt --config Release
 
       # ----------------------------------------
@@ -58,11 +61,13 @@ jobs:
       # ----------------------------------------
       - name: Install Linux Development Headers
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxfixes-dev libxkbcommon-dev libwayland-dev \
+            libxfixes-dev libxkbcommon-dev libxss-dev \
+            libwayland-dev wayland-protocols \
             libegl1-mesa-dev libgles2-mesa-dev \
             libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
 
@@ -70,9 +75,11 @@ jobs:
       # CLONE & BUILD SDL3
       # ----------------------------------------
       - name: Clone SDL3
+        shell: bash
         run: git clone https://github.com/libsdl-org/SDL.git SDL
 
       - name: Configure SDL3 via CMake
+        shell: bash
         run: |
           cmake -B build_sdl -S SDL \
             -DSDL_SHARED=ON \
@@ -80,6 +87,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Compile SDL3 Shared Object
+        shell: bash
         run: cmake --build build_sdl --config Release
 
       # ----------------------------------------
