@@ -16,7 +16,7 @@ placeholders were never going to be filled separately.
 | `libwgpu_native.a` | 50 MB | wgpu-native WebGPU backend (prebuilt) |
 | `libtcc.a` | 6.4 MB | TinyCC (+ `tcc1/` runtime objects, `win32/` helpers) |
 | `libJolt.a` | 85 MB | Jolt physics — downloaded x64 build (GCC 13.3, `-O3 -g -mavx512f/-mavx2 -flto`). *The engine's dev build links its own copy instead, see below* |
-| `libmualibs.a` | 1.4 MB | Mu's vendor bundle — built 2026-10-09 from `Mu_engine/native/` |
+| `libmualibs.a` | 2.4 MB | Mu's vendor bundle (incl. zstd) — CI build 2026-10-10 from `Mu_engine/native/`, see "CI builds" below |
 
 ### `packaged/linux-arm64/lib/`, `windows-x64/lib/`, `windows-arm64/lib/`
 
@@ -85,7 +85,9 @@ cmake --build build/native -j2
 
 `build/` is git-ignored. Status 2026-10-09: configured fresh (the old cache
 pointed at the deleted `Mu/engine` tree) and built with `-j2`; the built
-`libmualibs.a` was copied into `packaged/linux-x86_64/lib/`.
+`libmualibs.a` was copied into `packaged/linux-x86_64/lib/`. All
+`packaged/*/lib` mualibs copies were refreshed from CI archives on
+2026-10-10 (now the full set including zstd).
 
 ## CI builds (GitHub Actions)
 
