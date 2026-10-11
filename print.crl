@@ -1,0 +1,7 @@
+import(lib) std::io { ios::println };
+
+pub i32 main()
+{
+    println("{}", 4);
+    return 0;
+}

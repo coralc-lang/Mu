@@ -158,7 +158,7 @@ pub extend Parser
             return p;
         }
 
-        self.perr("E0205", self.fmt("expected a pattern, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0205", self.fmt("expected a pattern, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return newPattern(self.arena, PatternKind::PatBinding, loc);

@@ -1,14 +1,14 @@
-import core::io { readCmdline, readFile, sliceCStr };
+import core::io { readCmdline, readFile };
 import core::arena { Arena };
 import diag::diag { Diags };
 import lexer::lexer { Lexer, newLexer };
 import common::token { Token, TokenKind, kindName, matchWord };
-import parser::base { Parser };
+import parser { base::Parser, decl, expr, pattern, stmt, type };
 import ast::ast { PtrList };
 import sema::sema { Checker };
 
 import(lib) std::data { option::Option, result::Result };
-import(lib) platform::libc { printf };
+import(lib) std::io::ios { print };
 
 Option<str> nextArg(str all, usize* pos)
 {
@@ -22,54 +22,46 @@ Option<str> nextArg(str all, usize* pos)
     return Option<str>::Some { .value = str::fromParts(all.ptr + start, i - start) };
 }
 
-void usage() { printf(C"usage: muc [--tokens] <file.mu>\n"); }
+void usage() { print("usage: muc [--tokens] <file.mu>\n"); }
 
 pub i32 main()
 {
     Option<str> cmdOpt = readCmdline();
     if (cmdOpt.isNone()) {
-        printf(C"muc: cannot read /proc/self/cmdline\n");
+        print("muc: cannot read /proc/self/cmdline\n");
         return 1;
     }
     
     str cmd = cmdOpt.unwrap();
     usize pos = 0;
+    
     nextArg(cmd, &pos);
     str path = str::empty();
     bool dumpTokens = false;
+    
     while (true)
     {
         Option<str> moreOpt = nextArg(cmd, &pos);
         if (moreOpt.isNone()) break;
         str arg = moreOpt.unwrap();
+        
         if (matchWord(arg, "--tokens")) dumpTokens = true;
         else if (path.len == 0) path = arg;
-        else
-        {
-            printf(C"muc: unexpected argument: %.*s\n", (i32)arg.len, arg.ptr);
+        else {
+            print("muc: unexpected argument: {}\n", arg);
             usage();
             return 2;
         }
     }
-    if (path.len == 0)
-    {
+    if (path.len == 0) {
         usage();
         return 2;
     }
 
-    Option<u8*> cpathOpt = sliceCStr(path);
-    if (cpathOpt.isNone())
-    {
-        printf(C"muc: out of memory\n");
-        return 1;
-    }
-    u8* cpath = cpathOpt.unwrap();
-
-    Result<str, str> file = readFile(cpath);
-    if (file.isErr())
-    {
+    Result<str, str> file = readFile(path);
+    if (file.isErr()) {
         str err = file.unwrapErr();
-        printf(C"muc: %.*s: %.*s\n", (i32)path.len, path.ptr, (i32)err.len, err.ptr);
+        print("muc: {}: {}\n", path, err);
         return 1;
     }
     str src = file.unwrap();
@@ -80,10 +72,9 @@ pub i32 main()
 
     if (dumpTokens)
     {
-        while (true)
-        {
+        loop {
             Token t = lx.next();
-            printf(C"%u:%u %s %.*s\n", (u32)t.line, (u32)t.col, kindName(t.kind), (i32)t.text.len, t.text.ptr);
+            print("{}:{} {}: {}\n", t.line, t.col, kindName(t.kind), t.text);
             if (t.kind == TokenKind::Eof) break;
         }
         diags.summary();
@@ -96,7 +87,7 @@ pub i32 main()
     Parser p;
     p.init(&lx, &diags, &arena);
     PtrList* decls = p.parseFile();
-    printf(C"muc: %u declaration(s)\n", (u32)decls.len);
+    print("muc: {} declaration(s)\n", decls.len);
 
     Checker chk;
     chk.init(&arena, &diags, decls);

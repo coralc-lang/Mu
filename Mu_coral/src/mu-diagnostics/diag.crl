@@ -1,12 +1,12 @@
-import(lib) platform::libc { printf };
+import(lib) std::io::ios { print, spaces };
 
 usize width(usize n)
 {
     usize w = 1;
     while (n >= 10)
     {
-        n = n / 10;
-        w = w + 1;
+        n /= 10;
+        w++;
     }
     return w;
 }
@@ -47,7 +47,7 @@ pub struct Diags
             if (!self.limitHit)
             {
                 self.limitHit = true;
-                printf(C"error E0000  too many errors, aborting after %u\n", (u32)self.limit);
+                print("error E0000  too many errors, aborting after {}\n", self.limit);
             }
             return;
         }
@@ -63,50 +63,50 @@ pub struct Diags
 
     void why(str msg)
     {
-        printf(C"      why: %s\n", msg);
+        print("      why: {}\n", msg);
     }
 
     void help(str msg)
     {
-        printf(C"      help: %s\n", msg);
+        print("      help: {}\n", msg);
     }
 
     void also(usize line, usize col, usize len, str msg)
     {
-        printf(C"\n  also at %.*s:%u:%u: %s\n\n", (i32)self.file.len, self.file.ptr, (u32)line, (u32)col, msg);
+        print("\n  also at {}:{}:{}: {}\n\n", self.file, line, col, msg);
         usize w = width(line);
         str text = self.lineOf(line).trimEnd();
-        printf(C"%*u | %.*s\n", (i32)w, (u32)line, (i32)text.len, text.ptr);
+        print("{} | {}\n", line, text);
         self.caret(w, col, len);
-        printf(C"  %s\n", msg);
+        print("  {}\n", msg);
     }
 
     void emit(str kind, str code, usize line, usize col, usize len, str title)
     {
-        printf(C"%s %s  %s\n", kind, code, title);
-        printf(C"\n  at %.*s:%u:%u\n\n", (i32)self.file.len, self.file.ptr, (u32)line, (u32)col);
+        print("{} {}  {}\n", kind, code, title);
+        print("\n  at {}:{}:{}\n\n", self.file, line, col);
         usize w = width(line);
         str text = self.lineOf(line).trimEnd();
-        printf(C"%*u | %.*s\n", (i32)w, (u32)line, (i32)text.len, text.ptr);
+        print("{} | {}\n", line, text);
         self.caret(w, col, len);
-        printf(C"\n");
+        print("\n");
     }
 
     void caret(usize w, usize col, usize len)
     {
-        printf(C"%*s | ", (i32)w, "");
+        print("{}| ", spaces((u64)w));
         usize i = 0;
         while (i + 1 < col)
         {
-            printf(C" ");
-            i = i + 1;
+            print(" ");
+            i++;
         }
-        printf(C"^");
+        print("^");
         usize extra = len > 1 ? len - 1 : 0;
         while (extra > 0)
         {
-            printf(C"~");
-            extra = extra - 1;
+            print("~");
+            extra--;
         }
     }
 
@@ -117,7 +117,7 @@ pub struct Diags
         while (i < self.src.len && cur < line)
         {
             if (self.src.ptr[i] == (u8)'\n') cur = cur + 1;
-            i = i + 1;
+            i++;
         }
         usize start = i;
         while (i < self.src.len && self.src.ptr[i] != (u8)'\n') i = i + 1;
@@ -127,6 +127,6 @@ pub struct Diags
     void summary()
     {
         if (self.errors == 0 && self.warnings == 0) return;
-        printf(C"\n  %u error(s), %u warning(s) in %.*s\n", (u32)self.errors, (u32)self.warnings, (i32)self.file.len, self.file.ptr);
+        print("\n  {} error(s), {} warning(s) in {}\n", self.errors, self.warnings, self.file);
     }
 }

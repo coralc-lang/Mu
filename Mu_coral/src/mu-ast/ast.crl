@@ -35,13 +35,13 @@ pub void listPush(PtrList* l, rawptr item)
         while (i < l.len)
         {
             fresh[i] = l.data[i];
-            i = i + 1;
+            i++;
         }
         l.data = fresh;
         l.cap = newCap;
     }
     l.data[l.len] = item;
-    l.len = l.len + 1;
+    l.len++;
 }
 
 pub enum Op

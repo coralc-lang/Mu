@@ -11,8 +11,6 @@ import ast::ast {
 import diag::diag { Diags };
 import common::token { matchWord };
 
-import(lib) platform::libc { snprintf, printf };
-
 bool strEq(str a, str b)
 {
     if (a.len != b.len) return false;
@@ -20,7 +18,7 @@ bool strEq(str a, str b)
     while (i < a.len)
     {
         if (a.ptr[i] != b.ptr[i]) return false;
-        i = i + 1;
+        i++;
     }
     return true;
 }
@@ -33,7 +31,7 @@ bool endsWith(str s, str suffix)
     while (i < suffix.len)
     {
         if (s.ptr[off + i] != suffix.ptr[i]) return false;
-        i = i + 1;
+        i++;
     }
     return true;
 }
@@ -210,7 +208,7 @@ pub extend Checker
         {
             Sym* s = (Sym*)self.globals.data[i];
             if (strEq(s.name, name)) return s;
-            i = i + 1;
+            i++;
         }
         return null;
     }
@@ -234,7 +232,7 @@ pub extend Checker
         {
             GenericParam* g = (GenericParam*)self.curFn.generics.data[i];
             if (strEq(g.name, name)) return true;
-            i = i + 1;
+            i++;
         }
         return false;
     }
@@ -256,7 +254,7 @@ pub extend Checker
                 while (i < t.items.len)
                 {
                     listPush(items, (rawptr)self.resolveType((Type*)t.items.data[i]));
-                    i = i + 1;
+                    i++;
                 }
                 return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
             }
@@ -294,7 +292,7 @@ pub extend Checker
                     while (i < t.args.len)
                     {
                         listPush(args, (rawptr)self.resolveType((Type*)t.args.data[i]));
-                        i = i + 1;
+                        i++;
                     }
                 }
                 return mkType(self.arena, RtKind::RtNamed, 0, n, null, args);
@@ -325,7 +323,7 @@ pub extend Checker
                 while (i < a.args.len)
                 {
                     if (!self.rtEq((RType*)a.args.data[i], (RType*)b.args.data[i])) return false;
-                    i = i + 1;
+                    i++;
                 }
                 return true;
             }
@@ -379,7 +377,7 @@ pub extend Checker
             Decl* d = (Decl*)self.decls.data[i];
             if (d == null)
             {
-                i = i + 1;
+                i++;
                 continue;
             }
             switch (d.kind)
@@ -397,7 +395,7 @@ pub extend Checker
             {
                 self.addGlobal(SymKind::SkExtern, d.name, d);
             }
-            i = i + 1;
+            i++;
         }
     }
 
@@ -424,7 +422,7 @@ pub extend Checker
             Decl* d = (Decl*)self.decls.data[i];
             if (d == null)
             {
-                i = i + 1;
+                i++;
                 continue;
             }
             #[[fallthrough]]
@@ -438,7 +436,7 @@ pub extend Checker
                 DeclKind::DcExtend => { self.checkExtend(d); }
                 else => {}
             }
-            i = i + 1;
+            i++;
         }
     }
 
@@ -460,7 +458,7 @@ pub extend Checker
         {
             Decl* m = (Decl*)d.members.data[i];
             if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
-            i = i + 1;
+            i++;
         }
     }
 
@@ -471,7 +469,7 @@ pub extend Checker
         {
             Decl* m = (Decl*)d.members.data[i];
             if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
-            i = i + 1;
+            i++;
         }
     }
 
@@ -482,7 +480,7 @@ pub extend Checker
         {
             Decl* m = (Decl*)d.members.data[i];
             if (m.kind == DeclKind::DcFn && m.body != null) self.checkFn(m, d);
-            i = i + 1;
+            i++;
         }
     }
 
@@ -507,14 +505,14 @@ pub extend Checker
                         {
                             Decl* em = (Decl*)d.members.data[j];
                             if (em.kind == DeclKind::DcFn && strEq(em.name, tm.name)) found = true;
-                            j = j + 1;
+                            j++;
                         }
                         if (!found)
                         {
                             self.diags.error(d.loc.line, d.loc.col, 1, "E0320", "extend does not satisfy trait");
                         }
                     }
-                    i = i + 1;
+                    i++;
                 }
             }
         }
@@ -528,7 +526,7 @@ pub extend Checker
         {
             Decl* m = (Decl*)d.members.data[i];
             if (m.kind == DeclKind::DcFn) self.checkFn(m, d);
-            i = i + 1;
+            i++;
         }
         self.scope = saved;
     }
@@ -576,7 +574,7 @@ pub extend Checker
                 {
                     addLocal(self.arena, self.scope, p.name, pt, false);
                 }
-                i = i + 1;
+                i++;
             }
         }
 
@@ -602,7 +600,7 @@ pub extend Checker
                 while (i < s.list.len)
                 {
                     self.stmt((Stmt*)s.list.data[i]);
-                    i = i + 1;
+                    i++;
                 }
                 self.scope = saved;
             }
@@ -665,7 +663,7 @@ pub extend Checker
                     }
                     self.stmt(p.body);
                     self.scope = saved;
-                    i = i + 1;
+                    i++;
                 }
             }
             StmtKind::StReturn =>
@@ -781,7 +779,7 @@ pub extend Checker
                         et = (RType*)expected.args.data[i];
                     }
                     self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
-                    i = i + 1;
+                    i++;
                 }
             }
             PatternKind::PatSlice =>
@@ -792,7 +790,7 @@ pub extend Checker
                     RType* et = null;
                     if (expected.kind == RtKind::RtArray || expected.kind == RtKind::RtSlice) et = expected.elem;
                     self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
-                    i = i + 1;
+                    i++;
                 }
             }
             PatternKind::PatVariant =>
@@ -805,7 +803,7 @@ pub extend Checker
                 while (i < p.items.len)
                 {
                     self.checkPattern((Pattern*)p.items.data[i], expected, isLet);
-                    i = i + 1;
+                    i++;
                 }
             }
         }
@@ -839,10 +837,10 @@ pub extend Checker
                             foundCase = c;
                         }
                     }
-                    j = j + 1;
+                    j++;
                 }
             }
-            i = i + 1;
+            i++;
         }
         if (found == null)
         {
@@ -858,7 +856,7 @@ pub extend Checker
                 pt = self.resolveType((Type*)foundCase.payload.data[j]);
             }
             self.checkPattern((Pattern*)p.items.data[j], pt, isLet);
-            j = j + 1;
+            j++;
         }
     }
 
@@ -869,31 +867,19 @@ pub extend Checker
         if (e == null) return self.unknown();
         switch (e.kind)
         {
-            ExprKind::Int =>
-            {
-                return self.intType(e.text);
-            }
-            ExprKind::Float =>
-            {
+            ExprKind::Int => { return self.intType(e.text); }
+            
+            ExprKind::Float => {
                 if (endsWith(e.text, "f64")) return mkType(self.arena, RtKind::RtFloat, 64, "f64", null, null);
                 RType* t = mkType(self.arena, RtKind::RtFloat, 32, "f32", null, null);
                 t.isLitFloat = true;
                 return t;
             }
-            ExprKind::Str =>
-            {
-                return mkType(self.arena, RtKind::RtStr, 0, str::empty(), null, null);
-            }
-            ExprKind::Char =>
-            {
-                return mkType(self.arena, RtKind::RtChar, 0, str::empty(), null, null);
-            }
-            ExprKind::Bool =>
-            {
-                return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
-            }
-            ExprKind::Name =>
-            {
+            
+            ExprKind::Str => { return mkType(self.arena, RtKind::RtStr, 0, str::empty(), null, null); }
+            ExprKind::Char => { return mkType(self.arena, RtKind::RtChar, 0, str::empty(), null, null); }
+            ExprKind::Bool => { return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null); }
+            ExprKind::Name => {
                 Local* l = findLocal(self.scope, e.name);
                 if (l != null) return l.type;
                 Sym* s = self.findSym(e.name);
@@ -910,8 +896,7 @@ pub extend Checker
                 self.error(e.loc, "E0350", "unknown name");
                 return self.unknown();
             }
-            ExprKind::Unary =>
-            {
+            ExprKind::Unary => {
                 RType* t = self.expr(e.a);
                 if (e.op == Op::Neg)
                 {
@@ -926,20 +911,12 @@ pub extend Checker
                 if (e.op == Op::Await) return t;
                 return self.unknown();
             }
-            ExprKind::Binary =>
-            {
-                return self.binary(e);
-            }
-            ExprKind::Assign =>
-            {
-                return self.assign(e);
-            }
-            ExprKind::Call =>
-            {
-                return self.call(e);
-            }
-            ExprKind::Field =>
-            {
+            
+            ExprKind::Binary => { return self.binary(e); }
+            ExprKind::Assign => { return self.assign(e); }
+            ExprKind::Call => { return self.call(e); }
+            
+            ExprKind::Field => {
                 RType* obj = self.expr(e.a);
                 if (obj.kind == RtKind::RtUnknown) return self.unknown();
                 if (obj.kind == RtKind::RtDyn)
@@ -958,41 +935,35 @@ pub extend Checker
                     {
                         FieldDecl* f = (FieldDecl*)d.fields.data[i];
                         if (strEq(f.name, e.name)) return self.resolveType(f.type);
-                        i = i + 1;
+                        i++;
                     }
                     // struct has no such field -> maybe it is a variant? methods exist, fields error
                     if (d.kind == DeclKind::DcStruct)
-                    {
                         self.error(e.loc, "E0361", "no such field");
-                    }
                     return self.unknown();
                 }
                 self.error(e.loc, "E0361", "field access on non-struct");
                 return self.unknown();
             }
-            ExprKind::Index =>
-            {
+            
+            ExprKind::Index => {
                 RType* a = self.expr(e.a);
                 RType* idx = self.expr(e.b);
                 if (a.kind == RtKind::RtArray || a.kind == RtKind::RtSlice)
                 {
                     RType* ie = e.b != null && e.b.kind == ExprKind::Range ? self.expr(e.b.a) : idx;
                     if (e.b != null && e.b.kind == ExprKind::Range)
-                    {
                         return mkType(self.arena, RtKind::RtSlice, 0, str::empty(), a.elem, null);
-                    }
                     if (!self.rtIsNum(idx) && idx.kind != RtKind::RtUnknown)
-                    {
                         self.error(e.b.loc, "E0362", "index must be numeric");
-                    }
                     return a.elem != null ? a.elem : self.unknown();
                 }
                 if (a.kind == RtKind::RtUnknown) return self.unknown();
                 self.error(e.loc, "E0362", "cannot index non-array");
                 return self.unknown();
             }
-            ExprKind::Cast =>
-            {
+            
+            ExprKind::Cast => {
                 RType* a = self.expr(e.a);
                 RType* t = self.resolveType(e.type);
                 if (a.kind == RtKind::RtUnknown || t.kind == RtKind::RtUnknown) return t;
@@ -1004,21 +975,17 @@ pub extend Checker
                 if (!ok) self.error(e.loc, "E0363", "invalid cast");
                 return t;
             }
-            ExprKind::Question =>
-            {
+            
+            ExprKind::Question => {
                 RType* a = self.expr(e.a);
                 if (a.kind == RtKind::RtNamed && a.args != null && a.args.len > 0)
-                {
                     return (RType*)a.args.data[0];
-                }
                 return self.unknown();
             }
-            ExprKind::StructLit =>
-            {
-                return self.structLit(e);
-            }
-            ExprKind::Range =>
-            {
+            
+            ExprKind::StructLit => { return self.structLit(e); }
+            
+            ExprKind::Range => {
                 RType* a = self.expr(e.a);
                 RType* b = self.expr(e.b);
                 RType* elem = a.kind == RtKind::RtUnknown ? b : a;
@@ -1028,19 +995,19 @@ pub extend Checker
                 }
                 return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
             }
-            ExprKind::Tuple =>
-            {
+            
+            ExprKind::Tuple => {
                 PtrList* items = newList(self.arena);
                 usize i = 0;
                 while (i < e.list.len)
                 {
                     listPush(items, (rawptr)self.expr((Expr*)e.list.data[i]));
-                    i = i + 1;
+                    i++;
                 }
                 return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
             }
-            ExprKind::ArrayLit =>
-            {
+            
+            ExprKind::ArrayLit => {
                 if (e.list == null || e.list.len == 0) return self.unknown();
                 // map literal?
                 bool isMap = false;
@@ -1049,7 +1016,7 @@ pub extend Checker
                 {
                     ArrayItem* it = (ArrayItem*)e.list.data[j];
                     if (it.key != null) isMap = true;
-                    j = j + 1;
+                    j++;
                 }
                 if (isMap)
                 {
@@ -1070,22 +1037,19 @@ pub extend Checker
                     {
                         self.error(e.loc, "E0365", "array elements must have a common type");
                     }
-                    i = i + 1;
+                    i++;
                 }
                 return mkType(self.arena, RtKind::RtArray, 0, str::empty(), elem, null);
             }
-            ExprKind::If =>
-            {
+            ExprKind::If => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.expr(e.a);
             }
-            ExprKind::While =>
-            {
+            ExprKind::While => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.unknown();
             }
-            ExprKind::Switch =>
-            {
+            ExprKind::Switch => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.unknown();
             }
@@ -1140,8 +1104,7 @@ pub extend Checker
         RType* b = self.expr(e.b);
         switch (e.op)
         {
-            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem =>
-            {
+            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem => {
                 RType* r = self.numResult(a, b, e.loc);
                 if ((a.kind != RtKind::RtUnknown && !self.rtIsNum(a)) || (b.kind != RtKind::RtUnknown && !self.rtIsNum(b)))
                 {
@@ -1153,8 +1116,8 @@ pub extend Checker
                 }
                 return r;
             }
-            Op::Eq | Op::Ne =>
-            {
+            
+            Op::Eq | Op::Ne => {
                 if (a.kind != RtKind::RtUnknown && b.kind != RtKind::RtUnknown)
                 {
                     if (!self.rtEq(a, b) && !(self.rtIsNum(a) && self.rtIsNum(b)) && !a.isLitInt && !b.isLitInt && !a.isLitFloat && !b.isLitFloat)
@@ -1164,27 +1127,27 @@ pub extend Checker
                 }
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
             }
-            Op::Lt | Op::Le | Op::Gt | Op::Ge =>
-            {
+            
+            Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                 if ((a.kind != RtKind::RtUnknown && !self.rtIsNum(a)) || (b.kind != RtKind::RtUnknown && !self.rtIsNum(b)))
                 {
                     self.error(e.loc, "E0370", "comparison requires numbers");
                 }
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
             }
-            Op::LAnd | Op::LOr =>
-            {
+            
+            Op::LAnd | Op::LOr => {
                 if (a.kind != RtKind::RtBool && a.kind != RtKind::RtUnknown) self.error(e.a.loc, "E0373", "logical operator requires bool");
                 if (b.kind != RtKind::RtBool && b.kind != RtKind::RtUnknown) self.error(e.b.loc, "E0373", "logical operator requires bool");
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
             }
-            Op::Shl | Op::Shr | Op::Band | Op::Bor | Op::Bxor =>
-            {
+            
+            Op::Shl | Op::Shr | Op::Band | Op::Bor | Op::Bxor => {
                 if (!self.rtIsNum(a) && a.kind != RtKind::RtUnknown) self.error(e.loc, "E0370", "bitwise requires integers");
                 return a;
             }
-            Op::Range | Op::RangeEq =>
-            {
+            
+            Op::Range | Op::RangeEq => {
                 RType* elem = a.kind == RtKind::RtUnknown ? b : a;
                 return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
             }
@@ -1200,20 +1163,14 @@ pub extend Checker
         {
             Local* l = findLocal(self.scope, e.a.name);
             if (l != null && l.isLet)
-            {
                 self.error(e.a.loc, "E0380", "cannot assign to an immutable binding");
-            }
         }
         if (!self.assignable(v, tgt))
-        {
             self.error(e.b.loc, "E0310", "assignment type mismatch");
-        }
         if (e.op == Op::Assign) return v;
         // compound ops like AddA require operands to be numeric
         if (!self.rtIsNum(tgt) && tgt.kind != RtKind::RtUnknown)
-        {
             self.error(e.a.loc, "E0381", "compound assignment requires numeric");
-        }
         return tgt;
     }
 
@@ -1227,18 +1184,14 @@ pub extend Checker
             {
                 Sym* s = self.findSym(e.a.a.name);
                 if (s != null && (s.kind == SymKind::SkStruct || s.kind == SymKind::SkVariant || s.kind == SymKind::SkAlias || s.kind == SymKind::SkTrait))
-                {
                     return self.assocCall(s, e.a.name, e);
-                }
             }
             RType* obj = self.expr(e.a.a);
             return self.methodCall(obj, e.a.name, e);
         }
         // plain call
         if (e.a != null && e.a.kind == ExprKind::Name)
-        {
             return self.directCall(e.a.name, e);
-        }
         return self.unknown();
     }
 
@@ -1260,10 +1213,10 @@ pub extend Checker
                         self.checkArgs(e, c.payload, name);
                         return mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null);
                     }
-                    j = j + 1;
+                    j++;
                 }
             }
-            i = i + 1;
+            i++;
         }
         Sym* s = self.findSym(name);
         if (s != null && (s.kind == SymKind::SkFn || s.kind == SymKind::SkExtern))
@@ -1277,7 +1230,7 @@ pub extend Checker
             while (i < e.list.len)
             {
                 self.expr((Expr*)e.list.data[i]);
-                i = i + 1;
+                i++;
             }
             return self.unknown();
         }
@@ -1299,7 +1252,7 @@ pub extend Checker
                     self.error(e.loc, "E0391", "argument type mismatch");
                 }
             }
-            i = i + 1;
+            i++;
         }
         return null;
     }
@@ -1320,7 +1273,7 @@ pub extend Checker
                     self.error(e.loc, "E0391", "argument type mismatch");
                 }
             }
-            i = i + 1;
+            i++;
         }
         if (d.params != null)
         {
@@ -1347,7 +1300,7 @@ pub extend Checker
             {
                 return self.checkArgsDecl(d.members, m, e, false);
             }
-            i = i + 1;
+            i++;
         }
         // search extends targeting this type
         usize j = 0;
@@ -1367,11 +1320,11 @@ pub extend Checker
                         {
                             return self.checkArgsDecl(x.members, m, e, false);
                         }
-                        k = k + 1;
+                        k++;
                     }
                 }
             }
-            j = j + 1;
+            j++;
         }
         return self.unknown();
     }
@@ -1402,7 +1355,7 @@ pub extend Checker
                     self.error(e.loc, "E0391", "argument type mismatch");
                 }
             }
-            i = i + 1;
+            i++;
         }
         usize expect = m.params != null ? m.params.len : 0;
         if (hasReceiver) expect = expect - 1;
@@ -1429,7 +1382,7 @@ pub extend Checker
                     {
                         return self.checkArgsDecl(t.decl.members, m, e, true);
                     }
-                    i = i + 1;
+                    i++;
                 }
             }
             return self.unknown();
@@ -1448,7 +1401,7 @@ pub extend Checker
                     {
                         return self.checkArgsDecl(s.decl.members, m, e, true);
                     }
-                    i = i + 1;
+                    i++;
                 }
             }
             // extends targeting same type
@@ -1469,11 +1422,11 @@ pub extend Checker
                             {
                                 return self.checkArgsDecl(x.members, m, e, true);
                             }
-                            k = k + 1;
+                            k++;
                         }
                     }
                 }
-                j = j + 1;
+                j++;
             }
             return self.unknown();
         }
@@ -1493,7 +1446,7 @@ pub extend Checker
             {
                 FieldInit* f = (FieldInit*)e.list.data[i];
                 self.expr(f.value);
-                i = i + 1;
+                i++;
             }
             return mkType(self.arena, RtKind::RtNamed, 0, typeName, null, null);
         }
@@ -1522,7 +1475,7 @@ pub extend Checker
             {
                 FieldDecl* fd = (FieldDecl*)d.fields.data[j];
                 if (strEq(fd.name, f.name)) found = fd;
-                j = j + 1;
+                j++;
             }
             if (found == null)
             {
@@ -1536,7 +1489,7 @@ pub extend Checker
                     self.error(e.loc, "E0310", "field type mismatch");
                 }
             }
-            i = i + 1;
+            i++;
         }
         return mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null);
     }

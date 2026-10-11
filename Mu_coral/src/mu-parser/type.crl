@@ -53,7 +53,7 @@ pub extend Parser
         }
         else
         {
-            self.perr("E0206", self.fmt("expected a type, found `%s`", kindName(self.cur.kind)));
+            self.perr("E0206", self.fmt("expected a type, found `{}`", kindName(self.cur.kind)));
             self.whyFound();
             if (!self.isBoundary(self.cur.kind)) self.advance();
             return newType(self.arena, TypeKind::Name, loc);

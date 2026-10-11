@@ -3,7 +3,6 @@ import diag::diag { Diags };
 import lexer::lexer { Lexer };
 import core::arena { Arena };
 import ast::ast { Loc, Decl, DeclKind, PtrList, newList, listPush, newDecl, Attr, newAttr, Param, newParam, GenericParam, newGenericParam, FieldDecl, newFieldDecl, VariantCase, newVariantCase, UseSpec, newUseSpec, Type, Expr, ExprKind, newExpr, Stmt, Op, FieldInit, newFieldInit, ArrayItem, newArrayItem, StmtKind, newStmt, Prong, newProng, Pattern, PatternKind, newPattern, TypeKind, newType };
-import platform::libc { snprintf };
 
 pub struct OpenTok
 {
@@ -99,39 +98,59 @@ pub extend Parser
         self.diags.error(self.cur.line, self.cur.col, len, code, title);
     }
 
-    void whyFound()
+    str _fmtApply(str shape, str a, str b)
     {
         u8* buf = (u8*)self.arena.alloc(192, 1);
-        snprintf(buf, 192, C"found `%s` here", kindName(self.cur.kind));
-        self.diags.why(str::fromCstr(buf));
+        usize o = 0;
+        usize i = 0;
+        usize used = 0;
+        while (i < shape.len && o + 1 < 192)
+        {
+            if (shape.ptr[i] == (u8)'{' && i + 1 < shape.len && shape.ptr[i + 1] == (u8)'}')
+            {
+                str v = used == 0 ? a : b;
+                used++;
+                usize j = 0;
+                while (j < v.len && o + 1 < 192)
+                {
+                    buf[o] = v.ptr[j];
+                    o++;
+                    j++;
+                }
+                i += 2;
+                continue;
+            }
+            buf[o] = shape.ptr[i];
+            o++;
+            i++;
+        }
+        buf[o] = 0;
+        return str::fromCstr(buf);
+    }
+
+    void whyFound()
+    {
+        self.diags.why(self.fmt("found `{}` here", kindName(self.cur.kind)));
     }
 
     str fmt(str shape, str a)
     {
-        u8* buf = (u8*)self.arena.alloc(192, 1);
-        snprintf(buf, 192, shape.ptr, a);
-        return str::fromCstr(buf);
+        return self._fmtApply(shape, a, "");
     }
 
     str fmt2(str shape, str a, str b)
     {
-        u8* buf = (u8*)self.arena.alloc(192, 1);
-        snprintf(buf, 192, shape.ptr, a, b);
-        return str::fromCstr(buf);
+        return self._fmtApply(shape, a, b);
     }
 
     str fmtStr(str shape, str a)
     {
-        u8* buf = (u8*)self.arena.alloc(192, 1);
-        snprintf(buf, 192, shape.ptr, (i32)a.len, a.ptr);
-        return str::fromCstr(buf);
+        return self._fmtApply(shape, a, "");
     }
 
     str fmtStr2(str shape, str a, str b)
     {
-        u8* buf = (u8*)self.arena.alloc(192, 1);
-        snprintf(buf, 192, shape.ptr, (i32)a.len, a.ptr, b);
-        return str::fromCstr(buf);
+        return self._fmtApply(shape, a, b);
     }
 
     bool sameStr(str a, str b)
@@ -141,7 +160,7 @@ pub extend Parser
         while (i < a.len)
         {
             if (a.ptr[i] != b.ptr[i]) return false;
-            i = i + 1;
+            i++;
         }
         return true;
     }
@@ -154,11 +173,11 @@ pub extend Parser
         {
             if (s.ptr[i] == (u8)':' && i + 1 < s.len && s.ptr[i + 1] == (u8)':')
             {
-                i = i + 2;
+                i += 2;
                 start = i;
                 continue;
             }
-            i = i + 1;
+            i++;
         }
         if (start == 0) return s;
         return s.slice(start, s.len);
@@ -191,7 +210,7 @@ pub extend Parser
                 fresh[i].kind = self.opens[i].kind;
                 fresh[i].line = self.opens[i].line;
                 fresh[i].col = self.opens[i].col;
-                i = i + 1;
+                i++;
             }
             self.opens = fresh;
             self.openCap = newCap;
@@ -199,7 +218,7 @@ pub extend Parser
         self.opens[self.openLen].kind = kind;
         self.opens[self.openLen].line = line;
         self.opens[self.openLen].col = col;
-        self.openLen = self.openLen + 1;
+        self.openLen++;
     }
 
     void popOpen(TokenKind close, usize line, usize col)
@@ -210,13 +229,13 @@ pub extend Parser
         usize tc = self.opens[self.openLen - 1].col;
         if (self.openPair(tk, close))
         {
-            self.openLen = self.openLen - 1;
+            self.openLen--;
             return;
         }
-        self.diags.error(line, col, 1, "E0208", self.fmt2("mismatched `%s`, expected `%s`", kindName(close), kindName(tk)));
+        self.diags.error(line, col, 1, "E0208", self.fmt2("mismatched `{}`, expected `{}`", kindName(close), kindName(tk)));
         self.diags.why("this delimiter does not close the one that is still open");
-        self.diags.also(tl, tc, 1, self.fmt("unclosed `%s` opened here", kindName(tk)));
-        self.openLen = self.openLen - 1;
+        self.diags.also(tl, tc, 1, self.fmt("unclosed `{}` opened here", kindName(tk)));
+        self.openLen--;
     }
 
     void unclosedClose(TokenKind need)
@@ -227,17 +246,17 @@ pub extend Parser
             usize tl = self.opens[self.openLen - 1].line;
             usize tc = self.opens[self.openLen - 1].col;
             if (self.openPair(tk, need)) {
-                self.perr("E0208", self.fmt("unclosed `%s`", kindName(tk)));
+                self.perr("E0208", self.fmt("unclosed `{}`", kindName(tk)));
             }
             else {
-                self.perr("E0208", self.fmt2("expected `%s`, found `%s`", kindName(need), kindName(self.cur.kind)));
+                self.perr("E0208", self.fmt2("expected `{}`, found `{}`", kindName(need), kindName(self.cur.kind)));
             }
             self.whyFound();
-            self.diags.also(tl, tc, 1, self.fmt("unclosed `%s` opened here", kindName(tk)));
-            self.openLen = self.openLen - 1;
+            self.diags.also(tl, tc, 1, self.fmt("unclosed `{}` opened here", kindName(tk)));
+            self.openLen--;
             return;
         }
-        self.perr("E0208", self.fmt2("expected `%s`, found `%s`", kindName(need), kindName(self.cur.kind)));
+        self.perr("E0208", self.fmt2("expected `{}`, found `{}`", kindName(need), kindName(self.cur.kind)));
         self.whyFound();
     }
 
@@ -254,7 +273,7 @@ pub extend Parser
                 fresh[i].name = self.labels[i].name;
                 fresh[i].line = self.labels[i].line;
                 fresh[i].col = self.labels[i].col;
-                i = i + 1;
+                i++;
             }
             self.labels = fresh;
             self.labelCap = newCap;
@@ -262,7 +281,7 @@ pub extend Parser
         self.labels[self.labelLen].name = name;
         self.labels[self.labelLen].line = loc.line;
         self.labels[self.labelLen].col = loc.col;
-        self.labelLen = self.labelLen + 1;
+        self.labelLen++;
     }
 
     void popLabel()
@@ -276,7 +295,7 @@ pub extend Parser
         while (i < self.labelLen)
         {
             if (self.sameStr(self.labels[i].name, name)) return i;
-            i = i + 1;
+            i++;
         }
         return self.labelLen;
     }
@@ -298,7 +317,7 @@ pub extend Parser
                 str g = t.text.slice(start, end);
                 if (!matchWord(g, "string.casing") && !matchWord(g, "string.format"))
                 {
-                    self.diags.error(t.line, t.col, t.text.len, "E0214", self.fmtStr("unknown manifest group `%.*s`", g));
+                    self.diags.error(t.line, t.col, t.text.len, "E0214", self.fmtStr("unknown manifest group `{}`", g));
                     self.diags.help("known groups are `string.casing` and `string.format`");
                 }
             }
@@ -316,13 +335,13 @@ pub extend Parser
         while (i < a.len)
         {
             p[i] = a.ptr[i];
-            i = i + 1;
+            i++;
         }
         usize j = 0;
         while (j < b.len)
         {
             p[a.len + j] = b.ptr[j];
-            j = j + 1;
+            j++;
         }
         return str::fromParts(p, n);
     }
@@ -394,7 +413,7 @@ pub extend Parser
             self.unclosedClose(kind);
             return self.cur;
         }
-        self.perr("E0200", self.fmt2("expected `%s`, found `%s`", kindName(kind), kindName(self.cur.kind)));
+        self.perr("E0200", self.fmt2("expected `{}`, found `{}`", kindName(kind), kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return self.cur;
@@ -408,7 +427,7 @@ pub extend Parser
             self.advance();
             return t;
         }
-        self.perr("E0200", self.fmt("expected a name, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0200", self.fmt("expected a name, found `{}`", kindName(self.cur.kind)));
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return Token {
             .kind = TokenKind::Ident,
@@ -448,7 +467,7 @@ pub extend Parser
     {
         if (self.cur.kind != TokenKind::Ident)
         {
-            self.perr("E0200", self.fmt("expected a name, found `%s`", kindName(self.cur.kind)));
+            self.perr("E0200", self.fmt("expected a name, found `{}`", kindName(self.cur.kind)));
             if (!self.isBoundary(self.cur.kind)) self.advance();
             return str::empty();
         }
@@ -514,11 +533,11 @@ pub extend Parser
                     while (i < decls.len)
                     {
                         Decl* prev = (Decl*)decls.data[i];
-                        i = i + 1;
+                        i++;
                         if (prev.kind == DeclKind::DcExtend) continue;
                         if (prev.name.len == 0) continue;
                         if (!self.sameStr(prev.name, d.name)) continue;
-                        self.perrAt(d.loc, "E0207", self.fmtStr("duplicate definition of `%.*s`", d.name));
+                        self.perrAt(d.loc, "E0207", self.fmtStr("duplicate definition of `{}`", d.name));
                         self.diags.why("a name may only be defined once at file scope");
                         self.alsoAt(prev.loc, "first defined here");
                         self.diags.help("rename or remove one of the definitions");
@@ -640,7 +659,7 @@ pub extend Parser
             return null;
         }
 
-        self.perr("E0203", self.fmt("expected a declaration, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0203", self.fmt("expected a declaration, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return null;
@@ -674,7 +693,7 @@ pub extend Parser
                 self.fnHasSelf = true;
                 break;
             }
-            pi = pi + 1;
+            pi++;
         }
         if (isExtern && self.cur.kind == TokenKind::LBrace)
         {
@@ -779,9 +798,9 @@ pub extend Parser
                     while (qi < list.len)
                     {
                         Param* prev = (Param*)list.data[qi];
-                        qi = qi + 1;
+                        qi++;
                         if (!self.sameStr(prev.name, p.name)) continue;
-                        self.perrAt(pl, "E0207", self.fmtStr("duplicate parameter `%.*s`", p.name));
+                        self.perrAt(pl, "E0207", self.fmtStr("duplicate parameter `{}`", p.name));
                         self.alsoAt(prev.loc, "first parameter is here");
                         break;
                     }
@@ -839,9 +858,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -856,9 +875,9 @@ pub extend Parser
                     while (ai < self.declAttrs.len)
                     {
                         Attr* la = (Attr*)self.declAttrs.data[ai];
-                        ai = ai + 1;
+                        ai++;
                         if (la.name.len == 0) continue;
-                        self.perrAt(la.loc, "E0222", self.fmtStr("`@%.*s` is not valid on a field", la.name));
+                        self.perrAt(la.loc, "E0222", self.fmtStr("`@{}` is not valid on a field", la.name));
                     }
                     self.declAttrs = null;
                 }
@@ -876,9 +895,9 @@ pub extend Parser
                     while (fi < d.fields.len)
                     {
                         FieldDecl* prev = (FieldDecl*)d.fields.data[fi];
-                        fi = fi + 1;
+                        fi++;
                         if (!self.sameStr(prev.name, f.name)) continue;
-                        self.perrAt(fl, "E0207", self.fmtStr("duplicate field `%.*s`", f.name));
+                        self.perrAt(fl, "E0207", self.fmtStr("duplicate field `{}`", f.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -943,9 +962,9 @@ pub extend Parser
                 while (ci < d.cases.len)
                 {
                     VariantCase* prev = (VariantCase*)d.cases.data[ci];
-                    ci = ci + 1;
+                    ci++;
                     if (!self.sameStr(prev.name, c.name)) continue;
-                    self.perrAt(cl, "E0207", self.fmtStr("duplicate variant case `%.*s`", c.name));
+                    self.perrAt(cl, "E0207", self.fmtStr("duplicate variant case `{}`", c.name));
                     self.alsoAt(prev.loc, "first defined here");
                     break;
                 }
@@ -1017,9 +1036,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -1028,7 +1047,7 @@ pub extend Parser
             }
             else
             {
-                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0203", self.fmt("expected a method, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
@@ -1093,9 +1112,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -1104,7 +1123,7 @@ pub extend Parser
             }
             else
             {
-                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0203", self.fmt("expected a method, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
@@ -1261,25 +1280,25 @@ pub extend Parser
     {
         if (a.args == null)
         {
-            if (min > 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            if (min > 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` requires an argument", a.name));
             return;
         }
         if (a.args.len < min)
         {
-            self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` requires an argument", a.name));
             return;
         }
         if (a.args.len > max)
         {
-            if (max == 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes no arguments", a.name));
-            else self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes at most one argument", a.name));
+            if (max == 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` takes no arguments", a.name));
+            else self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` takes at most one argument", a.name));
         }
     }
 
     void attrTarget(Attr* a, str what)
     {
-        self.perrAt(a.loc, "E0222", self.fmtStr("`@%.*s` is not valid on this declaration", a.name));
-        self.diags.help(self.fmtStr2("`@%.*s` can only be applied to %s", a.name, what));
+        self.perrAt(a.loc, "E0222", self.fmtStr("`@{}` is not valid on this declaration", a.name));
+        self.diags.help(self.fmtStr2("`@{}` can only be applied to {}", a.name, what));
     }
 
     void validateAttrs(Decl* d)
@@ -1289,7 +1308,7 @@ pub extend Parser
         while (i < d.attrs.len)
         {
             Attr* a = (Attr*)d.attrs.data[i];
-            i = i + 1;
+            i++;
             if (a.name.len == 0) continue;
             bool known =
                 matchWord(a.name, "component") || matchWord(a.name, "resource") ||
@@ -1300,7 +1319,7 @@ pub extend Parser
                 matchWord(a.name, "deprecated") || matchWord(a.name, "doc");
             if (!known)
             {
-                self.perrAt(a.loc, "E0219", self.fmtStr("unknown attribute `%.*s`", a.name));
+                self.perrAt(a.loc, "E0219", self.fmtStr("unknown attribute `{}`", a.name));
                 self.diags.help("known attributes are @extern @component @resource @event @system @save @inline @noinline @must_use @test @repr @deprecated @doc");
                 continue;
             }
@@ -1308,10 +1327,10 @@ pub extend Parser
             while (j + 1 < i)
             {
                 Attr* prev = (Attr*)d.attrs.data[j];
-                j = j + 1;
+                j++;
                 if (prev.name.len == 0) continue;
                 if (!self.sameStr(prev.name, a.name)) continue;
-                self.perrAt(a.loc, "E0220", self.fmtStr("duplicate attribute `%.*s`", a.name));
+                self.perrAt(a.loc, "E0220", self.fmtStr("duplicate attribute `{}`", a.name));
                 self.alsoAt(prev.loc, "first attribute is here");
                 break;
             }
@@ -1344,7 +1363,7 @@ pub extend Parser
                     }
                     else if (!self.isPhase(arg.name))
                     {
-                        self.perrAt(arg.loc, "E0223", self.fmtStr("unknown system phase `%.*s`", arg.name));
+                        self.perrAt(arg.loc, "E0223", self.fmtStr("unknown system phase `{}`", arg.name));
                         self.diags.help("phases are startup, pre_update, update, fixed_update, post_update, render, shutdown");
                     }
                 }
@@ -1579,7 +1598,7 @@ pub extend Parser
             n.a = e;
             n.b = r;
             e = n;
-            count = count + 1;
+            count++;
         }
         return e;
     }
@@ -1951,7 +1970,7 @@ pub extend Parser
             return n;
         }
 
-        self.perr("E0204", self.fmt("expected an expression, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0204", self.fmt("expected an expression, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         Expr* bad = newExpr(self.arena, ExprKind::Name, loc);
@@ -2006,17 +2025,17 @@ pub extend Parser
                 while (xi < e.list.len)
                 {
                     FieldInit* prev = (FieldInit*)e.list.data[xi];
-                    xi = xi + 1;
+                    xi++;
                     if (prev.name.len == 0) continue;
                     if (!self.sameStr(prev.name, fname)) continue;
-                    self.perrAt(ff, "E0207", self.fmtStr("duplicate field `%.*s`", fname));
+                    self.perrAt(ff, "E0207", self.fmtStr("duplicate field `{}`", fname));
                     if (prev.value != null) self.alsoAt(prev.value.loc, "first initializer is here");
                     break;
                 }
             }
             else
             {
-                self.perr("E0201", self.fmt("expected a field name, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0201", self.fmt("expected a field name, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             listPush(e.list, (rawptr)f);
@@ -2125,7 +2144,7 @@ pub extend Parser
             usize dup = self.findLabel(label);
             if (dup < self.labelLen)
             {
-                self.perrAt(aloc, "E0216", self.fmtStr("duplicate label `%.*s`", label));
+                self.perrAt(aloc, "E0216", self.fmtStr("duplicate label `{}`", label));
                 self.diags.also(self.labels[dup].line, self.labels[dup].col, 1, "label is already in scope here");
             }
             self.pushLabel(label, aloc);
@@ -2230,7 +2249,7 @@ pub extend Parser
             else if (self.cur.kind == TokenKind::LBrace) elseB = self.parseBlock();
             else
             {
-                self.perr("E0200", self.fmt("expected `if` or `{` after `else`, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0200", self.fmt("expected `if` or `{` after `else`, found `{}`", kindName(self.cur.kind)));
                 self.whyFound();
             }
         }
@@ -2248,9 +2267,9 @@ pub extend Parser
         self.noStruct = true;
         Expr* cond = self.parseExpr();
         self.noStruct = saved;
-        self.loopDepth = self.loopDepth + 1;
+        self.loopDepth++;
         Stmt* body = self.parseBlock();
-        self.loopDepth = self.loopDepth - 1;
+        self.loopDepth--;
         Stmt* s = newStmt(self.arena, StmtKind::StWhile, loc);
         s.expr = cond;
         s.a = body;
@@ -2266,9 +2285,9 @@ pub extend Parser
         self.noStruct = true;
         Expr* iter = self.parseExpr();
         self.noStruct = saved;
-        self.loopDepth = self.loopDepth + 1;
+        self.loopDepth++;
         Stmt* body = self.parseBlock();
-        self.loopDepth = self.loopDepth - 1;
+        self.loopDepth--;
         Stmt* s = newStmt(self.arena, StmtKind::StFor, loc);
         s.pat = pat;
         s.expr = iter;
@@ -2426,7 +2445,7 @@ pub extend Parser
         }
         else if (label.len > 0 && self.findLabel(label) >= self.labelLen)
         {
-            self.perrAt(loc, "E0216", self.fmtStr("unknown label `%.*s`", label));
+            self.perrAt(loc, "E0216", self.fmtStr("unknown label `{}`", label));
             self.diags.help("declare the label as `@name:` before a loop");
         }
         StmtKind sk = StmtKind::StBreak;
@@ -2495,7 +2514,7 @@ pub extend Parser
         }
         else
         {
-            self.perr("E0206", self.fmt("expected a type, found `%s`", kindName(self.cur.kind)));
+            self.perr("E0206", self.fmt("expected a type, found `{}`", kindName(self.cur.kind)));
             self.whyFound();
             if (!self.isBoundary(self.cur.kind)) self.advance();
             return newType(self.arena, TypeKind::Name, loc);
@@ -2696,7 +2715,7 @@ pub extend Parser
             return p;
         }
 
-        self.perr("E0205", self.fmt("expected a pattern, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0205", self.fmt("expected a pattern, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return newPattern(self.arena, PatternKind::PatBinding, loc);

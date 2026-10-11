@@ -168,7 +168,7 @@ pub struct Lexer
             {
                 if (digits < 8) val = val * 16 + (usize)hexVal(self.peek());
                 self.advance();
-                digits = digits + 1;
+                digits++;
             }
             if (digits == 0)
             {
@@ -405,7 +405,7 @@ pub struct Lexer
         while (!self.atEnd() && self.peek() != (u8)'\'' && self.peek() != (u8)'\n')
         {
             self.advance();
-            extra = extra + 1;
+            extra++;
         }
         if (extra > 0 && self.peek() == (u8)'\'')
         {

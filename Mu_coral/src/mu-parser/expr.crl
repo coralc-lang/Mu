@@ -177,7 +177,7 @@ pub extend Parser
             n.a = e;
             n.b = r;
             e = n;
-            count = count + 1;
+            count++;
         }
         return e;
     }
@@ -549,7 +549,7 @@ pub extend Parser
             return n;
         }
 
-        self.perr("E0204", self.fmt("expected an expression, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0204", self.fmt("expected an expression, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         Expr* bad = newExpr(self.arena, ExprKind::Name, loc);
@@ -604,17 +604,17 @@ pub extend Parser
                 while (xi < e.list.len)
                 {
                     FieldInit* prev = (FieldInit*)e.list.data[xi];
-                    xi = xi + 1;
+                    xi++;
                     if (prev.name.len == 0) continue;
                     if (!self.sameStr(prev.name, fname)) continue;
-                    self.perrAt(ff, "E0207", self.fmtStr("duplicate field `%.*s`", fname));
+                    self.perrAt(ff, "E0207", self.fmtStr("duplicate field `{}`", fname));
                     if (prev.value != null) self.alsoAt(prev.value.loc, "first initializer is here");
                     break;
                 }
             }
             else
             {
-                self.perr("E0201", self.fmt("expected a field name, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0201", self.fmt("expected a field name, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             listPush(e.list, (rawptr)f);

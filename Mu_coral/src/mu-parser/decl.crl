@@ -117,7 +117,7 @@ pub extend Parser
             return null;
         }
 
-        self.perr("E0203", self.fmt("expected a declaration, found `%s`", kindName(self.cur.kind)));
+        self.perr("E0203", self.fmt("expected a declaration, found `{}`", kindName(self.cur.kind)));
         self.whyFound();
         if (!self.isBoundary(self.cur.kind)) self.advance();
         return null;
@@ -151,7 +151,7 @@ pub extend Parser
                 self.fnHasSelf = true;
                 break;
             }
-            pi = pi + 1;
+            pi++;
         }
         if (isExtern && self.cur.kind == TokenKind::LBrace)
         {
@@ -256,9 +256,9 @@ pub extend Parser
                     while (qi < list.len)
                     {
                         Param* prev = (Param*)list.data[qi];
-                        qi = qi + 1;
+                        qi++;
                         if (!self.sameStr(prev.name, p.name)) continue;
-                        self.perrAt(pl, "E0207", self.fmtStr("duplicate parameter `%.*s`", p.name));
+                        self.perrAt(pl, "E0207", self.fmtStr("duplicate parameter `{}`", p.name));
                         self.alsoAt(prev.loc, "first parameter is here");
                         break;
                     }
@@ -316,9 +316,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -333,9 +333,9 @@ pub extend Parser
                     while (ai < self.declAttrs.len)
                     {
                         Attr* la = (Attr*)self.declAttrs.data[ai];
-                        ai = ai + 1;
+                        ai++;
                         if (la.name.len == 0) continue;
-                        self.perrAt(la.loc, "E0222", self.fmtStr("`@%.*s` is not valid on a field", la.name));
+                        self.perrAt(la.loc, "E0222", self.fmtStr("`@{}` is not valid on a field", la.name));
                     }
                     self.declAttrs = null;
                 }
@@ -353,9 +353,9 @@ pub extend Parser
                     while (fi < d.fields.len)
                     {
                         FieldDecl* prev = (FieldDecl*)d.fields.data[fi];
-                        fi = fi + 1;
+                        fi++;
                         if (!self.sameStr(prev.name, f.name)) continue;
-                        self.perrAt(fl, "E0207", self.fmtStr("duplicate field `%.*s`", f.name));
+                        self.perrAt(fl, "E0207", self.fmtStr("duplicate field `{}`", f.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -420,9 +420,9 @@ pub extend Parser
                 while (ci < d.cases.len)
                 {
                     VariantCase* prev = (VariantCase*)d.cases.data[ci];
-                    ci = ci + 1;
+                    ci++;
                     if (!self.sameStr(prev.name, c.name)) continue;
-                    self.perrAt(cl, "E0207", self.fmtStr("duplicate variant case `%.*s`", c.name));
+                    self.perrAt(cl, "E0207", self.fmtStr("duplicate variant case `{}`", c.name));
                     self.alsoAt(prev.loc, "first defined here");
                     break;
                 }
@@ -494,9 +494,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -505,7 +505,7 @@ pub extend Parser
             }
             else
             {
-                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0203", self.fmt("expected a method, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
@@ -570,9 +570,9 @@ pub extend Parser
                     while (mi < d.members.len)
                     {
                         Decl* prev = (Decl*)d.members.data[mi];
-                        mi = mi + 1;
+                        mi++;
                         if (!self.sameStr(prev.name, m.name)) continue;
-                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `%.*s`", m.name));
+                        self.perrAt(m.loc, "E0207", self.fmtStr("duplicate method `{}`", m.name));
                         self.alsoAt(prev.loc, "first defined here");
                         break;
                     }
@@ -581,7 +581,7 @@ pub extend Parser
             }
             else
             {
-                self.perr("E0203", self.fmt("expected a method, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0203", self.fmt("expected a method, found `{}`", kindName(self.cur.kind)));
                 if (!self.isBoundary(self.cur.kind)) self.advance();
             }
             bool progressed = self.lexer.pos != pos || self.cur.kind != kb || self.cur.text.ptr != ptr;
@@ -738,25 +738,25 @@ pub extend Parser
     {
         if (a.args == null)
         {
-            if (min > 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            if (min > 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` requires an argument", a.name));
             return;
         }
         if (a.args.len < min)
         {
-            self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` requires an argument", a.name));
+            self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` requires an argument", a.name));
             return;
         }
         if (a.args.len > max)
         {
-            if (max == 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes no arguments", a.name));
-            else self.perrAt(a.loc, "E0221", self.fmtStr("`@%.*s` takes at most one argument", a.name));
+            if (max == 0) self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` takes no arguments", a.name));
+            else self.perrAt(a.loc, "E0221", self.fmtStr("`@{}` takes at most one argument", a.name));
         }
     }
 
     void attrTarget(Attr* a, u8* what)
     {
-        self.perrAt(a.loc, "E0222", self.fmtStr("`@%.*s` is not valid on this declaration", a.name));
-        self.diags.help(self.fmtStr2("`@%.*s` can only be applied to %s", a.name, what));
+        self.perrAt(a.loc, "E0222", self.fmtStr("`@{}` is not valid on this declaration", a.name));
+        self.diags.help(self.fmtStr2("`@{}` can only be applied to {}", a.name, what));
     }
 
     void validateAttrs(Decl* d)
@@ -766,7 +766,7 @@ pub extend Parser
         while (i < d.attrs.len)
         {
             Attr* a = (Attr*)d.attrs.data[i];
-            i = i + 1;
+            i++;
             if (a.name.len == 0) continue;
             bool known =
                 matchWord(a.name, "component") || matchWord(a.name, "resource") ||
@@ -777,7 +777,7 @@ pub extend Parser
                 matchWord(a.name, "deprecated") || matchWord(a.name, "doc");
             if (!known)
             {
-                self.perrAt(a.loc, "E0219", self.fmtStr("unknown attribute `%.*s`", a.name));
+                self.perrAt(a.loc, "E0219", self.fmtStr("unknown attribute `{}`", a.name));
                 self.diags.help("known attributes are @extern @component @resource @event @system @save @inline @noinline @must_use @test @repr @deprecated @doc");
                 continue;
             }
@@ -785,10 +785,10 @@ pub extend Parser
             while (j + 1 < i)
             {
                 Attr* prev = (Attr*)d.attrs.data[j];
-                j = j + 1;
+                j++;
                 if (prev.name.len == 0) continue;
                 if (!self.sameStr(prev.name, a.name)) continue;
-                self.perrAt(a.loc, "E0220", self.fmtStr("duplicate attribute `%.*s`", a.name));
+                self.perrAt(a.loc, "E0220", self.fmtStr("duplicate attribute `{}`", a.name));
                 self.alsoAt(prev.loc, "first attribute is here");
                 break;
             }
@@ -821,7 +821,7 @@ pub extend Parser
                     }
                     else if (!self.isPhase(arg.name))
                     {
-                        self.perrAt(arg.loc, "E0223", self.fmtStr("unknown system phase `%.*s`", arg.name));
+                        self.perrAt(arg.loc, "E0223", self.fmtStr("unknown system phase `{}`", arg.name));
                         self.diags.help("phases are startup, pre_update, update, fixed_update, post_update, render, shutdown");
                     }
                 }

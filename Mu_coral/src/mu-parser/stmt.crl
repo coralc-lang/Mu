@@ -106,7 +106,7 @@ pub extend Parser
             usize dup = self.findLabel(label);
             if (dup < self.labelLen)
             {
-                self.perrAt(aloc, "E0216", self.fmtStr("duplicate label `%.*s`", label));
+                self.perrAt(aloc, "E0216", self.fmtStr("duplicate label `{}`", label));
                 self.diags.also(self.labels[dup].line, self.labels[dup].col, 1, "label is already in scope here");
             }
             self.pushLabel(label, aloc);
@@ -211,7 +211,7 @@ pub extend Parser
             else if (self.cur.kind == TokenKind::LBrace) elseB = self.parseBlock();
             else
             {
-                self.perr("E0200", self.fmt("expected `if` or `{` after `else`, found `%s`", kindName(self.cur.kind)));
+                self.perr("E0200", self.fmt("expected `if` or `{` after `else`, found `{}`", kindName(self.cur.kind)));
                 self.whyFound();
             }
         }
@@ -229,9 +229,9 @@ pub extend Parser
         self.noStruct = true;
         Expr* cond = self.parseExpr();
         self.noStruct = saved;
-        self.loopDepth = self.loopDepth + 1;
+        self.loopDepth++;
         Stmt* body = self.parseBlock();
-        self.loopDepth = self.loopDepth - 1;
+        self.loopDepth--;
         Stmt* s = newStmt(self.arena, StmtKind::StWhile, loc);
         s.expr = cond;
         s.a = body;
@@ -247,9 +247,9 @@ pub extend Parser
         self.noStruct = true;
         Expr* iter = self.parseExpr();
         self.noStruct = saved;
-        self.loopDepth = self.loopDepth + 1;
+        self.loopDepth++;
         Stmt* body = self.parseBlock();
-        self.loopDepth = self.loopDepth - 1;
+        self.loopDepth--;
         Stmt* s = newStmt(self.arena, StmtKind::StFor, loc);
         s.pat = pat;
         s.expr = iter;
@@ -407,7 +407,7 @@ pub extend Parser
         }
         else if (label.len > 0 && self.findLabel(label) >= self.labelLen)
         {
-            self.perrAt(loc, "E0216", self.fmtStr("unknown label `%.*s`", label));
+            self.perrAt(loc, "E0216", self.fmtStr("unknown label `{}`", label));
             self.diags.help("declare the label as `@name:` before a loop");
         }
         StmtKind sk = StmtKind::StBreak;

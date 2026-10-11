@@ -1,47 +1,24 @@
-import(lib) std::data::option { Option };
-import(lib) std::data::result { Result };
 import(lib) std::mman { alloc };
-import(lib) platform::libc { open, read, close };
+import(lib) std::data { option::Option, result::Result };
+import(lib) std::io { fios::fileReadAll, cmd::commandLine };
+import(lib) std::text::string { String };
 
 Option<str> readCmdline()
 {
-    u8* buf = alloc<u8>(8192);
-    if (buf == null) return Option<str>::None;
-    i32 fd = open(C"/proc/self/cmdline", 0, 0);
-    if (fd < 0) return Option<str>::None;
-    usize len = 0;
-    while (len + 1 < 8192)
-    {
-        i64 got = read(fd, buf + len, (u64)((usize)8192 - (1 + len)));
-        if (got <= 0) break;
-        len = len + (usize)got;
-    }
-    close(fd);
-    return Option<str>::Some { .value = str::fromParts(buf, len) };
+    str cmd = commandLine();
+    if (cmd.len == 0) return Option<str>::None;
+    return Option<str>::Some { .value = cmd };
 }
 
-Result<str, str> readFile(u8* cpath)
+Result<str, str> readFile(str path)
 {
-    i32 fd = open(cpath, 0, 0);
-    if (fd < 0) return Result<str, str>::Err { .error = "cannot open file" };
-    usize cap = 65536;
-    u8* buf = alloc<u8>(cap);
-    if (buf == null)
+    String out = String::new();
+    if (!fileReadAll(path, &out))
     {
-        close(fd);
-        return Result<str, str>::Err { .error = "out of memory" };
+        out.free();
+        return Result<str, str>::Err { .error = "cannot open file" };
     }
-    usize len = 0;
-    while (true)
-    {
-        if (len + 1 >= cap) break;
-        i64 got = read(fd, buf + len, cap - 1 - len);
-        if (got <= 0) break;
-        len = len + (usize)got;
-    }
-    close(fd);
-    buf[len] = 0;
-    return Result<str, str>::Ok { .value = str::fromParts(buf, len) };
+    return Result<str, str>::Ok { .value = out.asView() };
 }
 
 Option<u8*> sliceCStr(str s)
@@ -52,7 +29,7 @@ Option<u8*> sliceCStr(str s)
     while (i < s.len)
     {
         p[i] = s.ptr[i];
-        i = i + 1;
+        i++;
     }
     p[s.len] = 0;
     return Option<u8*>::Some { .value = p };
