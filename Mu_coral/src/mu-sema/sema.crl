@@ -592,8 +592,7 @@ pub extend Checker
         if (s == null) return;
         switch (s.kind)
         {
-            StmtKind::StBlock =>
-            {
+            StmtKind::StBlock => {
                 Scope* saved = self.scope;
                 self.scope = pushScope(self.arena, saved);
                 usize i = 0;
@@ -606,8 +605,7 @@ pub extend Checker
             }
             StmtKind::StVar => { self.stmtVar(s); }
             StmtKind::StExpr => { self.expr(s.expr); }
-            StmtKind::StIf =>
-            {
+            StmtKind::StIf => {
                 RType* c = self.expr(s.expr);
                 if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
                 {
@@ -616,8 +614,7 @@ pub extend Checker
                 self.stmt(s.a);
                 self.stmt(s.b);
             }
-            StmtKind::StWhile =>
-            {
+            StmtKind::StWhile => {
                 RType* c = self.expr(s.expr);
                 if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
                 {
@@ -625,8 +622,7 @@ pub extend Checker
                 }
                 self.stmt(s.a);
             }
-            StmtKind::StFor =>
-            {
+            StmtKind::StFor => {
                 RType* it = self.expr(s.expr);
                 RType* elem = null;
                 if (it.kind == RtKind::RtArray || it.kind == RtKind::RtSlice || it.kind == RtKind::RtRange)
@@ -643,8 +639,7 @@ pub extend Checker
                 self.stmt(s.a);
                 self.scope = saved;
             }
-            StmtKind::StSwitch =>
-            {
+            StmtKind::StSwitch => {
                 RType* scrut = self.expr(s.expr);
                 usize i = 0;
                 while (i < s.prongs.len)
@@ -666,8 +661,7 @@ pub extend Checker
                     i++;
                 }
             }
-            StmtKind::StReturn =>
-            {
+            StmtKind::StReturn => {
                 if (s.expr == null)
                 {
                     if (self.curFnRet != null && self.curFnRet.kind != RtKind::RtVoid && self.curFnRet.kind != RtKind::RtUnknown)
@@ -722,54 +716,46 @@ pub extend Checker
         switch (p.kind)
         {
             PatternKind::PatWildcard => {}
-            PatternKind::PatBinding =>
-            {
+            PatternKind::PatBinding => {
                 addLocal(self.arena, self.scope, p.text, expected, isLet);
             }
-            PatternKind::PatInt =>
-            {
+            PatternKind::PatInt => {
                 if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "integer pattern does not match scrutinee");
                 }
             }
-            PatternKind::PatFloat =>
-            {
+            PatternKind::PatFloat => {
                 if (expected.kind != RtKind::RtFloat && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "float pattern does not match scrutinee");
                 }
             }
-            PatternKind::PatStr =>
-            {
+            PatternKind::PatStr => {
                 if (expected.kind != RtKind::RtStr && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "string pattern does not match scrutinee");
                 }
             }
-            PatternKind::PatChar =>
-            {
+            PatternKind::PatChar => {
                 if (expected.kind != RtKind::RtChar && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "char pattern does not match scrutinee");
                 }
             }
-            PatternKind::PatBool =>
-            {
+            PatternKind::PatBool => {
                 if (expected.kind != RtKind::RtBool && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "bool pattern does not match scrutinee");
                 }
             }
-            PatternKind::PatRange =>
-            {
+            PatternKind::PatRange => {
                 if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "range pattern requires an integer scrutinee");
                 }
             }
-            PatternKind::PatTuple =>
-            {
+            PatternKind::PatTuple => {
                 usize i = 0;
                 while (i < p.items.len)
                 {
@@ -782,8 +768,7 @@ pub extend Checker
                     i++;
                 }
             }
-            PatternKind::PatSlice =>
-            {
+            PatternKind::PatSlice => {
                 usize i = 0;
                 while (i < p.items.len)
                 {
@@ -793,12 +778,10 @@ pub extend Checker
                     i++;
                 }
             }
-            PatternKind::PatVariant =>
-            {
+            PatternKind::PatVariant => {
                 self.checkVariantPattern(p, expected, isLet);
             }
-            PatternKind::PatOr =>
-            {
+            PatternKind::PatOr => {
                 usize i = 0;
                 while (i < p.items.len)
                 {

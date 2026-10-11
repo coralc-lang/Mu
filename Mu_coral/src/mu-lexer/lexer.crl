@@ -331,8 +331,7 @@ pub struct Lexer
         usize line = self.line;
         usize col = self.col;
         self.advance();
-        while (true)
-        {
+        loop {
             if (self.atEnd())
             {
                 self.error(line, col, 1, "E0103", "unterminated string literal");

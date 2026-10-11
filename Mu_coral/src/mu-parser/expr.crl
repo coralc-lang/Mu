@@ -105,8 +105,7 @@ pub extend Parser
     Expr* parseRangeExpr()
     {
         Expr* e = self.parseOr();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Range && op != Op::RangeEq) break;
             Loc loc = self.here();
@@ -159,8 +158,7 @@ pub extend Parser
     {
         Expr* e = self.parseBitOrXor();
         usize count = 0;
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Eq && op != Op::Ne && op != Op::Lt && op != Op::Le && op != Op::Gt && op != Op::Ge) break;
             if (count > 0)
@@ -185,8 +183,7 @@ pub extend Parser
     Expr* parseBitOrXor()
     {
         Expr* e = self.parseBitAnd();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Bor && op != Op::Bxor) break;
             Loc loc = self.here();
@@ -221,8 +218,7 @@ pub extend Parser
     Expr* parseShift()
     {
         Expr* e = self.parseAdd();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Shl && op != Op::Shr) break;
             Loc loc = self.here();
@@ -240,8 +236,7 @@ pub extend Parser
     Expr* parseAdd()
     {
         Expr* e = self.parseMul();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Add && op != Op::Sub) break;
             Loc loc = self.here();
@@ -259,8 +254,7 @@ pub extend Parser
     Expr* parseMul()
     {
         Expr* e = self.parseUnary();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Mul && op != Op::Div && op != Op::Rem) break;
             Loc loc = self.here();
@@ -319,8 +313,7 @@ pub extend Parser
     Expr* parsePostfix()
     {
         Expr* e = self.parsePrimary();
-        while (true)
-        {
+        loop {
             TokenKind k = self.cur.kind;
 
             if (k == TokenKind::LParen)

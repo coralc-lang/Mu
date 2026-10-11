@@ -39,8 +39,7 @@ pub i32 main()
     str path = str::empty();
     bool dumpTokens = false;
     
-    while (true)
-    {
+    loop {
         Option<str> moreOpt = nextArg(cmd, &pos);
         if (moreOpt.isNone()) break;
         str arg = moreOpt.unwrap();

@@ -27,8 +27,7 @@ pub extend Parser
             PtrList* items = newList(self.arena);
             if (self.cur.kind != TokenKind::RParen)
             {
-                while (true)
-                {
+                loop {
                     listPush(items, (rawptr)self.parseType());
                     if (!self.match(TokenKind::Comma)) break;
                     if (self.cur.kind == TokenKind::RParen) break;
@@ -88,8 +87,7 @@ pub extend Parser
     {
         self.expect(TokenKind::Less);
         PtrList* args = newList(self.arena);
-        while (true)
-        {
+        loop {
             TokenKind k = self.cur.kind;
             if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
             listPush(args, (rawptr)self.parseType());

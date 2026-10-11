@@ -564,8 +564,7 @@ pub extend Parser
         Loc asyncLoc = loc;
         Loc externLoc = loc;
 
-        while (true)
-        {
+        loop {
             if (self.cur.kind == TokenKind::KwPub)
             {
                 if (isPub)
@@ -737,8 +736,7 @@ pub extend Parser
     {
         self.expect(TokenKind::Less);
         PtrList* list = newList(self.arena);
-        while (true)
-        {
+        loop {
             TokenKind k = self.cur.kind;
             if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
             Loc gl = self.here();
@@ -947,8 +945,7 @@ pub extend Parser
                 c.payload = newList(self.arena);
                 if (self.cur.kind != TokenKind::RParen)
                 {
-                    while (true)
-                    {
+                    loop {
                         listPush(c.payload, (rawptr)self.parseType());
                         if (!self.match(TokenKind::Comma)) break;
                         if (self.cur.kind == TokenKind::RParen) break;
@@ -1526,8 +1523,7 @@ pub extend Parser
     Expr* parseRangeExpr()
     {
         Expr* e = self.parseOr();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Range && op != Op::RangeEq) break;
             Loc loc = self.here();
@@ -1580,8 +1576,7 @@ pub extend Parser
     {
         Expr* e = self.parseBitOrXor();
         usize count = 0;
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Eq && op != Op::Ne && op != Op::Lt && op != Op::Le && op != Op::Gt && op != Op::Ge) break;
             if (count > 0)
@@ -1606,8 +1601,7 @@ pub extend Parser
     Expr* parseBitOrXor()
     {
         Expr* e = self.parseBitAnd();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Bor && op != Op::Bxor) break;
             Loc loc = self.here();
@@ -1642,8 +1636,7 @@ pub extend Parser
     Expr* parseShift()
     {
         Expr* e = self.parseAdd();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Shl && op != Op::Shr) break;
             Loc loc = self.here();
@@ -1661,8 +1654,7 @@ pub extend Parser
     Expr* parseAdd()
     {
         Expr* e = self.parseMul();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Add && op != Op::Sub) break;
             Loc loc = self.here();
@@ -1680,8 +1672,7 @@ pub extend Parser
     Expr* parseMul()
     {
         Expr* e = self.parseUnary();
-        while (true)
-        {
+        loop {
             Op op = self.binOp(self.cur.kind);
             if (op != Op::Mul && op != Op::Div && op != Op::Rem) break;
             Loc loc = self.here();
@@ -1740,8 +1731,7 @@ pub extend Parser
     Expr* parsePostfix()
     {
         Expr* e = self.parsePrimary();
-        while (true)
-        {
+        loop {
             TokenKind k = self.cur.kind;
 
             if (k == TokenKind::LParen)
@@ -2488,8 +2478,7 @@ pub extend Parser
             PtrList* items = newList(self.arena);
             if (self.cur.kind != TokenKind::RParen)
             {
-                while (true)
-                {
+                loop {
                     listPush(items, (rawptr)self.parseType());
                     if (!self.match(TokenKind::Comma)) break;
                     if (self.cur.kind == TokenKind::RParen) break;
@@ -2549,8 +2538,7 @@ pub extend Parser
     {
         self.expect(TokenKind::Less);
         PtrList* args = newList(self.arena);
-        while (true)
-        {
+        loop {
             TokenKind k = self.cur.kind;
             if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
             listPush(args, (rawptr)self.parseType());
@@ -2633,8 +2621,7 @@ pub extend Parser
                 p.items = newList(self.arena);
                 if (self.cur.kind != TokenKind::RParen)
                 {
-                    while (true)
-                    {
+                    loop {
                         listPush(p.items, (rawptr)self.parsePattern());
                         if (!self.match(TokenKind::Comma)) break;
                         if (self.cur.kind == TokenKind::RParen) break;
@@ -2677,8 +2664,7 @@ pub extend Parser
             PtrList* items = newList(self.arena);
             if (self.cur.kind != TokenKind::RParen)
             {
-                while (true)
-                {
+                loop {
                     listPush(items, (rawptr)self.parsePattern());
                     if (!self.match(TokenKind::Comma)) break;
                     if (self.cur.kind == TokenKind::RParen) break;

@@ -76,8 +76,7 @@ pub extend Parser
                 p.items = newList(self.arena);
                 if (self.cur.kind != TokenKind::RParen)
                 {
-                    while (true)
-                    {
+                    loop {
                         listPush(p.items, (rawptr)self.parsePattern());
                         if (!self.match(TokenKind::Comma)) break;
                         if (self.cur.kind == TokenKind::RParen) break;
@@ -120,8 +119,7 @@ pub extend Parser
             PtrList* items = newList(self.arena);
             if (self.cur.kind != TokenKind::RParen)
             {
-                while (true)
-                {
+                loop {
                     listPush(items, (rawptr)self.parsePattern());
                     if (!self.match(TokenKind::Comma)) break;
                     if (self.cur.kind == TokenKind::RParen) break;
