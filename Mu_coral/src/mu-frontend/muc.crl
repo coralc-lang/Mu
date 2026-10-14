@@ -3,7 +3,7 @@ import core::arena { Arena };
 import diag::diag { Diags };
 import lexer::lexer { Lexer, newLexer };
 import common::token { Token, TokenKind, kindName, matchWord };
-import parser { base::Parser, decl, expr, pattern, stmt, type };
+import parser { base::Parser, decl, expr, pattern, stmt, type }; // to pull in the extend blocks
 import ast::ast { PtrList };
 import sema::sema { Checker };
 

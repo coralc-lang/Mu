@@ -2,39 +2,15 @@
 
 import core::arena { Arena };
 import ast::ast {
-    Loc, Op, Expr, ExprKind, newExpr,
+    Loc, Op, Expr, ExprKind, newExpr, MemClass,
     Type, TypeKind,
-    Stmt, StmtKind, Prong, Pattern, PatternKind,
+    Stmt, StmtKind, newStmt, Prong, Pattern, PatternKind,
     Decl, DeclKind, Param, FieldDecl, VariantCase, GenericParam,
+    FieldInit, ArrayItem,
     PtrList, newList, listPush
 };
 import diag::diag { Diags };
 import common::token { matchWord };
-
-bool strEq(str a, str b)
-{
-    if (a.len != b.len) return false;
-    usize i = 0;
-    while (i < a.len)
-    {
-        if (a.ptr[i] != b.ptr[i]) return false;
-        i++;
-    }
-    return true;
-}
-
-bool endsWith(str s, str suffix)
-{
-    if (s.len < suffix.len) return false;
-    usize off = s.len - suffix.len;
-    usize i = 0;
-    while (i < suffix.len)
-    {
-        if (s.ptr[off + i] != suffix.ptr[i]) return false;
-        i++;
-    }
-    return true;
-}
 
 // resolved types
 pub enum RtKind
@@ -170,6 +146,76 @@ str baseOf(str s)
     return s.slice(0, i);
 }
 
+// memory phase (DESIGN §4-§6) support types
+
+// one owning local: heap/stack classification + single-owner bookkeeping
+struct Own
+{
+    str name;
+    RType* type;
+    Loc loc;
+    MemClass cls;
+    bool moved;
+    bool hasDrop;
+}
+
+// per-name analysis facts within one function
+struct MemVar
+{
+    str name;
+    bool esc;
+    bool hasPos;
+    usize firstPos;
+    bool unknownMeth;
+    bool isParam;
+    Own* own;
+    MemVar* next;
+}
+
+// one use of a name, stamped with the statement position it occurred at
+struct UseSite
+{
+    str name;
+    str other;      // for move-init sites: the target binding name
+    usize pos;
+    int kind;       // 0 read, 1 write, 2 move-init, 3 slice-create, 4 method receiver
+    Loc loc;
+    UseSite* next;
+}
+
+// a live slice view over a backing name (DESIGN §5)
+struct SliceLive
+{
+    str backing;
+    str name;       // slice binding name ("" for temporaries)
+    usize create;
+    usize last;
+    Loc loc;
+    SliceLive* next;
+}
+
+// escape summary of one function's parameters (self = param 0)
+struct FnSum
+{
+    Decl* decl;
+    bool* esc;
+    usize n;
+}
+
+// active-scope frame for free injection (immutable node, snapshot-able)
+struct MemFrame
+{
+    Own* own;
+    MemFrame* next;
+}
+
+// recorded `?` early-return site: cleanup set for the future IR stage
+struct MemQ
+{
+    Expr* site;
+    MemFrame* frame;
+}
+
 pub struct Checker
 {
     Arena* arena;
@@ -179,10 +225,16 @@ pub struct Checker
     Scope* scope;
     RType* curFnRet;
     Decl* curFn;
-}
+    MemVar* memVars;
+    UseSite* memUses;
+    SliceLive* memSlices;
+    MemFrame* memActive;
+    PtrList* memOwns;   // Own*
+    PtrList* memSums;   // FnSum*
+    PtrList* memQs;     // MemQ*
+    usize memPos;
+    bool memChanged;
 
-pub extend Checker
-{
     void init(Arena* a, Diags* d, PtrList* decls)
     {
         self = Checker {
@@ -193,6 +245,15 @@ pub extend Checker
             .scope = null,
             .curFnRet = null,
             .curFn = null,
+            .memVars = null,
+            .memUses = null,
+            .memSlices = null,
+            .memActive = null,
+            .memOwns = null,
+            .memSums = null,
+            .memQs = null,
+            .memPos = 0,
+            .memChanged = false,
         };
     }
 
@@ -264,26 +325,26 @@ pub extend Checker
             TypeKind::Name => {
                 str n = baseOf(t.text);
                 if (self.isTypeParam(n)) return mkType(self.arena, RtKind::RtUnknown, 0, n, null, null);
-                if (strEq(n, "Array"))
+                if (n.equals("Array"))
                 {
                     RType* e = null;
                     if (t.args != null && t.args.len > 0) e = self.resolveType((Type*)t.args.data[0]);
                     return mkType(self.arena, RtKind::RtArray, 0, str::empty(), e, null);
                 }
-                if (strEq(n, "i8")) return mkType(self.arena, RtKind::RtInt, 8, n, null, null);
-                if (strEq(n, "i16")) return mkType(self.arena, RtKind::RtInt, 16, n, null, null);
-                if (strEq(n, "i32")) return mkType(self.arena, RtKind::RtInt, 32, n, null, null);
-                if (strEq(n, "i64") || strEq(n, "isize")) return mkType(self.arena, RtKind::RtInt, 64, n, null, null);
-                if (strEq(n, "u8")) return mkType(self.arena, RtKind::RtUInt, 8, n, null, null);
-                if (strEq(n, "u16")) return mkType(self.arena, RtKind::RtUInt, 16, n, null, null);
-                if (strEq(n, "u32")) return mkType(self.arena, RtKind::RtUInt, 32, n, null, null);
-                if (strEq(n, "u64") || strEq(n, "usize")) return mkType(self.arena, RtKind::RtUInt, 64, n, null, null);
-                if (strEq(n, "f32")) return mkType(self.arena, RtKind::RtFloat, 32, n, null, null);
-                if (strEq(n, "f64")) return mkType(self.arena, RtKind::RtFloat, 64, n, null, null);
-                if (strEq(n, "bool")) return mkType(self.arena, RtKind::RtBool, 0, n, null, null);
-                if (strEq(n, "char")) return mkType(self.arena, RtKind::RtChar, 0, n, null, null);
-                if (strEq(n, "string") || strEq(n, "str")) return mkType(self.arena, RtKind::RtStr, 0, n, null, null);
-                if (strEq(n, "void")) return mkType(self.arena, RtKind::RtVoid, 0, n, null, null);
+                if (n.equals("i8")) return mkType(self.arena, RtKind::RtInt, 8, n, null, null);
+                if (n.equals("i16")) return mkType(self.arena, RtKind::RtInt, 16, n, null, null);
+                if (n.equals("i32")) return mkType(self.arena, RtKind::RtInt, 32, n, null, null);
+                if (n.equals("i64") || n.equals("isize")) return mkType(self.arena, RtKind::RtInt, 64, n, null, null);
+                if (n.equals("u8")) return mkType(self.arena, RtKind::RtUInt, 8, n, null, null);
+                if (n.equals("u16")) return mkType(self.arena, RtKind::RtUInt, 16, n, null, null);
+                if (n.equals("u32")) return mkType(self.arena, RtKind::RtUInt, 32, n, null, null);
+                if (n.equals("u64") || n.equals("usize")) return mkType(self.arena, RtKind::RtUInt, 64, n, null, null);
+                if (n.equals("f32")) return mkType(self.arena, RtKind::RtFloat, 32, n, null, null);
+                if (n.equals("f64")) return mkType(self.arena, RtKind::RtFloat, 64, n, null, null);
+                if (n.equals("bool")) return mkType(self.arena, RtKind::RtBool, 0, n, null, null);
+                if (n.equals("char")) return mkType(self.arena, RtKind::RtChar, 0, n, null, null);
+                if (n.equals("string") || n.equals("str")) return mkType(self.arena, RtKind::RtStr, 0, n, null, null);
+                if (n.equals("void")) return mkType(self.arena, RtKind::RtVoid, 0, n, null, null);
                 PtrList* args = null;
                 if (t.args != null && t.args.len > 0)
                 {
@@ -437,6 +498,10 @@ pub extend Checker
                 else => {}
             }
             i++;
+        }
+        if (self.diags.errors == 0)
+        {
+            self.memAll();
         }
     }
 
@@ -850,18 +915,18 @@ pub extend Checker
         if (e == null) return self.unknown();
         switch (e.kind)
         {
-            ExprKind::Int => { return self.intType(e.text); }
+            ExprKind::Int => { return self.intType(e.text); },
             
             ExprKind::Float => {
-                if (endsWith(e.text, "f64")) return mkType(self.arena, RtKind::RtFloat, 64, "f64", null, null);
+                if (e.endsWith("f64")) return mkType(self.arena, RtKind::RtFloat, 64, "f64", null, null);
                 RType* t = mkType(self.arena, RtKind::RtFloat, 32, "f32", null, null);
                 t.isLitFloat = true;
                 return t;
-            }
+            },
             
-            ExprKind::Str => { return mkType(self.arena, RtKind::RtStr, 0, str::empty(), null, null); }
-            ExprKind::Char => { return mkType(self.arena, RtKind::RtChar, 0, str::empty(), null, null); }
-            ExprKind::Bool => { return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null); }
+            ExprKind::Str => { return mkType(self.arena, RtKind::RtStr, 0, str::empty(), null, null); },
+            ExprKind::Char => { return mkType(self.arena, RtKind::RtChar, 0, str::empty(), null, null); },
+            ExprKind::Bool => { return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null); },
             ExprKind::Name => {
                 Local* l = findLocal(self.scope, e.name);
                 if (l != null) return l.type;
@@ -878,7 +943,7 @@ pub extend Checker
                 }
                 self.error(e.loc, "E0350", "unknown name");
                 return self.unknown();
-            }
+            },
             ExprKind::Unary => {
                 RType* t = self.expr(e.a);
                 if (e.op == Op::Neg)
@@ -893,11 +958,11 @@ pub extend Checker
                 }
                 if (e.op == Op::Await) return t;
                 return self.unknown();
-            }
-            
-            ExprKind::Binary => { return self.binary(e); }
-            ExprKind::Assign => { return self.assign(e); }
-            ExprKind::Call => { return self.call(e); }
+            },
+
+            ExprKind::Binary => { return self.binary(e); },
+            ExprKind::Assign => { return self.assign(e); },
+            ExprKind::Call => { return self.call(e); },
             
             ExprKind::Field => {
                 RType* obj = self.expr(e.a);
@@ -927,7 +992,7 @@ pub extend Checker
                 }
                 self.error(e.loc, "E0361", "field access on non-struct");
                 return self.unknown();
-            }
+            },
             
             ExprKind::Index => {
                 RType* a = self.expr(e.a);
@@ -944,7 +1009,7 @@ pub extend Checker
                 if (a.kind == RtKind::RtUnknown) return self.unknown();
                 self.error(e.loc, "E0362", "cannot index non-array");
                 return self.unknown();
-            }
+            },
             
             ExprKind::Cast => {
                 RType* a = self.expr(e.a);
@@ -957,16 +1022,16 @@ pub extend Checker
                 if (a.kind == t.kind) ok = true;
                 if (!ok) self.error(e.loc, "E0363", "invalid cast");
                 return t;
-            }
+            },
             
             ExprKind::Question => {
                 RType* a = self.expr(e.a);
                 if (a.kind == RtKind::RtNamed && a.args != null && a.args.len > 0)
                     return (RType*)a.args.data[0];
                 return self.unknown();
-            }
+            },
             
-            ExprKind::StructLit => { return self.structLit(e); }
+            ExprKind::StructLit => { return self.structLit(e); },
             
             ExprKind::Range => {
                 RType* a = self.expr(e.a);
@@ -977,7 +1042,7 @@ pub extend Checker
                     self.error(e.loc, "E0364", "range bounds must be numeric");
                 }
                 return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
-            }
+            },
             
             ExprKind::Tuple => {
                 PtrList* items = newList(self.arena);
@@ -988,7 +1053,7 @@ pub extend Checker
                     i++;
                 }
                 return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
-            }
+            },
             
             ExprKind::ArrayLit => {
                 if (e.list == null || e.list.len == 0) return self.unknown();
@@ -1023,35 +1088,35 @@ pub extend Checker
                     i++;
                 }
                 return mkType(self.arena, RtKind::RtArray, 0, str::empty(), elem, null);
-            }
+            },
             ExprKind::If => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.expr(e.a);
-            }
+            },
             ExprKind::While => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.unknown();
-            }
+            },
             ExprKind::Switch => {
                 if (e.stmt != null) self.stmt(e.stmt);
                 return self.unknown();
-            }
+            },
             else => { return self.unknown(); }
         }
     }
 
     RType* intType(str text)
     {
-        if (endsWith(text, "i8")) return mkType(self.arena, RtKind::RtInt, 8, "i8", null, null);
-        if (endsWith(text, "i16")) return mkType(self.arena, RtKind::RtInt, 16, "i16", null, null);
-        if (endsWith(text, "i64")) return mkType(self.arena, RtKind::RtInt, 64, "i64", null, null);
-        if (endsWith(text, "isize")) return mkType(self.arena, RtKind::RtInt, 64, "isize", null, null);
-        if (endsWith(text, "u8")) return mkType(self.arena, RtKind::RtUInt, 8, "u8", null, null);
-        if (endsWith(text, "u16")) return mkType(self.arena, RtKind::RtUInt, 16, "u16", null, null);
-        if (endsWith(text, "u32")) return mkType(self.arena, RtKind::RtUInt, 32, "u32", null, null);
-        if (endsWith(text, "u64")) return mkType(self.arena, RtKind::RtUInt, 64, "u64", null, null);
-        if (endsWith(text, "usize")) return mkType(self.arena, RtKind::RtUInt, 64, "usize", null, null);
-        if (endsWith(text, "i32")) return mkType(self.arena, RtKind::RtInt, 32, "i32", null, null);
+        if (text.endsWith("i8")) return mkType(self.arena, RtKind::RtInt, 8, "i8", null, null);
+        if (text.endsWith("i16")) return mkType(self.arena, RtKind::RtInt, 16, "i16", null, null);
+        if (text.endsWith("i64")) return mkType(self.arena, RtKind::RtInt, 64, "i64", null, null);
+        if (text.endsWith("isize")) return mkType(self.arena, RtKind::RtInt, 64, "isize", null, null);
+        if (text.endsWith("u8")) return mkType(self.arena, RtKind::RtUInt, 8, "u8", null, null);
+        if (text.endsWith("u16")) return mkType(self.arena, RtKind::RtUInt, 16, "u16", null, null);
+        if (text.endsWith("u32")) return mkType(self.arena, RtKind::RtUInt, 32, "u32", null, null);
+        if (text.endsWith("u64")) return mkType(self.arena, RtKind::RtUInt, 64, "u64", null, null);
+        if (text.endsWith("usize")) return mkType(self.arena, RtKind::RtUInt, 64, "usize", null, null);
+        if (text.endsWith("i32")) return mkType(self.arena, RtKind::RtInt, 32, "i32", null, null);
         RType* t = mkType(self.arena, RtKind::RtInt, 32, "i32", null, null);
         t.isLitInt = true;
         return t;
@@ -1098,7 +1163,7 @@ pub extend Checker
                     self.error(e.loc, "E0371", "mismatched numeric operand types");
                 }
                 return r;
-            }
+            },
             
             Op::Eq | Op::Ne => {
                 if (a.kind != RtKind::RtUnknown && b.kind != RtKind::RtUnknown)
@@ -1109,7 +1174,7 @@ pub extend Checker
                     }
                 }
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
-            }
+            },
             
             Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                 if ((a.kind != RtKind::RtUnknown && !self.rtIsNum(a)) || (b.kind != RtKind::RtUnknown && !self.rtIsNum(b)))
@@ -1117,23 +1182,23 @@ pub extend Checker
                     self.error(e.loc, "E0370", "comparison requires numbers");
                 }
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
-            }
+            },
             
             Op::LAnd | Op::LOr => {
                 if (a.kind != RtKind::RtBool && a.kind != RtKind::RtUnknown) self.error(e.a.loc, "E0373", "logical operator requires bool");
                 if (b.kind != RtKind::RtBool && b.kind != RtKind::RtUnknown) self.error(e.b.loc, "E0373", "logical operator requires bool");
                 return mkType(self.arena, RtKind::RtBool, 0, str::empty(), null, null);
-            }
+            },
             
             Op::Shl | Op::Shr | Op::Band | Op::Bor | Op::Bxor => {
                 if (!self.rtIsNum(a) && a.kind != RtKind::RtUnknown) self.error(e.loc, "E0370", "bitwise requires integers");
                 return a;
-            }
+            },
             
             Op::Range | Op::RangeEq => {
                 RType* elem = a.kind == RtKind::RtUnknown ? b : a;
                 return mkType(self.arena, RtKind::RtRange, 0, str::empty(), elem, null);
-            }
+            },
             else => { return self.unknown(); }
         }
     }
@@ -1475,5 +1540,1521 @@ pub extend Checker
             i++;
         }
         return mkType(self.arena, RtKind::RtNamed, 0, d.name, null, null);
+    }
+
+    // --------- memory phase (DESIGN §4-§6) ---------
+    // escape analysis, stack/heap classification, scope-free and @drop
+    // injection, slice borrow rules. runs after type checking; output is
+    // an annotated AST (Expr.mem) plus injected __mu_free / drop() calls —
+    // the boundary right before IR lowering.
+
+    void memAll()
+    {
+        self.memSums = newList(self.arena);
+        self.memQs = newList(self.arena);
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null) self.memSumDecl(d);
+            i++;
+        }
+        bool changed = true;
+        usize guard = 0;
+        while (changed && guard < 64)
+        {
+            changed = false;
+            usize k = 0;
+            while (k < self.memSums.len)
+            {
+                FnSum* s = (FnSum*)self.memSums.data[k];
+                if (self.memComputeSum(s)) changed = true;
+                k++;
+            }
+            guard++;
+        }
+        i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null) self.memDecl(d);
+            i++;
+        }
+    }
+
+    void memSumDecl(Decl* d)
+    {
+        if (d.kind == DeclKind::DcFn)
+        {
+            if (d.body != null) self.memAddSum(d);
+            return;
+        }
+        if (d.kind == DeclKind::DcStruct || d.kind == DeclKind::DcVariant || d.kind == DeclKind::DcTrait || d.kind == DeclKind::DcExtend)
+        {
+            if (d.members == null) return;
+            usize j = 0;
+            while (j < d.members.len)
+            {
+                Decl* m = (Decl*)d.members.data[j];
+                if (m != null && m.kind == DeclKind::DcFn && m.body != null) self.memAddSum(m);
+                j++;
+            }
+        }
+    }
+
+    void memAddSum(Decl* d)
+    {
+        FnSum* s = (FnSum*)self.arena.alloc(@sizeof(FnSum), 8);
+        s.decl = d;
+        usize n = 0;
+        if (d.params != null) n = d.params.len;
+        s.n = n;
+        s.esc = null;
+        if (n > 0)
+        {
+            s.esc = (bool*)self.arena.alloc(n * @sizeof(bool), 8);
+            usize k = 0;
+            while (k < n)
+            {
+                s.esc[k] = false;
+                k++;
+            }
+        }
+        listPush(self.memSums, (rawptr)s);
+    }
+
+    FnSum* memFindSum(Decl* d)
+    {
+        if (self.memSums == null) return null;
+        usize i = 0;
+        while (i < self.memSums.len)
+        {
+            FnSum* s = (FnSum*)self.memSums.data[i];
+            if (s.decl == d) return s;
+            i++;
+        }
+        return null;
+    }
+
+    bool memComputeSum(FnSum* s)
+    {
+        self.memVars = null;
+        self.memPos = 0;
+        if (s.decl.params != null)
+        {
+            usize i = 0;
+            while (i < s.decl.params.len)
+            {
+                Param* p = (Param*)s.decl.params.data[i];
+                self.memVar(p.name).isParam = true;
+                i++;
+            }
+        }
+        self.memChanged = false;
+        self.memEscStmt(s.decl.body);
+        bool changed = self.memChanged;
+        usize k = 0;
+        while (k < s.n)
+        {
+            Param* p = (Param*)s.decl.params.data[k];
+            MemVar* v = self.memFindVar(p.name);
+            bool e = false;
+            if (v != null && v.esc) e = true;
+            if (e != s.esc[k])
+            {
+                s.esc[k] = e;
+                changed = true;
+            }
+            k++;
+        }
+        return changed;
+    }
+
+    void memDecl(Decl* d)
+    {
+        #[[fallthrough]]
+        switch (d.kind)
+        {
+            DeclKind::DcFn => { self.memFn(d); },
+            DeclKind::DcStruct | DeclKind::DcVariant | DeclKind::DcTrait | DeclKind::DcExtend
+            => {
+                if (d.members == null) return;
+                usize j = 0;
+                while (j < d.members.len)
+                {
+                    Decl* m = (Decl*)d.members.data[j];
+                    if (m != null && m.kind == DeclKind::DcFn) self.memFn(m);
+                    j++;
+                }
+            }
+        }
+    }
+
+    MemVar* memFindVar(str name)
+    {
+        MemVar* v = self.memVars;
+        while (v != null)
+        {
+            if (strEq(v.name, name)) return v;
+            v = v.next;
+        }
+        return null;
+    }
+
+    MemVar* memVar(str name)
+    {
+        MemVar* v = self.memFindVar(name);
+        if (v != null) return v;
+        v = (MemVar*)self.arena.alloc(@sizeof(MemVar), 8);
+        v.name = name;
+        v.esc = false;
+        v.hasPos = false;
+        v.firstPos = 0;
+        v.unknownMeth = false;
+        v.isParam = false;
+        v.own = null;
+        v.next = self.memVars;
+        self.memVars = v;
+        return v;
+    }
+
+    void memMarkEsc(str name)
+    {
+        MemVar* v = self.memVar(name);
+        if (!v.esc)
+        {
+            v.esc = true;
+            v.firstPos = self.memPos;
+            v.hasPos = true;
+            self.memChanged = true;
+        }
+    }
+
+    void memUnionName(str a, str b)
+    {
+        MemVar* va = self.memVar(a);
+        MemVar* vb = self.memVar(b);
+        if (va.esc && !vb.esc) self.memMarkEsc(b);
+        if (vb.esc && !va.esc) self.memMarkEsc(a);
+    }
+
+    Decl* memFindVariantCase(str name)
+    {
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null && d.kind == DeclKind::DcVariant && d.cases != null)
+            {
+                usize j = 0;
+                while (j < d.cases.len)
+                {
+                    VariantCase* c = (VariantCase*)d.cases.data[j];
+                    if (strEq(c.name, name)) return d;
+                    j++;
+                }
+            }
+            i++;
+        }
+        return null;
+    }
+
+    Decl* memFindMethod(Expr* fieldExpr)
+    {
+        str mname = fieldExpr.name;
+        Decl* found = null;
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null && d.members != null)
+            {
+                usize j = 0;
+                while (j < d.members.len)
+                {
+                    Decl* m = (Decl*)d.members.data[j];
+                    if (m != null && m.kind == DeclKind::DcFn && strEq(m.name, mname))
+                    {
+                        if (found != null) return null;
+                        found = m;
+                    }
+                    j++;
+                }
+            }
+            i++;
+        }
+        return found;
+    }
+
+    void memEscStmt(Stmt* s)
+    {
+        if (s == null) return;
+        self.memPos = self.memPos + 1;
+        
+        #[[fallthrough]]
+        switch (s.kind)
+        {
+            StmtKind::StBlock => {
+                usize i = 0;
+                while (i < s.list.len)
+                {
+                    self.memEscStmt((Stmt*)s.list.data[i]);
+                    i++;
+                }
+            },
+            StmtKind::StVar => {
+                self.memEscPat(s.pat);
+                if (s.expr != null) self.memEscExpr(s.expr, false);
+                if (s.expr != null && s.expr.kind == ExprKind::Name && s.pat != null && s.pat.kind == PatternKind::PatBinding)
+                {
+                    self.memUnionName(s.expr.name, s.pat.text);
+                }
+                self.memEscStmt(s.a);
+                self.memEscStmt(s.b);
+            },
+            StmtKind::StExpr => { self.memEscExpr(s.expr, false); },
+            StmtKind::StIf => {
+                self.memEscExpr(s.expr, false);
+                self.memEscStmt(s.a);
+                self.memEscStmt(s.b);
+            },
+            StmtKind::StWhile => {
+                self.memEscExpr(s.expr, false);
+                self.memEscStmt(s.a);
+            },
+            StmtKind::StFor => {
+                self.memEscExpr(s.expr, false);
+                self.memEscPat(s.pat);
+                self.memEscStmt(s.a);
+            },
+            StmtKind::StSwitch => {
+                self.memEscExpr(s.expr, false);
+                usize i = 0;
+                while (i < s.prongs.len)
+                {
+                    Prong* p = (Prong*)s.prongs.data[i];
+                    self.memEscPat(p.pat);
+                    self.memEscExpr(p.guard, false);
+                    self.memEscStmt(p.body);
+                    i++;
+                }
+            },
+            StmtKind::StReturn => { self.memEscExpr(s.expr, true); },
+            StmtKind::StBreak | StmtKind::StContinue => {}
+        }
+    }
+
+    void memEscPat(Pattern* p)
+    {
+        if (p == null) return;
+        if (p.kind == PatternKind::PatBinding)
+        {
+            self.memVar(p.text);
+            return;
+        }
+        if (p.items != null)
+        {
+            usize i = 0;
+            while (i < p.items.len)
+            {
+                self.memEscPat((Pattern*)p.items.data[i]);
+                i++;
+            }
+        }
+        self.memEscPat(p.a);
+        self.memEscPat(p.b);
+    }
+
+    void memEscExpr(Expr* e, bool inSink)
+    {
+        if (e == null) return;
+        switch (e.kind)
+        {
+            ExprKind::Name => { if (inSink) self.memMarkEsc(e.name); }
+            ExprKind::Unary => { self.memEscExpr(e.a, inSink); }
+            ExprKind::Binary => {
+                self.memEscExpr(e.a, inSink);
+                self.memEscExpr(e.b, inSink);
+            }
+            ExprKind::Assign => { self.memEscAssign(e, inSink); }
+            ExprKind::Call => { self.memEscCall(e, inSink); }
+            ExprKind::Field => { self.memEscExpr(e.a, inSink); }
+            ExprKind::Index => {
+                self.memEscExpr(e.a, inSink);
+                self.memEscExpr(e.b, false);
+            }
+            ExprKind::Cast => { self.memEscExpr(e.a, inSink); }
+            ExprKind::Question => { self.memEscExpr(e.a, true); }
+            ExprKind::StructLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        FieldInit* f = (FieldInit*)e.list.data[i];
+                        self.memEscExpr(f.value, inSink);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::Range => {
+                self.memEscExpr(e.a, false);
+                self.memEscExpr(e.b, false);
+            }
+            ExprKind::Tuple => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        self.memEscExpr((Expr*)e.list.data[i], inSink);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::ArrayLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        ArrayItem* it = (ArrayItem*)e.list.data[i];
+                        self.memEscExpr(it.key, false);
+                        self.memEscExpr(it.value, inSink);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::If | ExprKind::While | ExprKind::Switch => {
+                if (e.stmt != null) self.memEscStmt(e.stmt);
+                self.memEscExpr(e.a, inSink);
+            }
+            else => {}
+        }
+    }
+
+    void memEscAssign(Expr* e, bool inSink)
+    {
+        self.memEscExpr(e.b, inSink);
+        self.memEscExpr(e.a, false);
+        if (e.b != null && e.b.kind == ExprKind::Name)
+        {
+            str tn = self.memRootName(e.a);
+            if (tn.len == 0)
+            {
+                self.memMarkEsc(e.b.name);
+            }
+            else if (e.a.kind == ExprKind::Name)
+            {
+                self.memUnionName(e.b.name, tn);
+            }
+            else
+            {
+                MemVar* t = self.memVar(tn);
+                if (t.esc) self.memMarkEsc(e.b.name);
+            }
+        }
+    }
+
+    void memEscCall(Expr* e, bool inSink)
+    {
+        Expr* callee = e.a;
+        if (callee != null && callee.kind == ExprKind::Field)
+        {
+            bool selfEsc = false;
+            FnSum* sum = null;
+            bool assoc = false;
+            if (callee.a != null && callee.a.kind == ExprKind::Name)
+            {
+                Sym* ts = self.findSym(callee.a.name);
+                if (ts != null && (ts.kind == SymKind::SkStruct || ts.kind == SymKind::SkVariant || ts.kind == SymKind::SkAlias || ts.kind == SymKind::SkTrait))
+                {
+                    assoc = true;
+                    self.memEscExpr(callee.a, false);
+                }
+            }
+            if (!assoc)
+            {
+                Decl* md = self.memFindMethod(callee);
+                if (md != null)
+                {
+                    sum = self.memFindSum(md);
+                    if (sum != null)
+                    {
+                        selfEsc = false;
+                        if (sum.n > 0 && sum.esc[0]) selfEsc = true;
+                    }
+                }
+                else
+                {
+                    if (callee.a != null && callee.a.kind == ExprKind::Name)
+                    {
+                        self.memVar(callee.a.name).unknownMeth = true;
+                    }
+                }
+                self.memEscExpr(callee.a, selfEsc);
+            }
+            if (e.list != null)
+            {
+                usize i = 0;
+                while (i < e.list.len)
+                {
+                    bool sink = true;
+                    if (!assoc && sum != null)
+                    {
+                        sink = inSink;
+                        if (i + 1 < sum.n && sum.esc[i + 1]) sink = true;
+                    }
+                    if (inSink) sink = true;
+                    self.memEscExpr((Expr*)e.list.data[i], sink);
+                    i++;
+                }
+            }
+            return;
+        }
+        if (callee != null && callee.kind == ExprKind::Name)
+        {
+            FnSum* sum = null;
+            bool argsAllEsc = true;
+            if (self.memFindVariantCase(callee.name) == null)
+            {
+                Sym* sym = self.findSym(callee.name);
+                if (sym != null && (sym.kind == SymKind::SkFn || sym.kind == SymKind::SkExtern))
+                {
+                    if (!sym.decl.isExtern)
+                    {
+                        sum = self.memFindSum(sym.decl);
+                        if (sum != null) argsAllEsc = false;
+                    }
+                }
+            }
+            if (e.list != null)
+            {
+                usize i = 0;
+                while (i < e.list.len)
+                {
+                    bool sink = inSink || argsAllEsc;
+                    if (!argsAllEsc && sum != null && i < sum.n && sum.esc[i]) sink = true;
+                    self.memEscExpr((Expr*)e.list.data[i], sink);
+                    i++;
+                }
+            }
+            return;
+        }
+        self.memEscExpr(callee, false);
+        if (e.list != null)
+        {
+            usize i = 0;
+            while (i < e.list.len)
+            {
+                self.memEscExpr((Expr*)e.list.data[i], true);
+                i++;
+            }
+        }
+    }
+
+    bool memRtOwning(RType* t, usize depth)
+    {
+        if (t == null || depth > 8) return false;
+        switch (t.kind)
+        {
+            RtKind::RtArray => { return true; }
+            RtKind::RtTuple => {
+                if (t.args == null) return false;
+                usize i = 0;
+                while (i < t.args.len)
+                {
+                    if (self.memRtOwning((RType*)t.args.data[i], depth + 1)) return true;
+                    i++;
+                }
+                return false;
+            }
+            RtKind::RtNamed => {
+                if (strEq(t.name, "Map") || strEq(t.name, "Array")) return true;
+                if (strEq(t.name, "Vec2") || strEq(t.name, "Vec3") || strEq(t.name, "Quat") || strEq(t.name, "Mat4")) return false;
+                Sym* s = self.findSym(t.name);
+                if (s == null || s.decl == null) return false;
+                if (s.decl.kind == DeclKind::DcStruct)
+                {
+                    if (s.decl.fields == null) return false;
+                    usize i = 0;
+                    while (i < s.decl.fields.len)
+                    {
+                        FieldDecl* f = (FieldDecl*)s.decl.fields.data[i];
+                        if (self.memRtOwning(self.resolveType(f.type), depth + 1)) return true;
+                        i++;
+                    }
+                    return false;
+                }
+                if (s.decl.kind == DeclKind::DcVariant)
+                {
+                    if (s.decl.cases == null) return false;
+                    usize i = 0;
+                    while (i < s.decl.cases.len)
+                    {
+                        VariantCase* c = (VariantCase*)s.decl.cases.data[i];
+                        if (c.payload != null)
+                        {
+                            usize j = 0;
+                            while (j < c.payload.len)
+                            {
+                                if (self.memRtOwning(self.resolveType((Type*)c.payload.data[j]), depth + 1)) return true;
+                                j++;
+                            }
+                        }
+                        i++;
+                    }
+                    return false;
+                }
+                if (s.decl.kind == DeclKind::DcTypeAlias) return self.memRtOwning(self.resolveType(s.decl.target), depth + 1);
+                return false;
+            }
+            else => { return false; }
+        }
+    }
+
+    bool memHasDrop(RType* t)
+    {
+        if (t == null || t.kind != RtKind::RtNamed) return false;
+        Sym* s = self.findSym(t.name);
+        if (s != null && s.decl != null && s.decl.members != null)
+        {
+            usize i = 0;
+            while (i < s.decl.members.len)
+            {
+                Decl* m = (Decl*)s.decl.members.data[i];
+                if (m != null && m.kind == DeclKind::DcFn && strEq(m.name, "drop")) return true;
+                i++;
+            }
+        }
+        return self.memExtendHasDrop(t.name);
+    }
+
+    bool memExtendHasDrop(str typeName)
+    {
+        usize i = 0;
+        while (i < self.decls.len)
+        {
+            Decl* d = (Decl*)self.decls.data[i];
+            if (d != null && d.kind == DeclKind::DcExtend && d.target != null && strEq(baseOf(d.target.text), typeName) && d.members != null)
+            {
+                usize j = 0;
+                while (j < d.members.len)
+                {
+                    Decl* m = (Decl*)d.members.data[j];
+                    if (m != null && m.kind == DeclKind::DcFn && strEq(m.name, "drop")) return true;
+                    j++;
+                }
+            }
+            i++;
+        }
+        return false;
+    }
+
+    Own* memNewOwn(str name, RType* type, Loc loc)
+    {
+        Own* o = (Own*)self.arena.alloc(@sizeof(Own), 8);
+        o.name = name;
+        o.type = type;
+        o.loc = loc;
+        o.cls = MemClass::McAuto;
+        o.moved = false;
+        o.hasDrop = self.memHasDrop(type);
+        listPush(self.memOwns, (rawptr)o);
+        return o;
+    }
+
+    Own* memFindOwn(str name)
+    {
+        if (self.memOwns == null) return null;
+        usize i = self.memOwns.len;
+        while (i > 0)
+        {
+            i = i - 1;
+            Own* o = (Own*)self.memOwns.data[i];
+            if (strEq(o.name, name)) return o;
+        }
+        return null;
+    }
+
+    RType* memLitType(Expr* e)
+    {
+        bool isMap = false;
+        if (e.list != null)
+        {
+            usize j = 0;
+            while (j < e.list.len)
+            {
+                ArrayItem* it = (ArrayItem*)e.list.data[j];
+                if (it.key != null) isMap = true;
+                j++;
+            }
+        }
+        if (isMap) return mkType(self.arena, RtKind::RtNamed, 0, "Map", null, null);
+        return mkType(self.arena, RtKind::RtArray, 0, str::empty(), null, null);
+    }
+
+    RType* memVarType(Stmt* s)
+    {
+        RType* ann = null;
+        if (s.type != null)
+        {
+            if (s.type.kind == TypeKind::Array && s.type.len != null) return null;
+            ann = self.resolveType(s.type);
+        }
+        if (ann != null)
+        {
+            if (self.memRtOwning(ann, 0)) return ann;
+            return null;
+        }
+        if (s.expr != null)
+        {
+            if (s.expr.kind == ExprKind::ArrayLit) return self.memLitType(s.expr);
+            if (s.expr.kind == ExprKind::StructLit)
+            {
+                str tn = baseOf(s.expr.text);
+                if (tn.len == 0) tn = baseOf(s.expr.name);
+                RType* st = mkType(self.arena, RtKind::RtNamed, 0, tn, null, null);
+                if (self.memRtOwning(st, 0)) return st;
+            }
+        }
+        return null;
+    }
+
+    void memFn(Decl* d)
+    {
+        if (d.body == null) return;
+        MemVar* svVars = self.memVars;
+        UseSite* svUses = self.memUses;
+        SliceLive* svSl = self.memSlices;
+        MemFrame* svAct = self.memActive;
+        PtrList* svOwns = self.memOwns;
+        Decl* svFn = self.curFn;
+        RType* svRet = self.curFnRet;
+
+        self.memVars = null;
+        self.memUses = null;
+        self.memSlices = null;
+        self.memActive = null;
+        self.memOwns = newList(self.arena);
+        self.memPos = 0;
+        self.curFn = d;
+        self.curFnRet = self.resolveType(d.ret);
+
+        if (d.params != null)
+        {
+            usize i = 0;
+            while (i < d.params.len)
+            {
+                Param* p = (Param*)d.params.data[i];
+                self.memVar(p.name).isParam = true;
+                i++;
+            }
+        }
+
+        bool changed = true;
+        usize guard = 0;
+        while (changed && guard < 64)
+        {
+            self.memChanged = false;
+            self.memPos = 0;
+            self.memEscStmt(d.body);
+            changed = self.memChanged;
+            guard = guard + 1;
+        }
+
+        self.memPos = 0;
+        self.memCollect(d.body);
+
+        usize i = 0;
+        while (i < self.memOwns.len)
+        {
+            Own* o = (Own*)self.memOwns.data[i];
+            MemVar* v = self.memFindVar(o.name);
+            if (v != null && v.esc) o.cls = MemClass::McTransfer;
+            else if (v != null && v.unknownMeth) o.cls = MemClass::McHeap;
+            else o.cls = MemClass::McStack;
+            i++;
+        }
+
+        self.memCheckMoves();
+        self.memSliceLasts();
+        self.memCheckFreeze();
+        self.memCheckEscapes();
+
+        self.memActive = null;
+        self.memInjectStmt(d.body);
+
+        self.memVars = svVars;
+        self.memUses = svUses;
+        self.memSlices = svSl;
+        self.memActive = svAct;
+        self.memOwns = svOwns;
+        self.curFn = svFn;
+        self.curFnRet = svRet;
+    }
+
+    void memUse(str name, i32 kind, Loc loc, str other)
+    {
+        if (name.len == 0) return;
+        UseSite* u = (UseSite*)self.arena.alloc(@sizeof(UseSite), 8);
+        u.name = name;
+        u.other = other;
+        u.pos = self.memPos;
+        u.kind = kind;
+        u.loc = loc;
+        u.next = self.memUses;
+        self.memUses = u;
+    }
+
+    void memUse0(str name, Loc loc) { self.memUse(name, 0, loc, str::empty()); }
+    void memUse1(str name, Loc loc) { self.memUse(name, 1, loc, str::empty()); }
+    void memUse2(str name, str other, Loc loc) { self.memUse(name, 2, loc, other); }
+    void memUse3(str name, Loc loc) { self.memUse(name, 3, loc, str::empty()); }
+    void memUse4(str name, Loc loc) { self.memUse(name, 4, loc, str::empty()); }
+
+    void memCollect(Stmt* s)
+    {
+        if (s == null) return;
+        self.memPos = self.memPos + 1;
+        switch (s.kind)
+        {
+            StmtKind::StBlock => {
+                usize i = 0;
+                while (i < s.list.len)
+                {
+                    self.memCollect((Stmt*)s.list.data[i]);
+                    i++;
+                }
+            }
+            StmtKind::StVar => {
+                str bind = str::empty();
+                if (s.pat != null && s.pat.kind == PatternKind::PatBinding) bind = s.pat.text;
+                RType* ot = self.memVarType(s);
+                bool wasSlice = false;
+                if (s.expr != null && s.expr.kind == ExprKind::Index && s.expr.b != null && s.expr.b.kind == ExprKind::Range && self.memRootName(s.expr.a).len > 0)
+                {
+                    wasSlice = true;
+                }
+                if (s.expr != null) self.memCollectExpr(s.expr);
+                if (wasSlice && bind.len > 0 && self.memSlices != null && self.memSlices.name.len == 0)
+                {
+                    self.memSlices.name = bind;
+                }
+                if (ot != null && bind.len > 0)
+                {
+                    Own* o = self.memNewOwn(bind, ot, s.loc);
+                    self.memVar(bind).own = o;
+                    if (s.expr != null && s.expr.kind == ExprKind::Name)
+                    {
+                        self.memUse2(s.expr.name, bind, s.expr.loc);
+                    }
+                }
+                else if (ot == null && bind.len > 0 && s.expr != null && s.expr.kind == ExprKind::Name)
+                {
+                    Own* src = self.memFindOwn(s.expr.name);
+                    if (src != null)
+                    {
+                        Own* o = self.memNewOwn(bind, src.type, s.loc);
+                        self.memVar(bind).own = o;
+                        self.memUse2(s.expr.name, bind, s.expr.loc);
+                    }
+                }
+                self.memCollect(s.a);
+                self.memCollect(s.b);
+            }
+            StmtKind::StExpr => { self.memCollectExpr(s.expr); }
+            StmtKind::StIf => {
+                self.memCollectExpr(s.expr);
+                self.memCollect(s.a);
+                self.memCollect(s.b);
+            }
+            StmtKind::StWhile => {
+                self.memCollectExpr(s.expr);
+                self.memCollect(s.a);
+            }
+            StmtKind::StFor => {
+                self.memCollectExpr(s.expr);
+                self.memCollect(s.a);
+            }
+            StmtKind::StSwitch => {
+                self.memCollectExpr(s.expr);
+                usize i = 0;
+                while (i < s.prongs.len)
+                {
+                    Prong* p = (Prong*)s.prongs.data[i];
+                    self.memCollectExpr(p.guard);
+                    self.memCollect(p.body);
+                    i++;
+                }
+            }
+            StmtKind::StReturn => {
+                if (s.expr != null)
+                {
+                    self.memCollectExpr(s.expr);
+                    self.memCheckReturnSlices(s.expr);
+                }
+            }
+            StmtKind::StBreak | StmtKind::StContinue => {}
+            else => {}
+        }
+    }
+
+    void memCollectExpr(Expr* e)
+    {
+        if (e == null) return;
+        switch (e.kind)
+        {
+            ExprKind::Name => { self.memUse0(e.name, e.loc); }
+            ExprKind::Unary => { self.memCollectExpr(e.a); }
+            ExprKind::Binary => {
+                self.memCollectExpr(e.a);
+                self.memCollectExpr(e.b);
+            }
+            ExprKind::Assign => {
+                self.memCollectTarget(e.a);
+                self.memCollectExpr(e.b);
+            }
+            ExprKind::Call => {
+                if (e.a != null && e.a.kind == ExprKind::Field)
+                {
+                    self.memCollectRecv(e.a.a);
+                }
+                else if (e.a != null && e.a.kind != ExprKind::Name)
+                {
+                    self.memCollectExpr(e.a);
+                }
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        self.memCollectExpr((Expr*)e.list.data[i]);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::Field => { self.memCollectExpr(e.a); }
+            ExprKind::Index => {
+                if (e.b != null && e.b.kind == ExprKind::Range)
+                {
+                    self.memSliceCreate(e);
+                }
+                else
+                {
+                    self.memCollectExpr(e.a);
+                    self.memCollectExpr(e.b);
+                }
+            }
+            ExprKind::Cast => { self.memCollectExpr(e.a); }
+            ExprKind::Question => {
+                self.memCollectExpr(e.a);
+                self.memCheckReturnSlices(e.a);
+            }
+            ExprKind::StructLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        FieldInit* f = (FieldInit*)e.list.data[i];
+                        self.memCollectExpr(f.value);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::Range => {
+                self.memCollectExpr(e.a);
+                self.memCollectExpr(e.b);
+            }
+            ExprKind::Tuple => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        self.memCollectExpr((Expr*)e.list.data[i]);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::ArrayLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        ArrayItem* it = (ArrayItem*)e.list.data[i];
+                        self.memCollectExpr(it.key);
+                        self.memCollectExpr(it.value);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::If | ExprKind::While | ExprKind::Switch => {
+                if (e.stmt != null) self.memCollect(e.stmt);
+                self.memCollectExpr(e.a);
+            }
+            else => {}
+        }
+    }
+
+    void memCollectTarget(Expr* e)
+    {
+        if (e == null) return;
+        if (e.kind == ExprKind::Name)
+        {
+            self.memUse1(e.name, e.loc);
+            return;
+        }
+        if (e.kind == ExprKind::Field)
+        {
+            self.memCollectTarget(e.a);
+            return;
+        }
+        if (e.kind == ExprKind::Index)
+        {
+            self.memCollectTarget(e.a);
+            self.memCollectExpr(e.b);
+            return;
+        }
+        self.memCollectExpr(e);
+    }
+
+    void memCollectRecv(Expr* e)
+    {
+        if (e == null) return;
+        if (e.kind == ExprKind::Name)
+        {
+            self.memUse4(e.name, e.loc);
+            return;
+        }
+        if (e.kind == ExprKind::Field)
+        {
+            self.memCollectRecv(e.a);
+            return;
+        }
+        if (e.kind == ExprKind::Index)
+        {
+            self.memCollectRecv(e.a);
+            self.memCollectExpr(e.b);
+            return;
+        }
+        self.memCollectExpr(e);
+    }
+
+    str memRootName(Expr* e)
+    {
+        while (e != null)
+        {
+            if (e.kind == ExprKind::Name) return e.name;
+            if (e.kind == ExprKind::Field || e.kind == ExprKind::Index || e.kind == ExprKind::Cast)
+            {
+                e = e.a;
+                continue;
+            }
+            return str::empty();
+        }
+        return str::empty();
+    }
+
+    void memSliceCreate(Expr* e)
+    {
+        str root = self.memRootName(e.a);
+        if (root.len == 0)
+        {
+            self.error(e.loc, "E0403", "cannot slice a temporary");
+            self.diags.help("bind the value to a variable so its storage outlives the slice");
+            self.memCollectExpr(e.a);
+            self.memCollectExpr(e.b);
+            return;
+        }
+        MemVar* bv = self.memFindVar(root);
+        if (bv == null)
+        {
+            self.memCollectExpr(e.a);
+            self.memCollectExpr(e.b);
+            return;
+        }
+        self.memUse3(root, e.loc);
+        self.memCollectExpr(e.b);
+        SliceLive* sl = (SliceLive*)self.arena.alloc(@sizeof(SliceLive), 8);
+        sl.backing = root;
+        sl.name = str::empty();
+        sl.create = self.memPos;
+        sl.last = self.memPos;
+        sl.loc = e.loc;
+        sl.next = self.memSlices;
+        self.memSlices = sl;
+    }
+
+    bool memRootsHave(Expr* e, str name)
+    {
+        if (e == null) return false;
+        switch (e.kind)
+        {
+            ExprKind::Name => { return strEq(e.name, name); }
+            ExprKind::Unary => { return self.memRootsHave(e.a, name); }
+            ExprKind::Cast => { return self.memRootsHave(e.a, name); }
+            ExprKind::Binary => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); }
+            ExprKind::Field => { return self.memRootsHave(e.a, name); }
+            ExprKind::Index => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); }
+            ExprKind::Call => {
+                if (e.a != null && e.a.kind == ExprKind::Field && self.memRootsHave(e.a.a, name)) return true;
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        if (self.memRootsHave((Expr*)e.list.data[i], name)) return true;
+                        i++;
+                    }
+                }
+                return false;
+            }
+            ExprKind::Question => { return self.memRootsHave(e.a, name); }
+            ExprKind::Tuple => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        if (self.memRootsHave((Expr*)e.list.data[i], name)) return true;
+                        i++;
+                    }
+                }
+                return false;
+            }
+            ExprKind::StructLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        FieldInit* f = (FieldInit*)e.list.data[i];
+                        if (self.memRootsHave(f.value, name)) return true;
+                        i++;
+                    }
+                }
+                return false;
+            }
+            ExprKind::If => { return self.memRootsHave(e.a, name); }
+            else => { return false; }
+        }
+    }
+
+    void memCheckReturnSlices(Expr* e)
+    {
+        SliceLive* sl = self.memSlices;
+        while (sl != null)
+        {
+            if (sl.name.len > 0 && self.memRootsHave(e, sl.name))
+            {
+                MemVar* bv = self.memFindVar(sl.backing);
+                bool backingLocal = false;
+                if (bv != null && !bv.isParam) backingLocal = true;
+                if (backingLocal && !self.memRootsHave(e, sl.backing))
+                {
+                    self.error(sl.loc, "E0401", "slice outlives its backing storage");
+                    self.diags.why("the backing value is owned by this function and dies when it returns");
+                    self.diags.help("return the backing value together with the slice, or copy the sliced data");
+                }
+            }
+            sl = sl.next;
+        }
+    }
+
+    void memCheckMoves()
+    {
+        UseSite* u = self.memUses;
+        while (u != null)
+        {
+            if (u.kind == 2)
+            {
+                Own* srcOwn = self.memFindOwn(u.name);
+                if (srcOwn != null)
+                {
+                    bool later = false;
+                    UseSite* w = self.memUses;
+                    while (w != null)
+                    {
+                        if (strEq(w.name, u.name) && w.pos > u.pos)
+                        {
+                            later = true;
+                            break;
+                        }
+                        w = w.next;
+                    }
+                    if (!later)
+                    {
+                        srcOwn.moved = true;
+                        Own* tgtOwn = self.memFindOwn(u.other);
+                        if (tgtOwn != null) tgtOwn.cls = srcOwn.cls;
+                    }
+                }
+            }
+            u = u.next;
+        }
+    }
+
+    void memSliceLasts()
+    {
+        SliceLive* sl = self.memSlices;
+        while (sl != null)
+        {
+            sl.last = sl.create;
+            if (sl.name.len > 0)
+            {
+                UseSite* u = self.memUses;
+                while (u != null)
+                {
+                    if (strEq(u.name, sl.name) && u.pos > sl.last) sl.last = u.pos;
+                    u = u.next;
+                }
+            }
+            sl = sl.next;
+        }
+    }
+
+    void memCheckFreeze()
+    {
+        SliceLive* sl = self.memSlices;
+        while (sl != null)
+        {
+            if (sl.name.len > 0)
+            {
+                UseSite* u = self.memUses;
+                while (u != null)
+                {
+                    if (strEq(u.name, sl.backing) && u.kind != 3 && u.pos > sl.create && u.pos <= sl.last)
+                    {
+                        self.error(u.loc, "E0402", "owner used while frozen by a live slice");
+                        self.diags.why("the backing owner cannot be read, written, or moved while a slice of it is live");
+                        self.diags.help("finish using the slice before touching the owner again");
+                        break;
+                    }
+                    u = u.next;
+                }
+            }
+            sl = sl.next;
+        }
+    }
+
+    void memCheckEscapes()
+    {
+        usize i = 0;
+        while (i < self.memOwns.len)
+        {
+            Own* o = (Own*)self.memOwns.data[i];
+            if (o.cls == MemClass::McTransfer)
+            {
+                MemVar* v = self.memFindVar(o.name);
+                if (v != null && v.hasPos)
+                {
+                    UseSite* u = self.memUses;
+                    while (u != null)
+                    {
+                        if (strEq(u.name, o.name) && u.pos > v.firstPos)
+                        {
+                            if (u.kind == 1)
+                            {
+                                self.error(u.loc, "E0404", "assignment to a moved value");
+                                self.diags.why("ownership of this value was transferred earlier in the function");
+                            }
+                            else
+                            {
+                                self.error(u.loc, "E0400", "use of a moved value");
+                                self.diags.why("ownership of this value was transferred earlier in the function");
+                                self.diags.help("copy the value before transferring it, or use it before the transfer");
+                            }
+                        }
+                        u = u.next;
+                    }
+                }
+            }
+            i++;
+        }
+    }
+
+    bool memFallthrough(PtrList* list)
+    {
+        if (list == null || list.len == 0) return true;
+        Stmt* last = (Stmt*)list.data[list.len - 1];
+        if (last == null) return true;
+        if (last.kind == StmtKind::StReturn || last.kind == StmtKind::StBreak || last.kind == StmtKind::StContinue) return false;
+        return true;
+    }
+
+    void memPushActive(Own* o)
+    {
+        MemFrame* f = (MemFrame*)self.arena.alloc(@sizeof(MemFrame), 8);
+        f.own = o;
+        f.next = self.memActive;
+        self.memActive = f;
+    }
+
+    bool memActiveHas(Own* o)
+    {
+        MemFrame* f = self.memActive;
+        while (f != null)
+        {
+            if (f.own == o) return true;
+            f = f.next;
+        }
+        return false;
+    }
+
+    Stmt* memDropStmt(Own* o)
+    {
+        Stmt* s = newStmt(self.arena, StmtKind::StExpr, o.loc);
+        Expr* call = newExpr(self.arena, ExprKind::Call, o.loc);
+        Expr* fld = newExpr(self.arena, ExprKind::Field, o.loc);
+        Expr* recv = newExpr(self.arena, ExprKind::Name, o.loc);
+        recv.name = o.name;
+        recv.text = o.name;
+        fld.a = recv;
+        fld.name = "drop";
+        fld.text = "drop";
+        call.a = fld;
+        call.list = newList(self.arena);
+        s.expr = call;
+        return s;
+    }
+
+    Stmt* memFreeStmt(Own* o)
+    {
+        Stmt* s = newStmt(self.arena, StmtKind::StExpr, o.loc);
+        Expr* call = newExpr(self.arena, ExprKind::Call, o.loc);
+        Expr* fn = newExpr(self.arena, ExprKind::Name, o.loc);
+        fn.name = "__mu_free";
+        fn.text = "__mu_free";
+        Expr* arg = newExpr(self.arena, ExprKind::Name, o.loc);
+        arg.name = o.name;
+        arg.text = o.name;
+        call.a = fn;
+        call.list = newList(self.arena);
+        listPush(call.list, (rawptr)arg);
+        s.expr = call;
+        return s;
+    }
+
+    void memInsertStmt(PtrList* list, usize at, Stmt* s)
+    {
+        if (list.len >= list.cap)
+        {
+            usize newCap = 8;
+            if (list.cap != 0) newCap = list.cap * 2;
+            rawptr* fresh = (rawptr*)list.arena.alloc(newCap * @sizeof(rawptr), 8);
+            usize k = 0;
+            while (k < list.len)
+            {
+                fresh[k] = list.data[k];
+                k = k + 1;
+            }
+            list.data = fresh;
+            list.cap = newCap;
+        }
+        usize k = list.len;
+        while (k > at)
+        {
+            list.data[k] = list.data[k - 1];
+            k = k - 1;
+        }
+        list.data[at] = (rawptr)s;
+        list.len = list.len + 1;
+    }
+
+    usize memInsertCleanup(PtrList* list, usize at, MemFrame* stop)
+    {
+        if (list == null) return 0;
+        usize n = 0;
+        MemFrame* f = self.memActive;
+        while (f != null && f != stop)
+        {
+            Own* o = f.own;
+            if (o.cls == MemClass::McHeap && !o.moved)
+            {
+                if (o.hasDrop)
+                {
+                    self.memInsertStmt(list, at + n, self.memDropStmt(o));
+                    n = n + 1;
+                }
+                self.memInsertStmt(list, at + n, self.memFreeStmt(o));
+                n = n + 1;
+            }
+            f = f.next;
+        }
+        return n;
+    }
+
+    void memInjectList(PtrList* list)
+    {
+        if (list == null) return;
+        usize i = 0;
+        while (i < list.len)
+        {
+            Stmt* s = (Stmt*)list.data[i];
+            if (s.kind == StmtKind::StReturn)
+            {
+                usize inserted = self.memInsertCleanup(list, i, null);
+                i = i + inserted;
+                if (s.expr != null) self.memInjectExpr(s.expr, false);
+            }
+            else
+            {
+                self.memInjectStmt(s);
+            }
+            i = i + 1;
+        }
+    }
+
+    void memInjectStmt(Stmt* s)
+    {
+        if (s == null) return;
+        switch (s.kind)
+        {
+            StmtKind::StBlock => {
+                MemFrame* mark = self.memActive;
+                self.memInjectList(s.list);
+                if (self.memFallthrough(s.list)) self.memInsertCleanup(s.list, s.list != null ? s.list.len : 0, mark);
+                self.memActive = mark;
+            }
+            StmtKind::StVar => {
+                str bind = str::empty();
+                if (s.pat != null && s.pat.kind == PatternKind::PatBinding) bind = s.pat.text;
+                Own* o = null;
+                if (bind.len > 0) o = self.memFindOwn(bind);
+                if (o != null && !self.memActiveHas(o)) self.memPushActive(o);
+                if (s.expr != null)
+                {
+                    if (o != null)
+                    {
+                        if (o.cls == MemClass::McStack) s.expr.mem = MemClass::McStack;
+                        if (o.cls == MemClass::McHeap || o.cls == MemClass::McTransfer) s.expr.mem = MemClass::McHeap;
+                    }
+                    self.memInjectExpr(s.expr, false);
+                }
+                self.memInjectStmt(s.a);
+                self.memInjectStmt(s.b);
+            }
+            StmtKind::StExpr => { self.memInjectExpr(s.expr, false); }
+            StmtKind::StIf => {
+                self.memInjectExpr(s.expr, false);
+                self.memInjectStmt(s.a);
+                self.memInjectStmt(s.b);
+            }
+            StmtKind::StWhile => {
+                self.memInjectExpr(s.expr, false);
+                self.memInjectStmt(s.a);
+            }
+            StmtKind::StFor => {
+                self.memInjectExpr(s.expr, false);
+                self.memInjectStmt(s.a);
+            }
+            StmtKind::StSwitch => {
+                self.memInjectExpr(s.expr, false);
+                usize i = 0;
+                while (i < s.prongs.len)
+                {
+                    Prong* p = (Prong*)s.prongs.data[i];
+                    self.memInjectExpr(p.guard, false);
+                    self.memInjectStmt(p.body);
+                    i++;
+                }
+            }
+            StmtKind::StReturn => { self.memInjectExpr(s.expr, false); }
+            StmtKind::StBreak | StmtKind::StContinue => {}
+            else => {}
+        }
+    }
+
+    void memInjectExpr(Expr* e, bool inArray)
+    {
+        if (e == null) return;
+        switch (e.kind)
+        {
+            ExprKind::Name => {}
+            ExprKind::Unary => { self.memInjectExpr(e.a, inArray); }
+            ExprKind::Binary => {
+                self.memInjectExpr(e.a, inArray);
+                self.memInjectExpr(e.b, inArray);
+            }
+            ExprKind::Assign => {
+                self.memInjectExpr(e.a, false);
+                self.memInjectExpr(e.b, inArray);
+            }
+            ExprKind::Call => {
+                if (e.a != null && e.a.kind == ExprKind::Field) self.memInjectExpr(e.a.a, false);
+                else if (e.a != null && e.a.kind != ExprKind::Name) self.memInjectExpr(e.a, false);
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        self.memInjectExpr((Expr*)e.list.data[i], false);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::Field => { self.memInjectExpr(e.a, false); }
+            ExprKind::Index => {
+                self.memInjectExpr(e.a, false);
+                self.memInjectExpr(e.b, false);
+            }
+            ExprKind::Cast => { self.memInjectExpr(e.a, inArray); }
+            ExprKind::Question => {
+                self.memInjectExpr(e.a, false);
+                MemQ* q = (MemQ*)self.arena.alloc(@sizeof(MemQ), 8);
+                q.site = e;
+                q.frame = self.memActive;
+                listPush(self.memQs, (rawptr)q);
+            }
+            ExprKind::StructLit => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        FieldInit* f = (FieldInit*)e.list.data[i];
+                        self.memInjectExpr(f.value, true);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::Range => {
+                self.memInjectExpr(e.a, false);
+                self.memInjectExpr(e.b, false);
+            }
+            ExprKind::Tuple => {
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        self.memInjectExpr((Expr*)e.list.data[i], inArray);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::ArrayLit => {
+                if (!inArray && e.mem == MemClass::McAuto) e.mem = MemClass::McHeap;
+                if (e.list != null)
+                {
+                    usize i = 0;
+                    while (i < e.list.len)
+                    {
+                        ArrayItem* it = (ArrayItem*)e.list.data[i];
+                        self.memInjectExpr(it.key, false);
+                        self.memInjectExpr(it.value, true);
+                        i++;
+                    }
+                }
+            }
+            ExprKind::If | ExprKind::While | ExprKind::Switch => {
+                if (e.stmt != null) self.memInjectStmt(e.stmt);
+                self.memInjectExpr(e.a, inArray);
+            }
+            else => {}
+        }
     }
 }

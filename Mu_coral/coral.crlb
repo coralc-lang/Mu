@@ -30,9 +30,9 @@ alias diag   = "mu-diagnostics";
 alias lexer  = "mu-lexer";
 alias ast    = "mu-ast";
 alias parser = "mu-parser";
+alias sema   = "mu-sema";
 
 task "run" {
     after = ["build"];
     exec  = "build/muc";
 }
-alias sema   = "mu-sema";

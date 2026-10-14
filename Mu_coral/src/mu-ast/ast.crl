@@ -83,6 +83,14 @@ pub enum Op
     None
 }
 
+// storage class decided by the memory phase (escape analysis, DESIGN §6)
+pub enum MemClass
+{
+    McAuto,
+    McStack,
+    McHeap
+}
+
 pub enum TypeKind
 {
     Name,
@@ -154,6 +162,7 @@ pub struct Expr
     Type* type;
     PtrList* gargs;
     Stmt* stmt;
+    MemClass mem;
 }
 
 pub Expr* newExpr(Arena* a, ExprKind k, Loc loc)
@@ -170,6 +179,7 @@ pub Expr* newExpr(Arena* a, ExprKind k, Loc loc)
     e.type = null;
     e.gargs = null;
     e.stmt = null;
+    e.mem = MemClass::McAuto;
     return e;
 }
 
