@@ -305,10 +305,10 @@ pub struct Checker
         {
             TypeKind::Array => {
                 return mkType(self.arena, RtKind::RtArray, 0, str::empty(), self.resolveType(t.elem), null);
-            }
+            },
             TypeKind::Slice => {
                 return mkType(self.arena, RtKind::RtSlice, 0, str::empty(), self.resolveType(t.elem), null);
-            }
+            },
             TypeKind::Tuple => {
                 PtrList* items = newList(self.arena);
                 usize i = 0;
@@ -318,10 +318,10 @@ pub struct Checker
                     i++;
                 }
                 return mkType(self.arena, RtKind::RtTuple, 0, str::empty(), null, items);
-            }
+            },
             TypeKind::Dyn => {
                 return mkType(self.arena, RtKind::RtDyn, 0, baseOf(t.text), null, null);
-            }
+            },
             TypeKind::Name => {
                 str n = baseOf(t.text);
                 if (self.isTypeParam(n)) return mkType(self.arena, RtKind::RtUnknown, 0, n, null, null);
@@ -372,11 +372,11 @@ pub struct Checker
         }
         switch (a.kind)
         {
-            RtKind::RtNamed => { return strEq(a.name, b.name); }
-            RtKind::RtDyn => { return strEq(a.name, b.name); }
-            RtKind::RtArray => { return b.kind == RtKind::RtArray && self.rtEq(a.elem, b.elem); }
-            RtKind::RtSlice => { return b.kind == RtKind::RtSlice && self.rtEq(a.elem, b.elem); }
-            RtKind::RtRange => { return b.kind == RtKind::RtRange && self.rtEq(a.elem, b.elem); }
+            RtKind::RtNamed => { return strEq(a.name, b.name); },
+            RtKind::RtDyn => { return strEq(a.name, b.name); },
+            RtKind::RtArray => { return b.kind == RtKind::RtArray && self.rtEq(a.elem, b.elem); },
+            RtKind::RtSlice => { return b.kind == RtKind::RtSlice && self.rtEq(a.elem, b.elem); },
+            RtKind::RtRange => { return b.kind == RtKind::RtRange && self.rtEq(a.elem, b.elem); },
             RtKind::RtTuple => {
                 if (b.kind != RtKind::RtTuple || a.args == null || b.args == null) return a.args == b.args;
                 usize i = 0;
@@ -387,7 +387,7 @@ pub struct Checker
                     i++;
                 }
                 return true;
-            }
+            },
             else => { return true; }
         }
     }
@@ -443,13 +443,13 @@ pub struct Checker
             }
             switch (d.kind)
             {
-                DeclKind::DcFn => { self.addGlobal(SymKind::SkFn, d.name, d); }
-                DeclKind::DcStruct => { self.addGlobal(SymKind::SkStruct, d.name, d); }
-                DeclKind::DcVariant => { self.addGlobal(SymKind::SkVariant, d.name, d); }
-                DeclKind::DcTrait => { self.addGlobal(SymKind::SkTrait, d.name, d); }
-                DeclKind::DcConst => { self.addGlobal(SymKind::SkConst, d.name, d); }
-                DeclKind::DcTypeAlias => { self.addGlobal(SymKind::SkAlias, d.name, d); }
-                DeclKind::DcUse => { self.addGlobal(SymKind::SkUse, d.name, d); }
+                DeclKind::DcFn => { self.addGlobal(SymKind::SkFn, d.name, d); },
+                DeclKind::DcStruct => { self.addGlobal(SymKind::SkStruct, d.name, d); },
+                DeclKind::DcVariant => { self.addGlobal(SymKind::SkVariant, d.name, d); },
+                DeclKind::DcTrait => { self.addGlobal(SymKind::SkTrait, d.name, d); },
+                DeclKind::DcConst => { self.addGlobal(SymKind::SkConst, d.name, d); },
+                DeclKind::DcTypeAlias => { self.addGlobal(SymKind::SkAlias, d.name, d); },
+                DeclKind::DcUse => { self.addGlobal(SymKind::SkUse, d.name, d); },
                 DeclKind::DcExtend => {}
             }
             if (d.isExtern)
@@ -489,13 +489,12 @@ pub struct Checker
             #[[fallthrough]]
             switch (d.kind)
             {
-                DeclKind::DcConst => { self.checkConst(d); }
-                DeclKind::DcFn => { self.checkFn(d, null); }
-                DeclKind::DcStruct => { self.checkStruct(d); }
-                DeclKind::DcVariant => { self.checkVariant(d); }
-                DeclKind::DcTrait => { self.checkTrait(d); }
-                DeclKind::DcExtend => { self.checkExtend(d); }
-                else => {}
+                DeclKind::DcConst => { self.checkConst(d); },
+                DeclKind::DcFn => { self.checkFn(d, null); },
+                DeclKind::DcStruct => { self.checkStruct(d); },
+                DeclKind::DcVariant => { self.checkVariant(d); },
+                DeclKind::DcTrait => { self.checkTrait(d); },
+                DeclKind::DcExtend => { self.checkExtend(d); },
             }
             i++;
         }
@@ -667,9 +666,11 @@ pub struct Checker
                     i++;
                 }
                 self.scope = saved;
-            }
-            StmtKind::StVar => { self.stmtVar(s); }
-            StmtKind::StExpr => { self.expr(s.expr); }
+            },
+            
+            StmtKind::StVar => { self.stmtVar(s); },
+            StmtKind::StExpr => { self.expr(s.expr); },
+            
             StmtKind::StIf => {
                 RType* c = self.expr(s.expr);
                 if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
@@ -678,7 +679,8 @@ pub struct Checker
                 }
                 self.stmt(s.a);
                 self.stmt(s.b);
-            }
+            },
+            
             StmtKind::StWhile => {
                 RType* c = self.expr(s.expr);
                 if (c.kind != RtKind::RtBool && c.kind != RtKind::RtUnknown)
@@ -686,7 +688,8 @@ pub struct Checker
                     self.error(s.expr.loc, "E0330", "while condition must be bool");
                 }
                 self.stmt(s.a);
-            }
+            },
+            
             StmtKind::StFor => {
                 RType* it = self.expr(s.expr);
                 RType* elem = null;
@@ -703,7 +706,8 @@ pub struct Checker
                 if (s.pat != null) self.checkPattern(s.pat, elem != null ? elem : self.unknown(), true);
                 self.stmt(s.a);
                 self.scope = saved;
-            }
+            },
+            
             StmtKind::StSwitch => {
                 RType* scrut = self.expr(s.expr);
                 usize i = 0;
@@ -725,7 +729,8 @@ pub struct Checker
                     self.scope = saved;
                     i++;
                 }
-            }
+            },
+            
             StmtKind::StReturn => {
                 if (s.expr == null)
                 {
@@ -743,8 +748,8 @@ pub struct Checker
                     }
                 }
                 return;
-            }
-            StmtKind::StBreak | StmtKind::StContinue => { return; }
+            },
+            StmtKind::StBreak | StmtKind::StContinue => { return; },
             else => {}
         }
     }
@@ -755,6 +760,7 @@ pub struct Checker
         if (s.expr != null) initT = self.expr(s.expr);
         RType* ann = null;
         if (s.type != null) ann = self.resolveType(s.type);
+        
         if (ann != null && initT != null && !self.assignable(initT, ann))
         {
             self.error(s.loc, "E0310", "initializer type mismatch");
@@ -780,46 +786,53 @@ pub struct Checker
         if (p == null) return;
         switch (p.kind)
         {
-            PatternKind::PatWildcard => {}
+            PatternKind::PatWildcard => {},
             PatternKind::PatBinding => {
                 addLocal(self.arena, self.scope, p.text, expected, isLet);
-            }
+            },
+            
             PatternKind::PatInt => {
                 if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "integer pattern does not match scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatFloat => {
                 if (expected.kind != RtKind::RtFloat && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "float pattern does not match scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatStr => {
                 if (expected.kind != RtKind::RtStr && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "string pattern does not match scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatChar => {
                 if (expected.kind != RtKind::RtChar && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "char pattern does not match scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatBool => {
                 if (expected.kind != RtKind::RtBool && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "bool pattern does not match scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatRange => {
                 if (expected.kind != RtKind::RtInt && expected.kind != RtKind::RtUInt && expected.kind != RtKind::RtUnknown)
                 {
                     self.error(p.loc, "E0340", "range pattern requires an integer scrutinee");
                 }
-            }
+            },
+            
             PatternKind::PatTuple => {
                 usize i = 0;
                 while (i < p.items.len)
@@ -832,7 +845,8 @@ pub struct Checker
                     self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
                     i++;
                 }
-            }
+            },
+            
             PatternKind::PatSlice => {
                 usize i = 0;
                 while (i < p.items.len)
@@ -842,10 +856,12 @@ pub struct Checker
                     self.checkPattern((Pattern*)p.items.data[i], et != null ? et : self.unknown(), isLet);
                     i++;
                 }
-            }
+            },
+            
             PatternKind::PatVariant => {
                 self.checkVariantPattern(p, expected, isLet);
-            }
+            },
+            
             PatternKind::PatOr => {
                 usize i = 0;
                 while (i < p.items.len)
@@ -1150,7 +1166,6 @@ pub struct Checker
     {
         RType* a = self.expr(e.a);
         RType* b = self.expr(e.b);
-        switch (e.op)
         {
             Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Rem => {
                 RType* r = self.numResult(a, b, e.loc);
@@ -1792,7 +1807,6 @@ pub struct Checker
         self.memPos = self.memPos + 1;
         
         #[[fallthrough]]
-        switch (s.kind)
         {
             StmtKind::StBlock => {
                 usize i = 0;
@@ -1870,21 +1884,21 @@ pub struct Checker
         if (e == null) return;
         switch (e.kind)
         {
-            ExprKind::Name => { if (inSink) self.memMarkEsc(e.name); }
-            ExprKind::Unary => { self.memEscExpr(e.a, inSink); }
+            ExprKind::Name => { if (inSink) self.memMarkEsc(e.name); },
+            ExprKind::Unary => { self.memEscExpr(e.a, inSink); },
             ExprKind::Binary => {
                 self.memEscExpr(e.a, inSink);
                 self.memEscExpr(e.b, inSink);
-            }
-            ExprKind::Assign => { self.memEscAssign(e, inSink); }
-            ExprKind::Call => { self.memEscCall(e, inSink); }
-            ExprKind::Field => { self.memEscExpr(e.a, inSink); }
+            },
+            ExprKind::Assign => { self.memEscAssign(e, inSink); },
+            ExprKind::Call => { self.memEscCall(e, inSink); },
+            ExprKind::Field => { self.memEscExpr(e.a, inSink); },
             ExprKind::Index => {
                 self.memEscExpr(e.a, inSink);
                 self.memEscExpr(e.b, false);
-            }
-            ExprKind::Cast => { self.memEscExpr(e.a, inSink); }
-            ExprKind::Question => { self.memEscExpr(e.a, true); }
+            },
+            ExprKind::Cast => { self.memEscExpr(e.a, inSink); },
+            ExprKind::Question => { self.memEscExpr(e.a, true); },
             ExprKind::StructLit => {
                 if (e.list != null)
                 {
@@ -1896,11 +1910,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::Range => {
                 self.memEscExpr(e.a, false);
                 self.memEscExpr(e.b, false);
-            }
+            },
             ExprKind::Tuple => {
                 if (e.list != null)
                 {
@@ -1911,7 +1925,7 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::ArrayLit => {
                 if (e.list != null)
                 {
@@ -1924,11 +1938,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::If | ExprKind::While | ExprKind::Switch => {
                 if (e.stmt != null) self.memEscStmt(e.stmt);
                 self.memEscExpr(e.a, inSink);
-            }
+            },
             else => {}
         }
     }
@@ -2058,7 +2072,7 @@ pub struct Checker
         if (t == null || depth > 8) return false;
         switch (t.kind)
         {
-            RtKind::RtArray => { return true; }
+            RtKind::RtArray => { return true; },
             RtKind::RtTuple => {
                 if (t.args == null) return false;
                 usize i = 0;
@@ -2068,7 +2082,7 @@ pub struct Checker
                     i++;
                 }
                 return false;
-            }
+            },
             RtKind::RtNamed => {
                 if (strEq(t.name, "Map") || strEq(t.name, "Array")) return true;
                 if (strEq(t.name, "Vec2") || strEq(t.name, "Vec3") || strEq(t.name, "Quat") || strEq(t.name, "Mat4")) return false;
@@ -2108,7 +2122,7 @@ pub struct Checker
                 }
                 if (s.decl.kind == DeclKind::DcTypeAlias) return self.memRtOwning(self.resolveType(s.decl.target), depth + 1);
                 return false;
-            }
+            },
             else => { return false; }
         }
     }
@@ -2326,29 +2340,29 @@ pub struct Checker
                     self.memCollect((Stmt*)s.list.data[i]);
                     i++;
                 }
-            }
+            },
+            
             StmtKind::StVar => {
                 str bind = str::empty();
                 if (s.pat != null && s.pat.kind == PatternKind::PatBinding) bind = s.pat.text;
                 RType* ot = self.memVarType(s);
                 bool wasSlice = false;
-                if (s.expr != null && s.expr.kind == ExprKind::Index && s.expr.b != null && s.expr.b.kind == ExprKind::Range && self.memRootName(s.expr.a).len > 0)
+                if (s.expr != null && s.expr.kind ==
+                    ExprKind::Index && s.expr.b !=
+                    null && s.expr.b.kind == ExprKind::Range
+                    && self.memRootName(s.expr.a).len > 0)
                 {
                     wasSlice = true;
                 }
                 if (s.expr != null) self.memCollectExpr(s.expr);
                 if (wasSlice && bind.len > 0 && self.memSlices != null && self.memSlices.name.len == 0)
-                {
                     self.memSlices.name = bind;
-                }
                 if (ot != null && bind.len > 0)
                 {
                     Own* o = self.memNewOwn(bind, ot, s.loc);
                     self.memVar(bind).own = o;
                     if (s.expr != null && s.expr.kind == ExprKind::Name)
-                    {
                         self.memUse2(s.expr.name, bind, s.expr.loc);
-                    }
                 }
                 else if (ot == null && bind.len > 0 && s.expr != null && s.expr.kind == ExprKind::Name)
                 {
@@ -2362,21 +2376,25 @@ pub struct Checker
                 }
                 self.memCollect(s.a);
                 self.memCollect(s.b);
-            }
-            StmtKind::StExpr => { self.memCollectExpr(s.expr); }
+            },
+            StmtKind::StExpr => { self.memCollectExpr(s.expr); },
+            
             StmtKind::StIf => {
                 self.memCollectExpr(s.expr);
                 self.memCollect(s.a);
                 self.memCollect(s.b);
-            }
+            },
+            
             StmtKind::StWhile => {
                 self.memCollectExpr(s.expr);
                 self.memCollect(s.a);
-            }
+            },
+            
             StmtKind::StFor => {
                 self.memCollectExpr(s.expr);
                 self.memCollect(s.a);
-            }
+            },
+            
             StmtKind::StSwitch => {
                 self.memCollectExpr(s.expr);
                 usize i = 0;
@@ -2387,15 +2405,16 @@ pub struct Checker
                     self.memCollect(p.body);
                     i++;
                 }
-            }
+            },
+            
             StmtKind::StReturn => {
                 if (s.expr != null)
                 {
                     self.memCollectExpr(s.expr);
                     self.memCheckReturnSlices(s.expr);
                 }
-            }
-            StmtKind::StBreak | StmtKind::StContinue => {}
+            },
+            StmtKind::StBreak | StmtKind::StContinue => {},
             else => {}
         }
     }
@@ -2405,16 +2424,16 @@ pub struct Checker
         if (e == null) return;
         switch (e.kind)
         {
-            ExprKind::Name => { self.memUse0(e.name, e.loc); }
-            ExprKind::Unary => { self.memCollectExpr(e.a); }
+            ExprKind::Name => { self.memUse0(e.name, e.loc); },
+            ExprKind::Unary => { self.memCollectExpr(e.a); },
             ExprKind::Binary => {
                 self.memCollectExpr(e.a);
                 self.memCollectExpr(e.b);
-            }
+            },
             ExprKind::Assign => {
                 self.memCollectTarget(e.a);
                 self.memCollectExpr(e.b);
-            }
+            },
             ExprKind::Call => {
                 if (e.a != null && e.a.kind == ExprKind::Field)
                 {
@@ -2433,8 +2452,8 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
-            ExprKind::Field => { self.memCollectExpr(e.a); }
+            },
+            ExprKind::Field => { self.memCollectExpr(e.a); },
             ExprKind::Index => {
                 if (e.b != null && e.b.kind == ExprKind::Range)
                 {
@@ -2445,12 +2464,12 @@ pub struct Checker
                     self.memCollectExpr(e.a);
                     self.memCollectExpr(e.b);
                 }
-            }
-            ExprKind::Cast => { self.memCollectExpr(e.a); }
+            },
+            ExprKind::Cast => { self.memCollectExpr(e.a); },
             ExprKind::Question => {
                 self.memCollectExpr(e.a);
                 self.memCheckReturnSlices(e.a);
-            }
+            },
             ExprKind::StructLit => {
                 if (e.list != null)
                 {
@@ -2462,11 +2481,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::Range => {
                 self.memCollectExpr(e.a);
                 self.memCollectExpr(e.b);
-            }
+            },
             ExprKind::Tuple => {
                 if (e.list != null)
                 {
@@ -2477,7 +2496,7 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::ArrayLit => {
                 if (e.list != null)
                 {
@@ -2490,11 +2509,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::If | ExprKind::While | ExprKind::Switch => {
                 if (e.stmt != null) self.memCollect(e.stmt);
                 self.memCollectExpr(e.a);
-            }
+            },
             else => {}
         }
     }
@@ -2593,12 +2612,12 @@ pub struct Checker
         if (e == null) return false;
         switch (e.kind)
         {
-            ExprKind::Name => { return strEq(e.name, name); }
-            ExprKind::Unary => { return self.memRootsHave(e.a, name); }
-            ExprKind::Cast => { return self.memRootsHave(e.a, name); }
-            ExprKind::Binary => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); }
-            ExprKind::Field => { return self.memRootsHave(e.a, name); }
-            ExprKind::Index => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); }
+            ExprKind::Name => { return strEq(e.name, name); },
+            ExprKind::Unary => { return self.memRootsHave(e.a, name); },
+            ExprKind::Cast => { return self.memRootsHave(e.a, name); },
+            ExprKind::Binary => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); },
+            ExprKind::Field => { return self.memRootsHave(e.a, name); },
+            ExprKind::Index => { return self.memRootsHave(e.a, name) || self.memRootsHave(e.b, name); },
             ExprKind::Call => {
                 if (e.a != null && e.a.kind == ExprKind::Field && self.memRootsHave(e.a.a, name)) return true;
                 if (e.list != null)
@@ -2611,8 +2630,8 @@ pub struct Checker
                     }
                 }
                 return false;
-            }
-            ExprKind::Question => { return self.memRootsHave(e.a, name); }
+            },
+            ExprKind::Question => { return self.memRootsHave(e.a, name); },
             ExprKind::Tuple => {
                 if (e.list != null)
                 {
@@ -2624,7 +2643,7 @@ pub struct Checker
                     }
                 }
                 return false;
-            }
+            },
             ExprKind::StructLit => {
                 if (e.list != null)
                 {
@@ -2637,8 +2656,8 @@ pub struct Checker
                     }
                 }
                 return false;
-            }
-            ExprKind::If => { return self.memRootsHave(e.a, name); }
+            },
+            ExprKind::If => { return self.memRootsHave(e.a, name); },
             else => { return false; }
         }
     }
@@ -2918,7 +2937,7 @@ pub struct Checker
                 self.memInjectList(s.list);
                 if (self.memFallthrough(s.list)) self.memInsertCleanup(s.list, s.list != null ? s.list.len : 0, mark);
                 self.memActive = mark;
-            }
+            },
             StmtKind::StVar => {
                 str bind = str::empty();
                 if (s.pat != null && s.pat.kind == PatternKind::PatBinding) bind = s.pat.text;
@@ -2936,21 +2955,21 @@ pub struct Checker
                 }
                 self.memInjectStmt(s.a);
                 self.memInjectStmt(s.b);
-            }
-            StmtKind::StExpr => { self.memInjectExpr(s.expr, false); }
+            },
+            StmtKind::StExpr => { self.memInjectExpr(s.expr, false); },
             StmtKind::StIf => {
                 self.memInjectExpr(s.expr, false);
                 self.memInjectStmt(s.a);
                 self.memInjectStmt(s.b);
-            }
+            },
             StmtKind::StWhile => {
                 self.memInjectExpr(s.expr, false);
                 self.memInjectStmt(s.a);
-            }
+            },
             StmtKind::StFor => {
                 self.memInjectExpr(s.expr, false);
                 self.memInjectStmt(s.a);
-            }
+            },
             StmtKind::StSwitch => {
                 self.memInjectExpr(s.expr, false);
                 usize i = 0;
@@ -2961,9 +2980,9 @@ pub struct Checker
                     self.memInjectStmt(p.body);
                     i++;
                 }
-            }
-            StmtKind::StReturn => { self.memInjectExpr(s.expr, false); }
-            StmtKind::StBreak | StmtKind::StContinue => {}
+            },
+            StmtKind::StReturn => { self.memInjectExpr(s.expr, false); },
+            StmtKind::StBreak | StmtKind::StContinue => {},
             else => {}
         }
     }
@@ -2973,16 +2992,16 @@ pub struct Checker
         if (e == null) return;
         switch (e.kind)
         {
-            ExprKind::Name => {}
-            ExprKind::Unary => { self.memInjectExpr(e.a, inArray); }
+            ExprKind::Name => {},
+            ExprKind::Unary => { self.memInjectExpr(e.a, inArray); },
             ExprKind::Binary => {
                 self.memInjectExpr(e.a, inArray);
                 self.memInjectExpr(e.b, inArray);
-            }
+            },
             ExprKind::Assign => {
                 self.memInjectExpr(e.a, false);
                 self.memInjectExpr(e.b, inArray);
-            }
+            },
             ExprKind::Call => {
                 if (e.a != null && e.a.kind == ExprKind::Field) self.memInjectExpr(e.a.a, false);
                 else if (e.a != null && e.a.kind != ExprKind::Name) self.memInjectExpr(e.a, false);
@@ -2995,20 +3014,20 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
-            ExprKind::Field => { self.memInjectExpr(e.a, false); }
+            },
+            ExprKind::Field => { self.memInjectExpr(e.a, false); },
             ExprKind::Index => {
                 self.memInjectExpr(e.a, false);
                 self.memInjectExpr(e.b, false);
-            }
-            ExprKind::Cast => { self.memInjectExpr(e.a, inArray); }
+            },
+            ExprKind::Cast => { self.memInjectExpr(e.a, inArray); },
             ExprKind::Question => {
                 self.memInjectExpr(e.a, false);
                 MemQ* q = (MemQ*)self.arena.alloc(@sizeof(MemQ), 8);
                 q.site = e;
                 q.frame = self.memActive;
                 listPush(self.memQs, (rawptr)q);
-            }
+            },
             ExprKind::StructLit => {
                 if (e.list != null)
                 {
@@ -3020,11 +3039,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::Range => {
                 self.memInjectExpr(e.a, false);
                 self.memInjectExpr(e.b, false);
-            }
+            },
             ExprKind::Tuple => {
                 if (e.list != null)
                 {
@@ -3035,7 +3054,7 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::ArrayLit => {
                 if (!inArray && e.mem == MemClass::McAuto) e.mem = MemClass::McHeap;
                 if (e.list != null)
@@ -3049,11 +3068,11 @@ pub struct Checker
                         i++;
                     }
                 }
-            }
+            },
             ExprKind::If | ExprKind::While | ExprKind::Switch => {
                 if (e.stmt != null) self.memInjectStmt(e.stmt);
                 self.memInjectExpr(e.a, inArray);
-            }
+            },
             else => {}
         }
     }
