@@ -3,7 +3,6 @@ import common::token { Token, TokenKind, kindName, matchWord };
 import ast::ast {
     Loc, Decl, DeclKind, newDecl,
     Attr, newAttr, Param, newParam,
-    GenericParam, newGenericParam,
     FieldDecl, newFieldDecl, VariantCase,
     newVariantCase, UseSpec, newUseSpec,
     Type, Expr, ExprKind, newExpr, Stmt,
@@ -132,7 +131,7 @@ pub extend Parser
         d.attrs = self.declAttrs;
         self.declAttrs = null;
         d.name = self.expectName().text;
-        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.rejectGenerics();
         self.expect(TokenKind::LParen);
         bool savedInFn = self.inFn;
         bool savedSelf = self.fnHasSelf;
@@ -190,28 +189,40 @@ pub extend Parser
         return null;
     }
 
-    PtrList* parseGenericParams()
+    void rejectGenerics()
     {
-        self.expect(TokenKind::Less);
-        PtrList* list = newList(self.arena);
-        loop {
+        if (self.cur.kind != TokenKind::Less) return;
+        self.perr("E0226", "user-defined generics are not supported; built-in containers such as `Array<T>` and `Map<K, V>` keep their type arguments");
+        self.advance();
+        usize depth = 1;
+        while (depth > 0 && !self.atEnd())
+        {
             TokenKind k = self.cur.kind;
-            if (k == TokenKind::Greater || k == TokenKind::Shr || k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual) break;
-            Loc gl = self.here();
-            GenericParam* g = newGenericParam(self.arena);
-            g.name = self.expectName().text;
-            g.loc = gl;
-            if (self.cur.kind == TokenKind::Colon)
+            if (k == TokenKind::Less)
             {
-                self.advance();
-                g.bound = self.parseType();
+                depth = depth + 1;
             }
-            listPush(list, (rawptr)g);
-            if (!self.match(TokenKind::Comma)) break;
+            else if (k == TokenKind::Greater)
+            {
+                depth = depth - 1;
+            }
+            else if (k == TokenKind::Shr)
+            {
+                if (depth >= 2)
+                {
+                    depth = depth - 2;
+                }
+                else
+                {
+                    depth = 0;
+                }
+            }
+            else if (k == TokenKind::GreaterEqual || k == TokenKind::ShrEqual)
+            {
+                depth = 0;
+            }
+            self.advance();
         }
-        if (list.len == 0) self.perr("E0200", "expected a generic parameter");
-        self.expectGt();
-        return list;
     }
 
     PtrList* parseParams()
@@ -274,7 +285,7 @@ pub extend Parser
         Decl* d = newDecl(self.arena, DeclKind::DcStruct, loc);
         d.isPub = isPub;
         d.name = self.expectName().text;
-        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.rejectGenerics();
         self.expect(TokenKind::LBrace);
         d.fields = newList(self.arena);
         d.members = newList(self.arena);
@@ -378,7 +389,7 @@ pub extend Parser
         Decl* d = newDecl(self.arena, DeclKind::DcVariant, loc);
         d.isPub = isPub;
         d.name = self.expectName().text;
-        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.rejectGenerics();
         self.expect(TokenKind::LBrace);
         d.cases = newList(self.arena);
         while (self.cur.kind != TokenKind::RBrace && !self.atEnd())
@@ -452,7 +463,7 @@ pub extend Parser
         Decl* d = newDecl(self.arena, DeclKind::DcTrait, loc);
         d.isPub = isPub;
         d.name = self.expectName().text;
-        if (self.cur.kind == TokenKind::Less) d.generics = self.parseGenericParams();
+        self.rejectGenerics();
         self.expect(TokenKind::LBrace);
         d.members = newList(self.arena);
         while (self.cur.kind != TokenKind::RBrace && !self.atEnd())

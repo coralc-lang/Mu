@@ -1,4 +1,5 @@
 import(lib) std::io::ios { print, spaces };
+import(lib) std::vec { Vec };
 
 usize width(usize n)
 {
@@ -11,6 +12,19 @@ usize width(usize n)
     return w;
 }
 
+// one diagnostic, kept so machine consumers (IDE, engine editor) can read it
+// instead of parsing the caret output
+pub struct DiagRec
+{
+    bool isError;
+    str code;
+    usize line;
+    usize col;
+    usize len;
+    str title;
+    Vec<str> notes;
+}
+
 pub struct Diags
 {
     str file;
@@ -19,6 +33,8 @@ pub struct Diags
     usize warnings;
     usize limit;
     bool limitHit;
+    bool quiet;            // suppress the human caret output (machine modes)
+    Vec<DiagRec> recs;     // structured mirror of everything emitted
 
     void init(str file, str src)
     {
@@ -28,6 +44,8 @@ pub struct Diags
         self.warnings = 0;
         self.limit = 100;
         self.limitHit = false;
+        self.quiet = false;
+        self.recs = Vec<DiagRec>::new();
     }
 
     bool shouldStop()
@@ -40,6 +58,52 @@ pub struct Diags
         return self.errors == 0;
     }
 
+    // ---- structured access (for the json / lsp / buf serializers) ----
+
+    usize recCount()
+    {
+        return self.recs.count();
+    }
+
+    DiagRec* recAt(usize i)
+    {
+        return self.recs.atPtr(i);
+    }
+
+    DiagRec* lastRec()
+    {
+        if (self.recs.isEmpty()) return null;
+        return self.recs.atPtr(self.recs.count() - 1);
+    }
+
+    void pushRec(bool isError, str code, usize line, usize col, usize len, str title)
+    {
+        DiagRec r;
+        r.isError = isError;
+        r.code = code;
+        r.line = line;
+        r.col = col;
+        r.len = len;
+        r.title = title;
+        r.notes = Vec<str>::new();
+        self.recs.push(r);
+    }
+
+    // drop everything recorded; keeps counters so a caller can reset cheaply
+    void clearRecs()
+    {
+        usize i = 0;
+        while (i < self.recs.count())
+        {
+            self.recs.atPtr(i).notes.dispose();
+            i++;
+        }
+        self.recs.dispose();
+        self.recs = Vec<DiagRec>::new();
+    }
+
+    // ---- emission ----
+
     void error(usize line, usize col, usize len, str code, str title)
     {
         if (self.errors >= self.limit)
@@ -47,32 +111,44 @@ pub struct Diags
             if (!self.limitHit)
             {
                 self.limitHit = true;
-                print("error E0000  too many errors, aborting after {}\n", self.limit);
+                if (!self.quiet) print("error E0000  too many errors, aborting after {}\n", self.limit);
             }
             return;
         }
         self.emit("error", code, line, col, len, title);
+        self.pushRec(true, code, line, col, len, title);
         self.errors += 1;
     }
 
     void warn(usize line, usize col, usize len, str code, str title)
     {
         self.emit("warning", code, line, col, len, title);
+        self.pushRec(false, code, line, col, len, title);
         self.warnings += 1;
     }
 
     void why(str msg)
     {
-        print("      why: {}\n", msg);
+        self.note("why", msg);
     }
 
     void help(str msg)
     {
-        print("      help: {}\n", msg);
+        self.note("help", msg);
+    }
+
+    void note(str kind, str msg)
+    {
+        DiagRec* r = self.lastRec();
+        if (r != null) r.notes.push(msg);
+        if (!self.quiet) print("      {}: {}\n", kind, msg);
     }
 
     void also(usize line, usize col, usize len, str msg)
     {
+        DiagRec* r = self.lastRec();
+        if (r != null) r.notes.push(msg);
+        if (self.quiet) return;
         print("\n  also at {}:{}:{}: {}\n\n", self.file, line, col, msg);
         usize w = width(line);
         str text = self.lineOf(line).trimEnd();
@@ -83,6 +159,7 @@ pub struct Diags
 
     void emit(str kind, str code, usize line, usize col, usize len, str title)
     {
+        if (self.quiet) return;
         print("{} {}  {}\n", kind, code, title);
         print("\n  at {}:{}:{}\n\n", self.file, line, col);
         usize w = width(line);
@@ -126,6 +203,7 @@ pub struct Diags
 
     void summary()
     {
+        if (self.quiet) return;
         if (self.errors == 0 && self.warnings == 0) return;
         print("\n  {} error(s), {} warning(s) in {}\n", self.errors, self.warnings, self.file);
     }

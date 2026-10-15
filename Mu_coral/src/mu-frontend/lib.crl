@@ -1,1 +1,2 @@
 pub mod muc = import muc;
+pub mod analyze = import analyze;

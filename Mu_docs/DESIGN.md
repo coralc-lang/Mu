@@ -39,7 +39,6 @@ pending from the author.
 
 ```
 fn name(a: T, b: T) T { ... }              // return type omitted = void
-fn max<T>(a: T, b: T) T { ... }            // generics, monomorphized
 fn swap(a: i32, b: i32) (i32, i32) { ... } // tuple return = multiple values
 
 struct Name {
@@ -140,6 +139,22 @@ f32 f64               floats
 - `Map<K, V>` — **hash map**, built-in generic. Keys need built-in support
   (primitives, `char`, `bool`, `string`, tuples/aggregates of hashable fields)
   or `fn hash(self) -> u64` + `fn eq` methods.
+- `Set<T>` — **unique membership**, same cost profile as `Map<K, V>` but
+  stores values only: `Set.new()`, `.len()`, `.has(v)`, `.add(v)`,
+  `.remove(v)`; `for v in set { }` visits the members.
+- `Queue<T>` — **FIFO**, for command queues, event queues, and BFS:
+  `Queue.new()`, `.push(v)` (enqueue), `.pop()` → `Option<T>` (dequeue,
+  `None` when empty), `.len()`; `for v in queue { }` visits front → back.
+- `Pool<T>` — **fixed-capacity slot pool**. Created once with `Pool.new(cap)`
+  and never grows, so per-frame gameplay code allocates nothing:
+  `.create()` → `Option<u32>` hands out a handle (`None` at capacity),
+  `.release(h)`, `.get(h)`, `.set(h, v)`, `.alive(h)`, `.len()`, `.cap()`.
+  Handles are recycled. Intended for particles, bullets, and pooled
+  entities — the no-GC counterpart of "just `new` one".
+- `Bitset` — **non-generic bit mask**, sized at run time (`Bitset.new(128)`),
+  for collision layers, input masks, and feature flags: `.test(i)`,
+  `.set(i)`, `.clear(i)`, `.toggle(i)`, `.any()`, `.all()`, `.none()`,
+  `.count()`. It takes **no** type argument — `Bitset<i32>` is E0366.
 - All compile to direct, allocation-free code where possible.
 
 ### Ranges
@@ -178,16 +193,15 @@ f32 f64               floats
 - `type Meters = f32;` — **transparent** aliases (zero cost, no new nominal
   type; interchangeable with the right-hand side).
 
-### Generics — compile-time generics
-- **Monomorphized**: each instantiation compiled separately → direct calls,
-  inlining, no boxing, no erasure cost.
-- Angle brackets: `fn max<T>(a: T, b: T) T`, `struct Array<T>`.
-- Trait bounds use a colon: `fn sort<T: Ord>(a: Array<T>)` — checked
-  structurally at instantiation (§9).
-- Inference from arguments; when inference can't decide, **explicit
-  instantiation uses a turbofish** to stay unambiguous with `<`:
-  `foo::<i32>(x)`, `x.method::<i32>()`.
-- Instantiation recursion depth limit (generic-explosion guard).
+### No user-defined generics — **Decided (removed)**
+Mu has **no user-defined generics**: no type parameters on `fn`, `struct`, or
+`variant`, no trait bounds, no turbofish, no monomorphization. Mu is a game
+scripting language; generics were cut to keep the language learnable and the
+compiler small. Writing `fn max<T>(a: T, b: T) T` is a parse error (**E0226**)
+pointing at the `<` — write one function per type instead.
+Built-in containers keep their type arguments (`Array<f32>`,
+`Map<string, i32>`, `Option<Entity>`), because they are parameterized built-in
+types, not user generics.
 
 ### Inference
 - **Locals only**: `var x = 5;` infers; parameters and return types are
@@ -324,8 +338,7 @@ compiler-internal; there is nothing for the programmer to write.
   fat pointer `{ data, vtable }` is formed (escape analysis may inline the
   store). Generic bounds never box — they are compile-time checks.
 - Trait calls go through the **vtable**; the compiler **devirtualizes**
-  (direct call/inline) whenever the concrete type is known — with
-  monomorphized generics that is the common case.
+  (direct call/inline) whenever the concrete type is known.
 - Traits may contain method signatures and **default method bodies** (inlined
   at instantiation). No supertraits in v1.
 
@@ -410,7 +423,7 @@ unary:     -x  !x  as
   capitalization exception).
   **`::` is path resolution; `.` is exclusively member/method access** —
   `render::draw()` (module path) and `value.draw()` (method call) can never
-  be confused, and `::` matches the generic turbofish (`foo::<i32>()`).
+  be confused.
   Full paths resolve too (`Mu::render::draw(...)`) as long as each module
   along the path is `pub`. Two `use` statements binding the same name are a
   compile error — alias to disambiguate (or rely on signature resolution,
@@ -452,7 +465,7 @@ const B: i32 = A;
 
 - Compiler written in **Coral (`.crl`)**, compiled with coralc — no
   templates, no classes, no C++ anywhere: modules, structs + in-body
-  methods, `extend` blocks, monomorphized generics only. It uses Coral's own
+  methods, `extend` blocks, and built-in generics only. It uses Coral's own
   standard library (`Vec<T>`, `Arr<T,N>`, `alloc<T>`/`dealloc<T>`, `str`) —
   no external dependencies. **Allocation is an engine-side concern:** the
   embedding engine supplies the mimalloc-based allocator at runtime.

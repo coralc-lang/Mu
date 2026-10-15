@@ -88,7 +88,8 @@ pub enum MemClass
 {
     McAuto,
     McStack,
-    McHeap
+    McHeap,
+    McTransfer
 }
 
 pub enum TypeKind
@@ -367,7 +368,6 @@ pub struct Decl
     bool isAsync;
     bool isExtern;
     PtrList* attrs;
-    PtrList* generics;
     PtrList* params;
     Type* ret;
     Stmt* body;
@@ -392,7 +392,6 @@ pub Decl* newDecl(Arena* a, DeclKind k, Loc loc)
     d.isAsync = false;
     d.isExtern = false;
     d.attrs = null;
-    d.generics = null;
     d.params = null;
     d.ret = null;
     d.body = null;
@@ -422,23 +421,6 @@ pub Param* newParam(Arena* a)
     p.loc.line = 0;
     p.loc.col = 0;
     return p;
-}
-
-pub struct GenericParam
-{
-    str name;
-    Type* bound;
-    Loc loc;
-}
-
-pub GenericParam* newGenericParam(Arena* a)
-{
-    GenericParam* g = (GenericParam*)a.alloc(@sizeof(GenericParam), 8);
-    g.name = str::empty();
-    g.bound = null;
-    g.loc.line = 0;
-    g.loc.col = 0;
-    return g;
 }
 
 pub struct FieldDecl

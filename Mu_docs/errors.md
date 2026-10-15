@@ -79,6 +79,7 @@ errors, aborting after 100`.
 | E0223 | unknown system phase `X` |
 | E0224 | `else` without a matching `if` |
 | E0225 | `self` outside a method / unavailable / not first / annotated |
+| E0226 | user-defined generics are not supported (type parameters on `fn`/`struct`/`variant`, bounds); built-in containers keep their type arguments |
 | W0101 | unreachable code |
 | W0102 | unused value |
 
@@ -90,7 +91,7 @@ errors, aborting after 100`.
 | E0310 | type mismatch family: const initializer / var initializer / assignment / field type |
 | E0320 | extend does not satisfy trait |
 | E0330 | if/while condition must be bool · guard must be bool |
-| E0331 | for iterates over array, slice, or range |
+| E0331 | for iterates over array, slice, range, string, or a built-in container |
 | E0332 | missing return value · return type mismatch |
 | E0340 | pattern does not match scrutinee (int/float/str/char/bool/range) |
 | E0341 | unknown variant case |
@@ -101,6 +102,8 @@ errors, aborting after 100`.
 | E0363 | invalid cast |
 | E0364 | range bounds must be numeric |
 | E0365 | array elements must have a common type |
+| E0366 | built-in container arity: `Set<T>`/`Queue<T>`/`Pool<T>` take one argument, `Map<K, V>` takes two, `Bitset` is non-generic |
+
 | E0370 | arithmetic/comparison/bitwise operand kind errors |
 | E0371 | mismatched numeric operand types |
 | E0372 | cannot compare these types |
@@ -123,28 +126,53 @@ owning local (DESIGN §4–§6), injects scope-exit / early-return `drop()` +
 
 | code | message | trigger |
 |---|---|---|
-| E0400 | use of a moved value | an owning local is read after ownership escaped (returned, `?`-propagated, stored into an escaping target, or passed to a callee that retains it). Textual order, conservative on branches. |
+| E0400 | use of a moved value | an owning local is read after its ownership escaped (returned, `?`-propagated, stored into an escaping target, or passed to a callee that retains it). Textual order, conservative on branches; only fires when the move-elision pass classified the init as a genuine move. |
 | E0401 | slice outlives its backing storage | a named slice is returned (or `?`-propagated) while its backing local is not returned with it. §5 rule 1. |
 | E0402 | owner used while frozen by a live slice | between a slice's creation and its last use, the backing owner is read, written, or moved (other slices of the same buffer are exempt). §5 rule 2, non-lexical span. |
 | E0403 | cannot slice a temporary | `expr[a..b]` where the receiver is not a binding — the backing dies at end of statement. |
-| E0404 | assignment to a moved value | write to a local after its ownership escaped. |
+| E0404 | assignment to a moved value | write to a local after its ownership escaped. Same move-elision gate as E0400. |
 
 Companion (non-error) output of the same phase:
 
 - `Expr.mem` annotation on allocation sites: `McStack` (frame storage, no
-  alloc/free), `McHeap` (injected `__mu_alloc` at lowering), `McAuto`
-  (follows enclosing storage / defaults).
+  alloc/free), `McHeap` (injected `__mu_alloc` at lowering), `McTransfer`
+  (ownership left the function: alloc, never free), `McAuto` (follows
+  enclosing storage / defaults).
 - Injected synthetic statements: `x.drop();` (when the type has a `drop()`
-  method — the `@drop` leak guard) followed by `__mu_free(x);` at scope exits
-  and before `return` (all enclosing scopes, innermost first, reverse
-  declaration order). Heap values whose ownership escaped get no free.
+  method — the `@drop` leak guard) followed by `__mu_free(x);` at scope exits,
+  before `return`, and before `break`/`continue` (all enclosing scopes,
+  innermost first, reverse declaration order). Heap values whose ownership
+  escaped get no free. A `drop()` also fires for stack-classified owners, so
+  resources held by frame-local values are released too.
 - `memQs` records for each `?` operator the cleanup set the IR stage must run
   on the early-return edge.
 
 Known v1 limits (by design, see §4): parameters are never auto-freed;
 for/switch pattern bindings of owning element type are not tracked; name-level
 resolution conflates shadowed bindings; `?` cleanups are recorded, not yet
-spliced into the AST.
+spliced into the AST. Additional documented limits:
+
+- Non-literal owning initializers are tracked when the value's type resolves:
+  an explicit annotation, an array/map literal, a struct literal, a call whose
+  callee return type resolves (free function, member, or `extend` method), or a
+  tuple whose first owning element resolves. Such locals are heap-classified and
+  freed at scope exit. Initializers from unresolvable callees (variant
+  constructors such as `Some(x)`, unknown functions) get no `Own`, hence no
+  classification and no cleanup for that local.
+- Control-flow-expression initializers (`if`/`switch`/`while` bodies) and
+  owning locals declared *inside* a `return` expression are not cleaned up.
+- `break`/`continue` clean up owns declared inside the innermost loop body;
+  `switch` prongs do not create a cleanup boundary (coral `switch` has no
+  `break`, so a jump inside a prong targets the enclosing loop).
+- Slices that are returned as temporaries (`return a[0..2]`) or passed to
+  escaping callees are not range-checked; only named slices at `return`/`?`
+  are.
+- Calling a method that no summary exists for (unknown or bodyless trait
+  method) retains the receiver conservatively: the receiver is treated as
+  escaping, never as a genuine use-after-move.
+- Escape propagated through a name-to-name alias does not by itself make
+  later uses of the source an error: the source is only a genuine move site
+  when the move-elision pass (`memCheckMoves`) decides it is.
 
 ---
 

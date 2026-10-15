@@ -30,6 +30,10 @@ struct Scene {
     lookup: Map<string, i32>;
     bounds: i32[8];
     flags: (bool, u16);
+    seen: Set<EntityId>;
+    pending: Queue<EntityId>;
+    bodies: Pool<Vec2>;
+    mask: Bitset;
 }
 
 const ORIGIN = Vec2 { x: 0.0, y: 0.0 };
@@ -41,6 +45,14 @@ fn areas(shape: Shape) f64 {
         Rect(w, h) => w * h,
         Point      => 0.0,
     };
+}
+
+// Mu has no user-defined generics: one function per concrete type.
+fn max(a: i32, b: i32) i32 {
+    if a > b {
+        return a;
+    }
+    return b;
 }
 
 fn literals() {
@@ -58,7 +70,58 @@ fn literals() {
     let shifted = small as i64;
     let glyphs = ['a', 'μ', '\u{1F600}'];
     let grid_of: Array<Array<i32>> = [[1], [2]];
-    let picked = max::<i32>(sizes[0], 2);
+    let picked = max(sizes[0], 2);
     let pair = (1, "one");
     let (first, second) = pair;
+}
+
+// Built-in containers: Set<T>, Queue<T>, Pool<T>, Bitset (non-generic).
+fn containers() {
+    var live: Set<EntityId> = Set.new();
+    live.add(7);
+    live.add(7);
+    live.add(9);
+    let unique = live.len();
+    let has_seven = live.has(7);
+    let has_five = live.has(5);
+    live.remove(7);
+    let after_remove = live.has(7);
+
+    var pending: Queue<EntityId> = Queue.new();
+    pending.push(1);
+    pending.push(2);
+    pending.push(3);
+    let queued = pending.len();
+    let next = pending.pop();
+    let rest = pending.len();
+
+    var total: u32 = 0;
+    for id in live {
+        total = total + id;
+    }
+    
+    for id in pending {
+        total = total + id;
+    }
+
+    var bodies: Pool<Vec2> = Pool.new(64);
+    let slot = bodies.create();
+    bodies.set(slot, Vec2 { x: 1.0, y: 2.0 });
+    let reused = bodies.create();
+    let capacity = bodies.cap();
+    let in_use = bodies.len();
+    bodies.release(slot);
+    let still_live = bodies.alive(slot);
+
+    var mask: Bitset = Bitset.new(128);
+    mask.set(3);
+    mask.set(70);
+    let on = mask.test(3);
+    let off = mask.test(4);
+    let bits = mask.count();
+    mask.clear(3);
+    let after_clear = mask.test(3);
+    let any_set = mask.any();
+    mask.toggle(70);
+    let after_toggle = mask.test(70);
 }

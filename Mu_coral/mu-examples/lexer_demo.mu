@@ -1,10 +1,10 @@
 #! string.casing, string.format
 
+use Mu::Out::log; // provides fn log(msg: str);
 use Mu::render as r;
 
 type Meters = f32;
 
-fn log(msg: str);
 
 pub const MAX_SPEED: u16 = 0xFFu16;
 pub const GREETING: string = "hello\nworld";
@@ -41,5 +41,12 @@ async fn tick(dt: f32) {
     let span = 0..=10;
     let ch = 'μ';
     let big = 1000000i64;
-    let picked = max::<i32>(values[0], 2);
+    let picked = max(values[0], 2);
+}
+
+fn max(a: i32, b: i32) i32 {
+    if a > b {
+        return a;
+    }
+    return b;
 }

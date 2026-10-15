@@ -1,0 +1,125 @@
+import(lib) std::parser::json { JsonValue, JsonPair, parseJson, serialize };
+import(lib) std::vec { Vec };
+import(lib) std::text::string { String };
+import diag::diag { Diags, DiagRec };
+
+// ---- small json helpers ----
+
+JsonPair pair(str k, JsonValue v)
+{
+    return JsonPair { .key = String::fromView(k), .value = v };
+}
+
+void objPut(JsonValue* o, str k, JsonValue v)
+{
+    o.objVal.push(pair(k, v));
+}
+
+JsonValue posJson(usize v)
+{
+    return JsonValue::i64Val((i64)v);
+}
+
+// mu diagnostics are 1-based line/col; lsp wants 0-based, so shift down.
+JsonValue rangeJson(DiagRec* r)
+{
+    usize l = r.line > 0 ? r.line - 1 : 0;
+    usize c = r.col > 0 ? r.col - 1 : 0;
+
+    JsonValue st = JsonValue::objectVal();
+    objPut(&st, "line", posJson(l));
+    objPut(&st, "character", posJson(c));
+
+    JsonValue en = JsonValue::objectVal();
+    objPut(&en, "line", posJson(l));
+    objPut(&en, "character", posJson(c + (r.len > 1 ? r.len - 1 : 0)));
+
+    JsonValue range = JsonValue::objectVal();
+    objPut(&range, "start", st);
+    objPut(&range, "end", en);
+    return range;
+}
+
+// one diagnostic in the exact shape lsp publishDiagnostics expects
+pub JsonValue diagJson(DiagRec* r)
+{
+    JsonValue o = JsonValue::objectVal();
+    objPut(&o, "range", rangeJson(r));
+    objPut(&o, "severity", JsonValue::i64Val(r.isError ? 1 : 2));
+    objPut(&o, "source", JsonValue::stringVal(String::fromView("muc")));
+    objPut(&o, "code", JsonValue::stringVal(String::fromView(r.code)));
+
+    // notes ride along in the message so zed/vscode show them inline
+    String msg = String::fromView(r.title);
+    usize i = 0;
+    while (i < r.notes.count())
+    {
+        msg.pushView("\n");
+        msg.pushView(r.notes.at(i));
+        i++;
+    }
+    objPut(&o, "message", JsonValue::stringVal(msg));
+    return o;
+}
+
+pub JsonValue diagArrayJson(Diags* d)
+{
+    JsonValue arr = JsonValue::arrayVal();
+    usize i = 0;
+    while (i < d.recCount())
+    {
+        arr.arrVal.push(diagJson(d.recAt(i)));
+        i++;
+    }
+    return arr;
+}
+
+// the one-shot envelope printed by `muc --json`
+pub JsonValue fileReportJson(Diags* d, str file)
+{
+    JsonValue o = JsonValue::objectVal();
+    objPut(&o, "file", JsonValue::stringVal(String::fromView(file)));
+    objPut(&o, "errors", JsonValue::i64Val((i64)d.errors));
+    objPut(&o, "warnings", JsonValue::i64Val((i64)d.warnings));
+    objPut(&o, "diagnostics", diagArrayJson(d));
+    return o;
+}
+
+pub void printJsonReport(Diags* d, str file)
+{
+    JsonValue o = fileReportJson(d, file);
+    String body = serialize(&o);
+    print(body.asView());
+    print("\n");
+    body.free();
+    o.dispose();
+}
+
+// ---- request parsing (used by the lsp loop) ----
+
+static JsonValue* objGet(JsonValue* o, str key)
+{
+    if (o.type != JsonType::Object) return null;
+    usize i = 0;
+    while (i < o.objVal.count())
+    {
+        JsonPair* p = o.objVal.atPtr(i);
+        if (p.key.asView().equals(key)) return &p.value;
+        i++;
+    }
+    return null;
+}
+
+static str jsonStr(JsonValue* v)
+{
+    if (v == null || v.type != JsonType::String) return str::empty();
+    return v.strVal.asView();
+}
+
+static usize jsonUint(JsonValue* v, usize fallback)
+{
+    if (v == null) return fallback;
+    if (v.type == JsonType::I64) return (usize)v.i64Val;
+    if (v.type == JsonType::Bool) return v.boolVal ? 1u : 0u;
+    return fallback;
+}
