@@ -1,0 +1,62 @@
+# coral modules.map v1 â€” debug dump written by `coralc build`; the compiler uses the in-memory table
++ mu-core                â†’  src/mu-core
++ mu-common              â†’  src/mu-common
++ mu-diagnostics         â†’  src/mu-diagnostics
++ mu-lexer               â†’  src/mu-lexer
++ mu-ast                 â†’  src/mu-ast
++ mu-parser              â†’  src/mu-parser
++ mu-frontend            â†’  src/mu-frontend
++ mu-sema                â†’  src/mu-sema
+
+# aliases (from build file)
+@ core                   â†’  mu-core
+@ common                 â†’  mu-common
+@ diag                   â†’  mu-diagnostics
+@ lexer                  â†’  mu-lexer
+@ ast                    â†’  mu-ast
+@ parser                 â†’  mu-parser
+@ sema                   â†’  mu-sema
+
+# resolved module table (key â†’ path)
+mu-core â†src/mu-core/lib.crl
+core â†src/mu-core/lib.crl
+mu-common â†src/mu-common/lib.crl
+common â†src/mu-common/lib.crl
+mu-diagnostics â†src/mu-diagnostics/lib.crl
+diag â†src/mu-diagnostics/lib.crl
+mu-lexer â†src/mu-lexer/lib.crl
+lexer â†src/mu-lexer/lib.crl
+mu-ast â†src/mu-ast/lib.crl
+ast â†src/mu-ast/lib.crl
+mu-parser â†src/mu-parser/lib.crl
+parser â†src/mu-parser/lib.crl
+mu-frontend â†src/mu-frontend/lib.crl
+mu-sema â†src/mu-sema/lib.crl
+sema â†src/mu-sema/lib.crl
+mu-core::io â†src/mu-core/io.crl
+core::io â†src/mu-core/io.crl
+mu-core::arena â†src/mu-core/arena.crl
+core::arena â†src/mu-core/arena.crl
+mu-common::token â†src/mu-common/token.crl
+common::token â†src/mu-common/token.crl
+mu-diagnostics::diag â†src/mu-diagnostics/diag.crl
+diag::diag â†src/mu-diagnostics/diag.crl
+mu-lexer::lexer â†src/mu-lexer/lexer.crl
+lexer::lexer â†src/mu-lexer/lexer.crl
+mu-ast::ast â†src/mu-ast/ast.crl
+ast::ast â†src/mu-ast/ast.crl
+mu-parser::base â†src/mu-parser/base.crl
+parser::base â†src/mu-parser/base.crl
+mu-parser::decl â†src/mu-parser/decl.crl
+parser::decl â†src/mu-parser/decl.crl
+mu-parser::expr â†src/mu-parser/expr.crl
+parser::expr â†src/mu-parser/expr.crl
+mu-parser::pattern â†src/mu-parser/pattern.crl
+parser::pattern â†src/mu-parser/pattern.crl
+mu-parser::stmt â†src/mu-parser/stmt.crl
+parser::stmt â†src/mu-parser/stmt.crl
+mu-parser::type â†src/mu-parser/type.crl
+parser::type â†src/mu-parser/type.crl
+mu-frontend::muc â†src/mu-frontend/muc.crl
+mu-sema::sema â†src/mu-sema/sema.crl
+sema::sema â†src/mu-sema/sema.crl

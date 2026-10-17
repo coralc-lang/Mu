@@ -18,8 +18,12 @@ third_party/bgfx/
   bgfx/              bkaradzic/bgfx  (BSD-2-Clause)
 ```
 
-`Mu_engine/coral.crlb` builds it via the `bgfx` phase into `build/bgfx/`
-and links `libbgfx.a`, `libbimg.a`, `libbx.a`.
+`Mu_engine/coral.crlb` does **not** build bgfx. The `link` block points
+straight at the prebuilt static archives staged under
+`Mu_engine/packaged/<platform>/lib/` (`libbgfx.a`, `libbimg.a`, `libbx.a`),
+so `coralc build` never invokes CMake for bgfx. The source tree here is only
+needed when (re)generating those archives; CI does that in
+`.github/workflows/build-bgfx.yml`.
 
 ## Fetch / refresh
 

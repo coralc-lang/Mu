@@ -126,8 +126,9 @@ the run's Artifacts panel on the Actions tab.
 
 - **SDL3 static / Jolt static on non-linux hosts** — the packaged
   statics are prebuilt upstream or linux-local; SDL3 links from the M3
-  build phase onward (`src/sdl/`). bgfx is built from source by its own
-  workflow/phase.
+  build phase onward (`src/sdl/`). bgfx is linked from its prebuilt
+  static archives in `packaged/<platform>/lib/`, refreshed by the
+  `build-bgfx` workflow.
 - **Per-library `libstb.a` & co.** — covered by `libmualibs.a`.
 
 ## Build quirk

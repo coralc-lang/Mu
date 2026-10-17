@@ -1,4 +1,4 @@
-#! control.flow
+// control.flow
 
 use Mu::timing::now;
 

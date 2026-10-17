@@ -59,6 +59,10 @@ coralc build                          # -> build/muengine, regenerates .coral/mo
 - **Prebuilt archives** for shipping/cross targets live in
   `packaged/<platform>/lib/` - inventory and rebuild notes:
   [`../Mu_docs/prebuilt-libs.md`](../Mu_docs/prebuilt-libs.md).
+- bgfx is linked from its prebuilt static archives
+  (`packaged/<platform>/lib/libbgfx.a`, `libbimg.a`, `libbx.a`) - `coralc`
+  never runs CMake for it. CI regenerates them via
+  `.github/workflows/build-bgfx.yml`.
 
 ---
 
