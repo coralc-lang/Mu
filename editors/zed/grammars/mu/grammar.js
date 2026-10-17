@@ -7,6 +7,7 @@ module.exports = grammar({
     [$.if_statement, $.if_expression],
     [$.switch_statement, $.switch_expression],
     [$.while_statement, $.while_expression],
+    [$.block, $.field_initializer],
   ],
 
   extras: $ => [
@@ -81,7 +82,8 @@ module.exports = grammar({
       field('name', $.identifier),
       field('parameters', $.parameter_list),
       optional(field('return_type', $._type)),
-      field('body', $.block),
+      optional(field('body', $.block)),
+      optional(';'),
     )),
 
     parameter_list: $ => seq(
@@ -195,6 +197,7 @@ module.exports = grammar({
 
     _type: $ => choice(
       $._type_atom,
+      $.dynamic_type,
       $.tuple_type,
       $.slice_type,
       $.array_type,
@@ -205,6 +208,11 @@ module.exports = grammar({
     _type_atom: $ => choice(
       $.identifier,
       'self',
+    ),
+
+    dynamic_type: $ => seq(
+      'dyn',
+      field('trait', $.identifier),
     ),
 
     // i32[3], and `[T; N]` style
@@ -249,6 +257,7 @@ module.exports = grammar({
     block: $ => seq(
       '{',
       repeat($._statement),
+      optional($._expression),
       '}',
     ),
 

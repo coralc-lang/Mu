@@ -392,6 +392,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "field_expression",
           "named": true
         },
@@ -1139,7 +1143,39 @@
       "required": false,
       "types": [
         {
+          "type": "array_expression",
+          "named": true
+        },
+        {
+          "type": "as_expression",
+          "named": true
+        },
+        {
+          "type": "assignment_expression",
+          "named": true
+        },
+        {
+          "type": "await_expression",
+          "named": true
+        },
+        {
+          "type": "binary_expression",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
           "type": "break_statement",
+          "named": true
+        },
+        {
+          "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "char",
           "named": true
         },
         {
@@ -1151,7 +1187,19 @@
           "named": true
         },
         {
+          "type": "field_expression",
+          "named": true
+        },
+        {
           "type": "for_statement",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "if_expression",
           "named": true
         },
         {
@@ -1159,7 +1207,31 @@
           "named": true
         },
         {
+          "type": "index_expression",
+          "named": true
+        },
+        {
           "type": "let_declaration",
+          "named": true
+        },
+        {
+          "type": "map_expression",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "question_expression",
+          "named": true
+        },
+        {
+          "type": "range_expression",
           "named": true
         },
         {
@@ -1167,11 +1239,43 @@
           "named": true
         },
         {
+          "type": "self_expression",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "struct_expression",
+          "named": true
+        },
+        {
+          "type": "switch_expression",
+          "named": true
+        },
+        {
           "type": "switch_statement",
           "named": true
         },
         {
+          "type": "tuple_expression",
+          "named": true
+        },
+        {
+          "type": "unary_expression",
+          "named": true
+        },
+        {
+          "type": "update_expression",
+          "named": true
+        },
+        {
           "type": "var_declaration",
+          "named": true
+        },
+        {
+          "type": "while_expression",
           "named": true
         },
         {
@@ -1457,6 +1561,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "generic_type",
           "named": true
         },
@@ -1492,6 +1600,22 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "dynamic_type",
+    "named": true,
+    "fields": {
+      "trait": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2065,7 +2189,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "block",
@@ -2099,6 +2223,10 @@
         "types": [
           {
             "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "dynamic_type",
             "named": true
           },
           {
@@ -2149,6 +2277,10 @@
       "types": [
         {
           "type": "array_type",
+          "named": true
+        },
+        {
+          "type": "dynamic_type",
           "named": true
         },
         {
@@ -2833,6 +2965,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "generic_type",
           "named": true
         },
@@ -3138,6 +3274,10 @@
       "types": [
         {
           "type": "array_type",
+          "named": true
+        },
+        {
+          "type": "dynamic_type",
           "named": true
         },
         {
@@ -4009,6 +4149,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "generic_type",
           "named": true
         },
@@ -4578,6 +4722,10 @@
             "named": true
           },
           {
+            "type": "dynamic_type",
+            "named": true
+          },
+          {
             "type": "generic_type",
             "named": true
           },
@@ -4790,6 +4938,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "generic_type",
           "named": true
         },
@@ -4837,6 +4989,10 @@
         },
         {
           "type": "attribute",
+          "named": true
+        },
+        {
+          "type": "dynamic_type",
           "named": true
         },
         {
@@ -5451,6 +5607,10 @@
           "named": true
         },
         {
+          "type": "dynamic_type",
+          "named": true
+        },
+        {
           "type": "generic_type",
           "named": true
         },
@@ -5487,6 +5647,10 @@
         },
         {
           "type": "attribute",
+          "named": true
+        },
+        {
+          "type": "dynamic_type",
           "named": true
         },
         {
@@ -6046,6 +6210,10 @@
   },
   {
     "type": "continue",
+    "named": false
+  },
+  {
+    "type": "dyn",
     "named": false
   },
   {
