@@ -1,0 +1,369 @@
+{
+  "scopeName": "source.mu",
+  "fileTypes": [
+    "mu"
+  ],
+  "name": "Mu",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#manifest"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#labels"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#fallbacks"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.mu",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.mu",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "manifest": {
+      "patterns": [
+        {
+          "name": "keyword.directive.mu",
+          "match": "^#!.*$"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "(#\\[)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.mu"
+            },
+            "2": {
+              "name": "entity.name.function.macro.mu"
+            }
+          }
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "match": "(@)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.mu"
+            },
+            "2": {
+              "name": "label.mu"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.mu",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mu",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.mu",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mu",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.hex.mu",
+          "match": "\\b0[xX][0-9a-fA-F][0-9a-fA-F_]*\\b"
+        },
+        {
+          "name": "constant.numeric.integer.binary.mu",
+          "match": "\\b0[bB][01][01_]*\\b"
+        },
+        {
+          "name": "constant.numeric.float.mu",
+          "match": "\\b[0-9][0-9_]*\\.[0-9_]*([eE][+-]?[0-9][0-9_]*)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.mu",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "^(\\s*)((?:pub\\s+|async\\s+|extern\\s+|native\\s+)*)(fn)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "2": {
+              "name": "storage.modifier.mu"
+            },
+            "3": {
+              "name": "keyword.declaration.function.mu"
+            },
+            "5": {
+              "name": "entity.name.function.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s*((?:pub\\s+|async\\s+)*)(variant|native|extern|extend|struct|async|trait|const|type|pub|use|mut|as|fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "2": {
+              "name": "keyword.declaration.type.mu"
+            },
+            "3": {
+              "name": "entity.name.type.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(extend)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:\\s*trait\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.type.mu"
+            },
+            "2": {
+              "name": "entity.name.type.mu"
+            },
+            "3": {
+              "name": "entity.name.type.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.mu"
+            },
+            "2": {
+              "name": "variable.other.constant.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(let|var)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.mu"
+            },
+            "2": {
+              "name": "variable.other.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:\\s*[^,;]+)?\\s*[,;]?\\s*$",
+          "captures": {
+            "1": {
+              "name": "property.mu"
+            }
+          }
+        },
+        {
+          "match": "^\\s+(mut\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*",
+          "captures": {
+            "2": {
+              "name": "variable.parameter.mu"
+            }
+          }
+        },
+        {
+          "match": "\\b(use)\\s+([A-Za-z_][A-Za-z0-9_:.]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.mu"
+            },
+            "2": {
+              "name": "entity.name.namespace.mu"
+            }
+          }
+        },
+        {
+          "match": "(?<![.\\w])([A-Za-z_][A-Za-z0-9_]*)(\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.call.mu"
+            },
+            "2": {
+              "name": "punctuation.definition.parameters.mu"
+            }
+          }
+        },
+        {
+          "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.mu"
+            },
+            "2": {
+              "name": "variable.other.property.mu"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(::)",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.mu"
+            },
+            "2": {
+              "name": "punctuation.accessor.mu"
+            }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.type.mu",
+          "match": "\\b(?:variant|native|extern|extend|struct|async|trait|const|type|pub|use|mut|as|fn)\\b"
+        },
+        {
+          "name": "keyword.control.mu",
+          "match": "\\b(?:continue|return|switch|while|break|await|else|for|mut|var|let|in|if)\\b"
+        },
+        {
+          "name": "storage.modifier.mu",
+          "match": "\\b(?:native|extern|async|pub|mut)\\b"
+        },
+        {
+          "name": "constant.language.mu",
+          "match": "\\b(?:false|true)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.mu",
+          "match": "<<=|>>=|\\.\\.=|\\+=|%=|\\|=|\\^=|\\*=|\\&=|/=|\\-=|="
+        },
+        {
+          "name": "keyword.operator.logical.mu",
+          "match": "\\&\\&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.comparison.mu",
+          "match": "==|>=|<=|!=|<|>"
+        },
+        {
+          "name": "keyword.operator.mu",
+          "match": "\\.\\.\\.|<<|\\.\\.|>>|\\+|\\||\\.|/|\\~|%|\\*|\\-|\\^|\\&"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.block.mu",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.definition.parameters.mu",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.definition.subscript.mu",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.separator.mu",
+          "match": "[,;.]"
+        },
+        {
+          "name": "punctuation.definition.colon.mu",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.definition.annotation.mu",
+          "match": "[#@]"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "match": "\\b(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|f32|f64|bool|char|str|string|void)\\b",
+          "name": "storage.type.mu"
+        },
+        {
+          "match": "\\b(Array|Map|Set|Queue|Pool|Bitset|Option|Result|Range|Vector|String)\\b",
+          "name": "storage.type.builtin.mu"
+        },
+        {
+          "match": "\\b(self)\\b",
+          "name": "variable.language.self.mu"
+        },
+        {
+          "match": "\\b(_)\\b",
+          "name": "variable.language.mu"
+        }
+      ]
+    },
+    "fallbacks": {
+      "patterns": [
+        {
+          "match": "\\b([A-Z][A-Za-z0-9_]*)\\b",
+          "name": "entity.name.type.mu"
+        },
+        {
+          "match": "\\b([a-z_][A-Za-z0-9_]*)\\b",
+          "name": "variable.other.mu"
+        }
+      ]
+    }
+  }
+}
