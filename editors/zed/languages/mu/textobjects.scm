@@ -16,7 +16,7 @@
   (trait_definition)
   (extend_definition)
   (variant_definition)
-] @scope
+] @class.around
 
 [
   (struct_definition)
@@ -24,6 +24,6 @@
   (extend_definition)
   (variant_definition)
   (function_definition)
-] @class
+] @class.around
 
-(function_definition) @function
+(function_definition) @function.around

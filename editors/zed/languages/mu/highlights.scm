@@ -27,15 +27,15 @@
 "as" @keyword.import
 
 (function_definition name: (identifier) @function)
-(trait_member name: (identifier) @function)
-(struct_member name: (identifier) @property)
+(trait_member (identifier) @function)
+(struct_member (identifier) @property)
 (field_initializer name: (identifier) @property)
-(field_pattern name: (identifier) @property)
+(variant_pattern (identifier) @property)
 
-(parameter identifier: (identifier) @variable.parameter)
-(binding_pattern (identifier) @variable)
+(parameter (identifier) @variable.parameter)
+(variant_pattern (identifier) @variable)
 (variant_case (identifier) @constructor)
-(variant_pattern (_type_atom) @constructor)
+(variant_pattern (identifier) @constructor)
 
 (struct_definition name: (identifier) @type)
 (variant_definition name: (identifier) @type)
@@ -99,7 +99,8 @@
 ((identifier) @type
  (#lua-match? @type "^[A-Z]"))
 
-(_type_atom) @type
+; `_type_atom` is a hidden rule; it expands to `identifier`, so
+; identifiers in type position are styled as types below.
 ((identifier) @variable
  (#lua-match? @variable "^[a-z_]"))
 
@@ -113,4 +114,3 @@
 ; ---------- calls ----------
 (call_expression function: (identifier) @function)
 (call_expression function: (field_expression field: (identifier) @function))
-(call_expression function: (path_expression (identifier) @function))

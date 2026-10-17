@@ -43,7 +43,7 @@
 
 (struct_definition
   (struct_member
-    name: (identifier) @name
+    (identifier) @name
     (#icon? "field"))) @item
 
 (variant_definition
@@ -53,7 +53,7 @@
 
 (trait_definition
   (trait_member
-    name: (identifier) @name
+    (identifier) @name
     (#icon? "function"))) @item
 
 (extend_definition
