@@ -8,12 +8,12 @@ pub struct Renderer
     void(rawptr) shutdown;
 }
 
-static void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
+void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
 {
     // headless: nothing to present
 }
 
-static void _nullShutdown(rawptr ctx) { }
+void _nullShutdown(rawptr ctx) { }
 
 pub Renderer nullRenderer()
 {

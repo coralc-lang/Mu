@@ -1,6 +1,6 @@
 # Important
 
-**Important** the build procedure should use process, you know how in c++ you have to forward declare a symbol (like a function before you use it) or... are forced to move its definition to before its usage?
+<!--**Important** the build procedure should use process, you know how in c++ you have to forward declare a symbol (like a function before you use it) or... are forced to move its definition to before its usage?
 
 a multi-pass based compiler solves this by using multiple passes to collect and register symbols before evaluating symbols. this is fine for most languages. until you hit cyclic imports.
 
@@ -35,4 +35,6 @@ at the end of the day if you still have any waiting symbols, you can report cycl
 let a = b;
 let b = a;
 
-they both depend on each other.
+they both depend on each other.-->
+
+we will strip off webgpu, and go with sdl3, for window and shit, and rendering too. wgpu has c bindings, but it's docs favour only rust

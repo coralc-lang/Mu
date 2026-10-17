@@ -7,7 +7,7 @@ import diag::diag { Diags, DiagRec };
 
 JsonPair pair(str k, JsonValue v)
 {
-    return JsonPair { .key = String::fromView(k), .value = v };
+    return JsonPair { .key = String::from(k), .value = v };
 }
 
 void objPut(JsonValue* o, str k, JsonValue v)
@@ -46,11 +46,11 @@ pub JsonValue diagJson(DiagRec* r)
     JsonValue o = JsonValue::objectVal();
     objPut(&o, "range", rangeJson(r));
     objPut(&o, "severity", JsonValue::i64Val(r.isError ? 1 : 2));
-    objPut(&o, "source", JsonValue::stringVal(String::fromView("muc")));
-    objPut(&o, "code", JsonValue::stringVal(String::fromView(r.code)));
+    objPut(&o, "source", JsonValue::stringVal(String::from("muc")));
+    objPut(&o, "code", JsonValue::stringVal(String::from(r.code)));
 
     // notes ride along in the message so zed/vscode show them inline
-    String msg = String::fromView(r.title);
+    String msg = String::from(r.title);
     usize i = 0;
     while (i < r.notes.count())
     {
@@ -78,7 +78,7 @@ pub JsonValue diagArrayJson(Diags* d)
 pub JsonValue fileReportJson(Diags* d, str file)
 {
     JsonValue o = JsonValue::objectVal();
-    objPut(&o, "file", JsonValue::stringVal(String::fromView(file)));
+    objPut(&o, "file", JsonValue::stringVal(String::from(file)));
     objPut(&o, "errors", JsonValue::i64Val((i64)d.errors));
     objPut(&o, "warnings", JsonValue::i64Val((i64)d.warnings));
     objPut(&o, "diagnostics", diagArrayJson(d));
@@ -97,7 +97,7 @@ pub void printJsonReport(Diags* d, str file)
 
 // ---- request parsing (used by the lsp loop) ----
 
-static JsonValue* objGet(JsonValue* o, str key)
+JsonValue* objGet(JsonValue* o, str key)
 {
     if (o.type != JsonType::Object) return null;
     usize i = 0;
@@ -110,16 +110,8 @@ static JsonValue* objGet(JsonValue* o, str key)
     return null;
 }
 
-static str jsonStr(JsonValue* v)
+str jsonStr(JsonValue* v)
 {
     if (v == null || v.type != JsonType::String) return str::empty();
     return v.strVal.asView();
-}
-
-static usize jsonUint(JsonValue* v, usize fallback)
-{
-    if (v == null) return fallback;
-    if (v.type == JsonType::I64) return (usize)v.i64Val;
-    if (v.type == JsonType::Bool) return v.boolVal ? 1u : 0u;
-    return fallback;
 }

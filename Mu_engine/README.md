@@ -24,7 +24,7 @@ engine.
 | **M0** | Build file, modules, headless loop, scene + system | ✅ done |
 | **M1** | Script host API: native registry (`Mu::` library), entity→script bindings, ECS type table | 🟡 scaffold written - pending build verification |
 | **M2** | `muc` ↔ host: WallVM IR executed, `main.mu` runs in the loop | ⬜ planned |
-| **M3** | SDL3 window + GL 3.3/GLES3 backend, live input | ⬜ planned |
+| **M3** | SDL3 window + bgfx backend, live input | ⬜ planned |
 | **M4** | 3D scene basics: camera, meshes, materials, lighting | ⬜ planned |
 | **M5** | Assets: handle table, aliases, loaders, hot reload | ⬜ planned |
 | **M6** | Audio (SDL3) + immediate-mode UI | ⬜ planned |
@@ -70,9 +70,9 @@ Mu_engine/
   src/                one Coral module per layer (each: lib.crl + file.crl)
   scripts/            Mu gameplay scripts (main.mu first)
   native/             CMake project + vendor implementation TUs (mu_*.c)
-  third_party/        jolt, JoltPhysicsC, SDL, stb, cgltf, miniz, tinyexr,
-                      dr_libs, FastNoiseLite, MikkTSpace (trimmed vendors)
-  packaged/           prebuilt archives per platform (wgpu, tcc, Jolt, mualibs)
+  third_party/        jolt, JoltPhysicsC, SDL, bgfx, stb, cgltf, miniz,
+                      tinyexr, dr_libs, FastNoiseLite, MikkTSpace (trimmed vendors)
+  packaged/           prebuilt archives per platform (tcc, Jolt, mualibs)
   build/              outputs (git-ignored): muengine, native vendor libs
 ```
 
@@ -85,10 +85,10 @@ Mu_engine/
 | math - Vec3/Quat, chainable | `src/math/` | live |
 | **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
 | **script** - ScriptHost, `Mu::` natives, bindings | `src/script/` | M1 scaffold (IR at M2) |
-| render - fn-ptr interface, null backend | `src/render/` | live interface, stub impl (GL at M3) |
+| render - fn-ptr interface, null backend | `src/render/` | live interface, stub impl (bgfx at M3) |
 | platform - headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
 | alloc - mimalloc game allocator | `src/alloc/` | live |
-| vendor extern ports | `src/{sdl,gl,webgpu,stb,cgltf,miniz,tinyexr,drlibs,fastnoise,mikktspace,physics}/` | ports ready, gated by milestones |
+| vendor extern ports | `src/{sdl,bgfx,stb,cgltf,miniz,tinyexr,drlibs,fastnoise,mikktspace,physics}/` | ports ready, gated by milestones |
 
 <!-- FUTURE LAYERS (not implemented - ENGINE.md §3/§8):
 | input - input state + named action map (§13) | `src/input/` | planned M3 |
@@ -259,9 +259,10 @@ assets, M6 audio+UI, M7 physics features+editor - full definitions in
 - Input (M3): SDL3 events → down/pressed/released state, mouse, gamepad;
   named rebindable action map (never raw keys); synthetic-event injection
   for headless tests.
-- Rendering (M3+): GL 3.3 desktop / GLES3 Web behind the Renderer
-  interface; Vulkan later. M4: camera, meshes, materials, lights.
-  Backlog: shadows, clustering, culling, LOD, post stack (§16).
+- Rendering (M3+): bgfx behind the Renderer interface — one code path,
+  runtime-chosen GLES3/OpenGL/Vulkan/Metal/D3D/WebGPU backend. M4: camera,
+  meshes, materials, lights. Backlog: shadows, clustering, culling, LOD,
+  post stack (§16).
 - Assets (M5): handle table + aliases, loaders (stb/cgltf/exr/dr_libs),
   hot reload, GUID sidecar metadata, cooked packs (miniz).
 - Audio (M6): SDL3 streams, stb_vorbis/dr_libs decode, bus mixer

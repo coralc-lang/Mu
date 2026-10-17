@@ -1,0 +1,7 @@
+// SDL3 shared value types + opaque handles used across the sdl port files.
+// SDL provides exactly two things to Mu: a window/input layer (ENGINE.md §13)
+// and audio output (M6). Rendering is bgfx's job (src/bgfx/) - SDL's own
+// SDL_Renderer/SDL_GPU are intentionally NOT bound. See sdl/lib.crl.
+
+pub typedef SDL_Window = rawptr;
+pub typedef SDL_PropertiesID = u32;

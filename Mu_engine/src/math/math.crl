@@ -5,10 +5,10 @@
 
 pub struct Vec2
 {
-    f64 x;
-    f64 y;
+    f32 x;
+    f32 y;
 
-    static Vec2 new(f64 x, f64 y)
+    static Vec2 new(f32 x, f32 y)
     {
         return Vec2 { .x = x, .y = y };
     }
@@ -29,34 +29,34 @@ pub struct Vec2
         };
     }
 
-    Vec2 scale(f64 s)
+    Vec2 scale(f32 s)
     {
         return Vec2 { .x = self.x * s, .y = self.y * s };
     }
 
-    f64 dot(Vec2 other)
+    f32 dot(Vec2 other)
     {
         return self.x * other.x + self.y * other.y;
     }
 
-    f64 lengthSq()
+    f32 lengthSq()
     {
         return self.x * self.x + self.y * self.y;
     }
 
-    f64 length()
+    f32 length()
     {
         return sqrt(self.lengthSq());
     }
 
     Vec2 normalize()
     {
-        f64 len = self.length();
+        f32 len = self.length();
         if (len < 1e-15) return *self;
         return self.scale(1.0 / len);
     }
 
-    Vec2 lerp(Vec2 other, f64 t)
+    Vec2 lerp(Vec2 other, f32 t)
     {
         return Vec2 {
             .x = self.x + (other.x - self.x) * t,

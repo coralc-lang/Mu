@@ -21,7 +21,7 @@ pub void logError(const cchar* msg)
     println("[mu:error] {}", msg);
 }
 
-static void _nullScriptUpdate(rawptr ctx, f32 dt)
+void _nullScriptUpdate(rawptr ctx, f32 dt)
 {
     // no script host wired (M1 default) - engine/main swaps in scriptSystem
 }

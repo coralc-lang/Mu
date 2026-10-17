@@ -8,10 +8,10 @@ a verbatim copy of the documentation that ships with the vendored tree.
 
 | Library | What Mu uses it for | License | Where it lives | Docs here |
 |---|---|---|---|---|
-| SDL 3.4.18 | Window, input events, GL context, audio (ENGINE.md §2) — not linked until the M3 build phase | zlib | `Mu_engine/third_party/SDL` | `SDL/` (README, LICENSE.txt, docs/) |
+| SDL 3.4.18 | Window, input events, audio (ENGINE.md §2) — rendering is bgfx's job, so SDL's own renderer/GPU APIs are not bound. Not linked until the M3 build phase | zlib | `Mu_engine/third_party/SDL` | `SDL/` (README, LICENSE.txt, docs/) |
 | Jolt 5.6.0 | 3D physics simulation (ENGINE.md §9) | MIT | `Mu_engine/third_party/jolt` | `jolt/` |
 | JoltPhysicsC | Flat C API over Jolt; `src/physics` rides on it | MIT | `Mu_engine/third_party/JoltPhysicsC` | `JoltPhysicsC/` |
-| wgpu-native | WebGPU rendering backend (`src/webgpu`) | BSD-3-Clause | Prebuilt only: `Mu_engine/packaged/{linux-x86_64,linux-arm64,windows-x64,windows-arm64,macos-arm64,android-arm64}/lib` + headers `Mu_engine/include/webgpu/` (v29.0.1.1, no source tree) | — (headers hand-transcribed into `src/webgpu/webgpu.crl`) |
+| bgfx (+ bx, bimg) | Graphics-API-agnostic render backend (`src/bgfx`), via the bgfx.cmake tree (ENGINE.md §2) | BSD-2-Clause (build scripts CC0) | `Mu_engine/third_party/bgfx` (bx/bimg/bgfx); archives staged in `Mu_engine/packaged/<platform>/lib/` | `Mu_engine/third_party/bgfx/README.md` |
 | stb | Image decode/encode, truetype fonts, vorbis (ENGINE.md §9) | Public domain / MIT | `third_party/stb`, compiled into `libmualibs.a` | `stb/` |
 | cgltf | glTF parsing | MIT | `third_party/cgltf` → mualibs | `cgltf/` |
 | miniz | Deflate / zip / PNG | miniz license (zlib-style, see LICENSE) | `third_party/miniz` → mualibs | `miniz/` |

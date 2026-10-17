@@ -75,7 +75,7 @@ pub Result<ExrImage, String> loadEXR(const cchar* path)
             FreeEXRErrorMessage(errMsg);
             return Result<ExrImage, String>::Err { .error = msg };
         }
-        return Result<ExrImage, String>::Err { .error = String::fromView("tinyexr: decode failed") };
+        return Result<ExrImage, String>::Err { .error = String::from("tinyexr: decode failed") };
     }
     return Result<ExrImage, String>::Ok { .value = ExrImage { .rgba = (rawptr)pixels, .width = w, .height = h } };
 }

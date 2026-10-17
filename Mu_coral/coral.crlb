@@ -21,6 +21,7 @@ build "muc" {
         "mu-parser",
         "mu-frontend",
         "mu-sema",
+        "mu-json",
     ];
 }
 
@@ -31,6 +32,7 @@ alias lexer  = "mu-lexer";
 alias ast    = "mu-ast";
 alias parser = "mu-parser";
 alias sema   = "mu-sema";
+alias json   = "mu-json";
 
 task "run" {
     after = ["build"];

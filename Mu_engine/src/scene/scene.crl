@@ -56,7 +56,7 @@ pub struct Scene
     {
         EntityId cur = candidate;
         u32 guard = 0;
-        while (cur != NIL && guard <= self.count)
+        while (cur != NIL && cur < self.count && guard <= self.count)
         {
             if (cur == child) return true;
             cur = self.entities[cur].parent;
@@ -131,6 +131,8 @@ pub struct Scene
         {
             if (parent >= self.count || !self.entities[parent].alive)
                 return Result<EntityId, str>::Err { .error = "setParent: parent is dead or invalid" };
+            if (parent == child)
+                return Result<EntityId, str>::Err { .error = "setParent: an entity cannot be its own parent" };
             if (self._ancestorOf(parent, child))
                 return Result<EntityId, str>::Err { .error = "setParent: cycle rejected - parent is a descendant of child" };
         }
@@ -254,7 +256,7 @@ pub struct ComponentRegistry
         self.types[self.count].store = store;
         self.count = self.count + 1;
         
-        return Result<u32, str>::Ok { .value = self.count };
+        return Result<u32, str>::Ok { .value = self.count - 1 };
     }
 
     // Null when unknown - M2 get/set natives dispatch through this.

@@ -1,0 +1,47 @@
+// Engine wrappers (ENGINE.md §3 error convention) over the raw stb externs.
+
+import(lib) std::data { result::Result };
+import(lib) std::text::string { String };
+import stb::image { stbi_load, stbi_failure_reason, stbi_image_free };
+
+// Decoded image buffer. @drop owns it (DESIGN §6): pixels free when the
+// Image goes out of scope, so don't call stbi_image_free yourself.
+pub struct Image
+{
+    rawptr pixels;
+    i32 width;
+    i32 height;
+    i32 channels;
+}
+
+pub extend Image : @drop
+{
+    void drop()
+    {
+        stbi_image_free(self.pixels);
+    }
+}
+
+// Decode any stb_image format (PNG, JPEG, BMP, TGA, GIF, HDR, ...) in one
+// shot. wantChannels 0 keeps the file's own channel count; dimensions ride
+// on the Image itself. Err owns a copied diagnostic — stbi_failure_reason()
+// is a static buffer reused by the next load, hence the String copy.
+//
+//   Result<Image, String> decoded = stb::loadImage(C"hero.png", 0).unwrap();
+//   ... use decoded.value.pixels ...
+//   (decoded goes out of scope at the end - pixels freed with it)
+pub Result<Image, String> loadImage(const cchar* path, i32 wantChannels)
+{
+    i32 w = 0;
+    i32 h = 0;
+    i32 c = 0;
+    rawptr px = stbi_load(path, &w, &h, &c, wantChannels);
+    if (px == null)
+    {
+        const cchar* why = stbi_failure_reason();
+        if (why != null)
+            return Result<Image, String>::Err { .error = String::fromCstr(why) };
+        return Result<Image, String>::Err { .error = String::from("stb_image: decode failed") };
+    }
+    return Result<Image, String>::Ok { .value = Image { .pixels = px, .width = w, .height = h, .channels = c } };
+}

@@ -1,0 +1,12 @@
+// bgfx - vertex layouts (describe attribute streams; consumed by buffers).
+import bgfx::types {
+    bgfx_vertex_layout_t, bgfx_renderer_type_t, bgfx_attrib_t,
+    bgfx_attrib_type_t,
+};
+
+pub extern bgfx_vertex_layout_t* bgfx_vertex_layout_begin(bgfx_vertex_layout_t* this, bgfx_renderer_type_t rendererType);
+pub extern bgfx_vertex_layout_t* bgfx_vertex_layout_add(bgfx_vertex_layout_t* this, bgfx_attrib_t attrib, u8 num, bgfx_attrib_type_t type, u8 normalized, u8 asInt);
+pub extern bgfx_vertex_layout_t* bgfx_vertex_layout_skip(bgfx_vertex_layout_t* this, u8 num);
+pub extern void bgfx_vertex_layout_end(bgfx_vertex_layout_t* this);
+pub extern u8 bgfx_vertex_layout_has(const bgfx_vertex_layout_t* this, bgfx_attrib_t attrib);
+pub extern void bgfx_vertex_layout_decode(const bgfx_vertex_layout_t* this, bgfx_attrib_t attrib, u8* num, bgfx_attrib_type_t* type, u8* normalized, u8* asInt);

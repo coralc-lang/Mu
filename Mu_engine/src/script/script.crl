@@ -319,7 +319,7 @@ pub Result<u32, str> registerDefaultNatives(NativeRegistry* natives, Scene* scen
     natives->add("Mu::scene::despawn", Native::IdPredFn { .f = _nativeDespawn }).unwrap();
     natives->add("Mu::scene::setParent", Native::IdPairFn { .f = _nativeSetParent }).unwrap();
     natives->add("Mu::platform::quit", Native::UnitFn { .f = _nativeQuit }).unwrap();
-    return Result<u32, str>::Ok { .value = 7 };
+    return Result<u32, str>::Ok { .value = natives->count };
 }
 
 // The Loop ticks this through a fn ptr (§6 order): core never imports

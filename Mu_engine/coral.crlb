@@ -19,13 +19,12 @@ build "MuEngine" {
         "render",
         "physics",
         "sdl",
-        "gl",
+        "bgfx",
         "stb",
         "cgltf",
         "miniz",
         "tinyexr",
         "drlibs",
-        "webgpu",
         "fastnoise",
         "mikktspace",
         "alloc",
@@ -39,6 +38,9 @@ build "MuEngine" {
             "build/native/libmualibs.a",
             "build/native/joltc/libJoltC.a",
             "build/native/joltc/libJolt.a",
+            "build/bgfx/libbgfx.a",
+            "build/bgfx/libbimg.a",
+            "build/bgfx/libbx.a",
             "m",
             "pthread",
             "dl",
@@ -57,6 +59,7 @@ deps {
     "drlibs"  = { path = "third_party/dr_libs"; };
     "fastnoise" = { path = "third_party/FastNoiseLite"; };
     "mikktspace" = { path = "third_party/MikkTSpace"; };
+    "bgfx" = { path = "third_party/bgfx"; };
 }
 
 phase "jolt" {
@@ -80,6 +83,17 @@ phase "jolt" {
     ];
     run = "bash -c 'cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ >/dev/null && cmake --build build/native -j1 >/dev/null'";
     output = "build/native/joltc/libJoltC.a";
+}
+
+// bgfx render backend (BGfx). Built from the vendored bgfx.cmake tree
+// (third_party/bgfx = bx + bimg + bgfx subdirs). Static only; examples/tools
+// off. Archives land in build/bgfx/ and are what the `link` block above names.
+phase "bgfx" {
+    on = [
+        "third_party/bgfx/**/*",
+    ];
+    run = "bash -c 'cmake -S third_party/bgfx -B build/bgfx -DBGFX_LIBRARY_TYPE=STATIC -DBGFX_BUILD_EXAMPLES=OFF -DBGFX_BUILD_TOOLS=OFF -DBGFX_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ >/dev/null && cmake --build build/bgfx --target bgfx bimg bx -j1 >/dev/null'";
+    output = "build/bgfx/libbgfx.a";
 }
 
 task "run" {

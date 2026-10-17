@@ -1,7 +1,7 @@
 # Prebuilt libraries — inventory & build
 
 All real prebuilt archives live in **`Mu_engine/packaged/<platform>/lib/`**
-(the same place as the wgpu prebuilt). The old `Mu_engine/prebuilt/` tree —
+(the same place as the other backend prebuilts). The old `Mu_engine/prebuilt/` tree —
 a scaffold of 44 zero-byte placeholder files — was removed 2026-10-09:
 `libmualibs.a` already *contains* the implementations of stb, cgltf, miniz,
 tinyexr, dr_libs, FastNoiseLite and MikkTSpace, so those per-library
@@ -13,16 +13,15 @@ placeholders were never going to be filled separately.
 
 | Archive | Size | What it is |
 |---|---|---|
-| `libwgpu_native.a` | 50 MB | wgpu-native WebGPU backend (prebuilt) |
+| `libbgfx.a`, `libbimg.a`, `libbx.a` | — | bgfx render backend (static), staged by `.github/workflows/build-bgfx.yml` |
 | `libtcc.a` | 6.4 MB | TinyCC (+ `tcc1/` runtime objects, `win32/` helpers) |
 | `libJolt.a` | 85 MB | Jolt physics — downloaded x64 build (GCC 13.3, `-O3 -g -mavx512f/-mavx2 -flto`). *The engine's dev build links its own copy instead, see below* |
 | `libmualibs.a` | 2.4 MB | Mu's vendor bundle (incl. zstd) — CI build 2026-10-10 from `Mu_engine/native/`, see "CI builds" below |
 
 ### `packaged/linux-arm64/lib/`, `windows-x64/lib/`, `windows-arm64/lib/`
 
-`wgpu_native.lib` on windows (windows-x64's archive was renamed from
-`libwgpu_native.a` — same MSVC content, wrong extension), `libwgpu_native.a`
-on linux — built upstream, not on this machine. `mualibs` archives here
+`libmualibs.a` and the bgfx archives (`libbgfx.a`/`libbimg.a`/`libbx.a`, or
+`bgfx.lib`/`bimg.lib`/`bx.lib` on MSVC) are staged here; `mualibs` archives
 are full **canonical-set** builds produced by CI (2026-10-10), replacing
 the former partials (8-object linux-arm64, 2-object windows-x64) and the
 empty windows-arm64 stub.
@@ -32,10 +31,8 @@ empty windows-arm64 stub.
 `libmualibs.a` — full canonical-set CI builds (2026-10-10); the android
 archive previously held only 5 objects, and the macos/wasm directories
 did not exist (their former placeholders were 46-byte stubs removed in
-the reorganization below). `libwgpu_native.a` was added to
-`android-arm64/` and `macos-arm64/` from the upstream wgpu-native
-v29.0.1.1 release (matching headers now live at
-`Mu_engine/include/webgpu/`).
+the reorganization below). The bgfx archives are staged by the
+`build-bgfx` workflow for the same platforms.
 
 ### SIMD variants — removed 2026-10-10
 
@@ -106,6 +103,13 @@ Two workflows push to `coralc-lang/Mu` (both also dispatchable):
   final `commit-packaged` job copies the `.so`/`.dll`/`.dylib` files
   into `packaged/<platform>/lib/` and pushes with `[skip ci]` — the
   shared runtime libs in the tree are refreshed automatically.
+- **`.github/workflows/build-bgfx.yml`** — bgfx + bimg + bx **static**
+  archives from the bgfx.cmake tree (`--recursive` clone) for
+  `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
+  `macos-arm64` and `android-arm64` (NDK toolchain). Artifacts:
+  `bgfx-<platform>-<arch>`. A `commit-packaged` job copies
+  `libbgfx.a`/`libbimg.a`/`libbx.a` (`bgfx.lib`/… on MSVC) into
+  `packaged/<platform>/lib/`.
 - **`.github/workflows/build-mualibs.yml`** — `mualibs` **and** `ktx`
   targets of `Mu_engine/native/` (vendored JoltC not compiled) for
   `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`,
@@ -122,7 +126,8 @@ the run's Artifacts panel on the Actions tab.
 
 - **SDL3 static / Jolt static on non-linux hosts** — the packaged
   statics are prebuilt upstream or linux-local; SDL3 links from the M3
-  build phase onward (`src/sdl/sdl.crl`).
+  build phase onward (`src/sdl/`). bgfx is built from source by its own
+  workflow/phase.
 - **Per-library `libstb.a` & co.** — covered by `libmualibs.a`.
 
 ## Build quirk

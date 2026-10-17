@@ -33,7 +33,7 @@ listed under Open items.
 |---|---|---|
 | Windowing / input / gamepad | **SDL3** | Only option with first-party support for all four targets (Linux X11+Wayland, Windows, macOS, Web/Emscripten), plus dialogs/clipboard; GLFW has no official web platform, sokol is X11-only and single-window |
 | Audio | **SDL3 audio** | Comes free with the windowing choice; works on all four targets incl. Web |
-| Rendering | **GL 3.3 desktop / GLES3 (Web)** | Broad support incl. WebGL2 on the web; behind the renderer interface so a Vulkan backend can come later |
+| Rendering | **bgfx** | Graphics-API agnostic — GLES3 / OpenGL / Vulkan / Metal / D3D11 / D3D12 / WebGPU chosen at runtime from one code path, so "any backend" comes for free; GLES3 keeps Web + low-end phones in range. Behind the engine's renderer interface |
 | Script output | **WallVM IR** (`muc` → host) | The compiler's decided backend |
 | Assets | **Handle-based + hot reload** | Stable id/alias per asset; source formats in dev with hot reload, cooked packs for shipping |
 | UI style | **Custom immediate-mode UI** | One paradigm for game HUD/menus and the future editor, drawn by the renderer (Dear ImGui-style) |
@@ -161,8 +161,8 @@ Mu/
       scene/         # entities, transform hierarchy, ComponentStore
       render/        # Renderer fn-ptr interface (+ null backend)
       physics/       # JoltC v5.6.0 extern port
-      sdl/           # SDL 3.4.18 extern port (window/input/audio, ready before M3)
-      gl/            # GL 3.3 core/GLES3 extern port (backend API, ready before M3/M4)
+      sdl/           # SDL 3.4.18 extern port (window/input/audio only, ready before M3)
+      bgfx/          # bgfx C99 extern port (graphics-API-agnostic backend, ready before M3/M4)
       stb/           # stb_image/write/truetype port (assets, SDF fonts)
       cgltf/         # cgltf port (glTF 2.0 mesh import)
       miniz/         # miniz port (deflate/zip for cooked packs)
@@ -195,7 +195,7 @@ Mu/
   `main.mu` calling into it (compilation of `main.mu` still external).
 - **M2 — muc ↔ host:** `muc`'s WallVM IR output consumed and executed by the
   script host; `main.mu`'s `onUpdate` actually runs inside the loop.
-- **M3 — Window + render:** SDL3 window + event pump, GL 3.3/GLES3 backend
+- **M3 — Window + render:** SDL3 window + event pump, bgfx backend
   behind the renderer interface, input events live.
 - **M4 —** 3D scene basics: camera, meshes, materials, lighting.
 - **M5 —** assets: handle table, aliases, loaders, hot reload.
@@ -434,5 +434,5 @@ Deferred features, kept here so they are not forgotten:
 - **Entity id policy:** id recycling, generations (dangling-id safety).
 - **Cooked asset format:** the pack/container layout for shipping builds.
 - **Editor:** not scaffolded until a plan section exists (M7+).
-- **Web constraints:** threads-on/off build split, GLES3 feature floor —
-  revisit at M3.
+- **Web constraints:** threads-on/off build split, GLES3 feature floor
+  (bgfx's OpenGLES backend) — revisit at M3.

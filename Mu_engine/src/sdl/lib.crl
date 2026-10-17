@@ -1,1 +1,4 @@
-pub mod sdl = import sdl;
+pub mod types = import types;
+pub mod window = import window;
+pub mod events = import events;
+pub mod audio = import audio;
