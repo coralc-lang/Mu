@@ -1,6 +1,0 @@
-pub mod base = import base;
-pub mod decl = import decl;
-pub mod expr = import expr;
-pub mod pattern = import pattern;
-pub mod stmt = import stmt;
-pub mod type = import type;

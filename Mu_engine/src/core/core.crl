@@ -11,12 +11,12 @@ import platform::platform { platformPump, platformQuitRequested };
 
 pub const f32 FIXED_DT = 1.0f / 60.0f;
 
-pub void logInfo(const cchar* msg)
+pub void logInfo(str msg)
 {
     println("[mu] {}", msg);
 }
 
-pub void logError(const cchar* msg)
+pub void logError(str msg)
 {
     println("[mu:error] {}", msg);
 }

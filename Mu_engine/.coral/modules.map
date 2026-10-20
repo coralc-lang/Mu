@@ -5,13 +5,12 @@
 + render                 â†’  src/render
 + physics                â†’  src/physics
 + sdl                    â†’  src/sdl
-+ gl                     â†’  src/gl
++ bgfx                   â†’  src/bgfx
 + stb                    â†’  src/stb
 + cgltf                  â†’  src/cgltf
 + miniz                  â†’  src/miniz
 + tinyexr                â†’  src/tinyexr
 + drlibs                 â†’  src/drlibs
-+ webgpu                 â†’  src/webgpu
 + fastnoise              â†’  src/fastnoise
 + mikktspace             â†’  src/mikktspace
 + alloc                  â†’  src/alloc
@@ -20,44 +19,54 @@
 + script                 â†’  src/script
 
 # resolved module table (key â†’ path)
-engine â†src/engine/lib.crl
-math â†src/math/lib.crl
-scene â†src/scene/lib.crl
-render â†src/render/lib.crl
-physics â†src/physics/lib.crl
-sdl â†src/sdl/lib.crl
-gl â†src/gl/lib.crl
-stb â†src/stb/lib.crl
-cgltf â†src/cgltf/lib.crl
-miniz â†src/miniz/lib.crl
-tinyexr â†src/tinyexr/lib.crl
-drlibs â†src/drlibs/lib.crl
-webgpu â†src/webgpu/lib.crl
-fastnoise â†src/fastnoise/lib.crl
-mikktspace â†src/mikktspace/lib.crl
-alloc â†src/alloc/lib.crl
-core â†src/core/lib.crl
-platform â†src/platform/lib.crl
-script â†src/script/lib.crl
-engine::main â†src/engine/main.crl
-math::math â†src/math/math.crl
-scene::scene â†src/scene/scene.crl
-render::render â†src/render/render.crl
-physics::physics â†src/physics/physics.crl
-sdl::sdl â†src/sdl/sdl.crl
-gl::gl â†src/gl/gl.crl
-stb::stb â†src/stb/stb.crl
-cgltf::cgltf â†src/cgltf/cgltf.crl
-miniz::miniz â†src/miniz/miniz.crl
-tinyexr::tinyexr â†src/tinyexr/tinyexr.crl
-drlibs::drlibs â†src/drlibs/drlibs.crl
-drlibs::dr_wav â†src/drlibs/dr_wav.crl
-drlibs::dr_mp3 â†src/drlibs/dr_mp3.crl
-drlibs::dr_flac â†src/drlibs/dr_flac.crl
-webgpu::webgpu â†src/webgpu/webgpu.crl
-fastnoise::fastnoise â†src/fastnoise/fastnoise.crl
-mikktspace::mikktspace â†src/mikktspace/mikktspace.crl
-alloc::alloc â†src/alloc/alloc.crl
-core::core â†src/core/core.crl
-platform::platform â†src/platform/platform.crl
-script::script â†src/script/script.crl
+engine â†’ src/engine/lib.crl
+math â†’ src/math/lib.crl
+scene â†’ src/scene/lib.crl
+render â†’ src/render/lib.crl
+physics â†’ src/physics/lib.crl
+sdl â†’ src/sdl/lib.crl
+bgfx â†’ src/bgfx/lib.crl
+stb â†’ src/stb/lib.crl
+cgltf â†’ src/cgltf/lib.crl
+miniz â†’ src/miniz/lib.crl
+tinyexr â†’ src/tinyexr/lib.crl
+drlibs â†’ src/drlibs/lib.crl
+fastnoise â†’ src/fastnoise/lib.crl
+mikktspace â†’ src/mikktspace/lib.crl
+alloc â†’ src/alloc/lib.crl
+core â†’ src/core/lib.crl
+platform â†’ src/platform/lib.crl
+script â†’ src/script/lib.crl
+engine::main â†’ src/engine/main.crl
+math::math â†’ src/math/math.crl
+scene::scene â†’ src/scene/scene.crl
+render::render â†’ src/render/render.crl
+physics::physics â†’ src/physics/physics.crl
+sdl::types â†’ src/sdl/types.crl
+sdl::window â†’ src/sdl/window.crl
+sdl::events â†’ src/sdl/events.crl
+sdl::audio â†’ src/sdl/audio.crl
+bgfx::types â†’ src/bgfx/types.crl
+bgfx::init â†’ src/bgfx/init.crl
+bgfx::views â†’ src/bgfx/views.crl
+bgfx::vertex_layout â†’ src/bgfx/vertex_layout.crl
+bgfx::resources â†’ src/bgfx/resources.crl
+bgfx::draw â†’ src/bgfx/draw.crl
+stb::image â†’ src/stb/image.crl
+stb::image_write â†’ src/stb/image_write.crl
+stb::truetype â†’ src/stb/truetype.crl
+stb::vorbis â†’ src/stb/vorbis.crl
+stb::wrapper â†’ src/stb/wrapper.crl
+cgltf::cgltf â†’ src/cgltf/cgltf.crl
+miniz::miniz â†’ src/miniz/miniz.crl
+tinyexr::tinyexr â†’ src/tinyexr/tinyexr.crl
+drlibs::drlibs â†’ src/drlibs/drlibs.crl
+drlibs::dr_wav â†’ src/drlibs/dr_wav.crl
+drlibs::dr_mp3 â†’ src/drlibs/dr_mp3.crl
+drlibs::dr_flac â†’ src/drlibs/dr_flac.crl
+fastnoise::fastnoise â†’ src/fastnoise/fastnoise.crl
+mikktspace::mikktspace â†’ src/mikktspace/mikktspace.crl
+alloc::alloc â†’ src/alloc/alloc.crl
+core::core â†’ src/core/core.crl
+platform::platform â†’ src/platform/platform.crl
+script::script â†’ src/script/script.crl

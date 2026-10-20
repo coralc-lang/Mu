@@ -1,3 +1,0 @@
-build "MuEngine" extends "Mu_engine/coral.crlb" {
-    entry = "engine";
-}
