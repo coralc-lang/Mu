@@ -209,7 +209,7 @@ pub struct ComponentStore
     {
         if (id >= self.capacity) return Option<rawptr>::None;
         if (self.present[id] == 0) return Option<rawptr>::None;
-        return Option<rawptr>::Some { .value = (rawptr)((u8*)self.data + (usize)id * self.stride) };
+        return Option<rawptr>::Some { .value = (rawptr)((u8*)self.data + (id * self.stride)) };
     }
 }
 
