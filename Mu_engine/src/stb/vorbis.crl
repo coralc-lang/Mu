@@ -1,0 +1,14 @@
+// stb_vorbis: Ogg Vorbis decode (audio, M6 — SDL3 outputs, stb decodes).
+// Returns >0 samples-per-channel on success; error codes are the enum in
+// stb_vorbis.c with VORBIS__no_error = 0. Implementation TU: stb_vorbis.c
+// compiled directly into libmualibs.a. Handles are opaque (rawptr).
+
+pub const i32 VORBIS_NO_ERROR = 0;
+
+pub extern i32 stb_vorbis_decode_filename(const cchar* filename, i32* channels, i32* sample_rate, i16** output);
+pub extern rawptr stb_vorbis_open_memory(const u8* data, i32 len, i32* error, rawptr alloc_buffer);
+pub extern i32 stb_vorbis_get_error(rawptr f);
+pub extern i32 stb_vorbis_get_samples_short_interleaved(rawptr f, i32 channels, i16* buffer, i32 num_shorts);
+pub extern i32 stb_vorbis_seek(rawptr f, u32 sample_number);
+pub extern i32 stb_vorbis_seek_start(rawptr f);
+pub extern void stb_vorbis_close(rawptr f);

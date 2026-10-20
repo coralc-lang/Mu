@@ -1,0 +1,52 @@
+// bgfx - resources: buffers, transient buffers, textures, shaders/programs,
+// uniforms, frame buffers.
+import bgfx::types {
+    bgfx_memory_t, bgfx_vertex_layout_t, bgfx_transient_index_buffer_t,
+    bgfx_transient_vertex_buffer_t, bgfx_texture_region_t, bgfx_uniform_type_t,
+    bgfx_texture_format_t, bgfx_view_id_t,
+    bgfx_index_buffer_handle_t, bgfx_vertex_buffer_handle_t,
+    bgfx_dynamic_index_buffer_handle_t, bgfx_dynamic_vertex_buffer_handle_t,
+    bgfx_shader_handle_t, bgfx_program_handle_t, bgfx_uniform_handle_t,
+    bgfx_texture_handle_t, bgfx_frame_buffer_handle_t,
+};
+
+// --- index / vertex buffers ---
+pub extern bgfx_index_buffer_handle_t bgfx_create_index_buffer(bgfx_memory_t* mem, u16 flags);
+pub extern void bgfx_destroy_index_buffer(bgfx_index_buffer_handle_t handle);
+pub extern bgfx_vertex_buffer_handle_t bgfx_create_vertex_buffer(bgfx_memory_t* mem, const bgfx_vertex_layout_t* layout, u16 flags);
+pub extern void bgfx_destroy_vertex_buffer(bgfx_vertex_buffer_handle_t handle);
+
+// --- dynamic buffers (updated in place) ---
+pub extern bgfx_dynamic_index_buffer_handle_t bgfx_create_dynamic_index_buffer(u32 num, u16 flags);
+pub extern void bgfx_destroy_dynamic_index_buffer(bgfx_dynamic_index_buffer_handle_t handle);
+pub extern bgfx_dynamic_vertex_buffer_handle_t bgfx_create_dynamic_vertex_buffer(u32 num, const bgfx_vertex_layout_t* layout, u16 flags);
+pub extern void bgfx_destroy_dynamic_vertex_buffer(bgfx_dynamic_vertex_buffer_handle_t handle);
+pub extern void bgfx_update_dynamic_index_buffer(bgfx_dynamic_index_buffer_handle_t handle, u32 startIndex, bgfx_memory_t* mem);
+pub extern void bgfx_update_dynamic_vertex_buffer(bgfx_dynamic_vertex_buffer_handle_t handle, u32 startVertex, bgfx_memory_t* mem);
+
+pub extern void bgfx_set_vertex_buffer_name(bgfx_vertex_buffer_handle_t handle, const cchar* name, i32 len);
+pub extern void bgfx_set_index_buffer_name(bgfx_index_buffer_handle_t handle, const cchar* name, i32 len);
+
+// --- transient buffers (per-frame, allocated from bgfx's ring) ---
+pub extern void bgfx_alloc_transient_index_buffer(bgfx_transient_index_buffer_t* tib, u32 num, u8 index32);
+pub extern void bgfx_alloc_transient_vertex_buffer(bgfx_transient_vertex_buffer_t* tvb, u32 num, const bgfx_vertex_layout_t* layout);
+pub extern u8 bgfx_alloc_transient_buffers(bgfx_transient_vertex_buffer_t* tvb, const bgfx_vertex_layout_t* layout, u32 numVertices, bgfx_transient_index_buffer_t* tib, u32 numIndices, u8 index32);
+
+// --- shaders / programs / uniforms ---
+pub extern bgfx_shader_handle_t bgfx_create_shader(bgfx_memory_t* mem);
+pub extern void bgfx_destroy_shader(bgfx_shader_handle_t handle);
+pub extern bgfx_program_handle_t bgfx_create_program(bgfx_shader_handle_t vsh, bgfx_shader_handle_t fsh, u8 destroyShaders);
+pub extern void bgfx_destroy_program(bgfx_program_handle_t handle);
+pub extern bgfx_uniform_handle_t bgfx_create_uniform(const cchar* name, bgfx_uniform_type_t type, u16 num);
+pub extern void bgfx_destroy_uniform(bgfx_uniform_handle_t handle);
+
+// --- textures ---
+pub extern bgfx_texture_handle_t bgfx_create_texture_2d(u16 width, u16 height, u8 hasMips, u16 numLayers, bgfx_texture_format_t format, u64 flags, bgfx_memory_t* mem, u64 external);
+pub extern void bgfx_update_texture_2d(bgfx_texture_handle_t handle, u16 layer, u8 mip, u16 x, u16 y, u16 width, u16 height, bgfx_memory_t* mem, u16 pitch);
+pub extern void bgfx_destroy_texture(bgfx_texture_handle_t handle);
+
+// --- frame buffers / blit / read ---
+pub extern bgfx_frame_buffer_handle_t bgfx_create_frame_buffer(u16 width, u16 height, bgfx_texture_format_t format, u64 textureFlags);
+pub extern void bgfx_destroy_frame_buffer(bgfx_frame_buffer_handle_t handle);
+pub extern void bgfx_blit(bgfx_view_id_t id, const bgfx_texture_region_t* dst, const bgfx_texture_region_t* src);
+pub extern u32 bgfx_read_texture(const bgfx_texture_region_t* src, rawptr data);

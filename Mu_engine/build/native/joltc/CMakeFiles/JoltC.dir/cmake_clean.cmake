@@ -1,0 +1,41 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/JoltC.dir/src/body.cpp.o"
+  "CMakeFiles/JoltC.dir/src/body.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/body_access.cpp.o"
+  "CMakeFiles/JoltC.dir/src/body_access.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/character.cpp.o"
+  "CMakeFiles/JoltC.dir/src/character.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/common.cpp.o"
+  "CMakeFiles/JoltC.dir/src/common.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/constraint.cpp.o"
+  "CMakeFiles/JoltC.dir/src/constraint.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/debug_renderer.cpp.o"
+  "CMakeFiles/JoltC.dir/src/debug_renderer.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/errors.cpp.o"
+  "CMakeFiles/JoltC.dir/src/errors.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/filters.cpp.o"
+  "CMakeFiles/JoltC.dir/src/filters.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/math.cpp.o"
+  "CMakeFiles/JoltC.dir/src/math.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/physics_system.cpp.o"
+  "CMakeFiles/JoltC.dir/src/physics_system.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/query.cpp.o"
+  "CMakeFiles/JoltC.dir/src/query.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/shape.cpp.o"
+  "CMakeFiles/JoltC.dir/src/shape.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/skeleton.cpp.o"
+  "CMakeFiles/JoltC.dir/src/skeleton.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/soft_body.cpp.o"
+  "CMakeFiles/JoltC.dir/src/soft_body.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/state_recorder.cpp.o"
+  "CMakeFiles/JoltC.dir/src/state_recorder.cpp.o.d"
+  "CMakeFiles/JoltC.dir/src/vehicle.cpp.o"
+  "CMakeFiles/JoltC.dir/src/vehicle.cpp.o.d"
+  "libJoltC.a"
+  "libJoltC.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/JoltC.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

@@ -1,0 +1,19 @@
+// bgfx - view setup (declarative: configure a view, then submit draw calls).
+import bgfx::types {
+    bgfx_view_id_t, bgfx_view_mode_t, bgfx_frame_buffer_handle_t,
+};
+
+pub extern void bgfx_set_view_name(bgfx_view_id_t id, const cchar* name, i32 len);
+pub extern void bgfx_set_view_rect(bgfx_view_id_t id, i16 x, i16 y, u16 width, u16 height, f32 minDepth, f32 maxDepth);
+pub extern void bgfx_set_view_scissor(bgfx_view_id_t id, u16 x, u16 y, u16 width, u16 height);
+pub extern void bgfx_set_view_clear(bgfx_view_id_t id, u16 flags, u32 rgba, f32 depth, u8 stencil);
+pub extern void bgfx_set_view_clear_mrt(bgfx_view_id_t id, u16 flags, f32 depth, u8 stencil, u8 c0, u8 c1, u8 c2, u8 c3, u8 c4, u8 c5, u8 c6, u8 c7);
+pub extern void bgfx_set_view_mode(bgfx_view_id_t id, bgfx_view_mode_t mode);
+pub extern void bgfx_set_view_frame_buffer(bgfx_view_id_t id, bgfx_frame_buffer_handle_t handle);
+pub extern void bgfx_set_view_transform(bgfx_view_id_t id, const rawptr view, const rawptr proj);
+pub extern void bgfx_set_view_order(bgfx_view_id_t id, u16 num, const bgfx_view_id_t* order);
+pub extern void bgfx_reset_view(bgfx_view_id_t id);
+pub extern void bgfx_touch(bgfx_view_id_t id);
+
+pub extern u16 bgfx_set_scissor(u16 x, u16 y, u16 width, u16 height);
+pub extern void bgfx_set_scissor_cached(u16 cache);

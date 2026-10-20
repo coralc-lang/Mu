@@ -1,0 +1,194 @@
+name: Build Cross-Platform Game Engine Shared Libraries
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-libs:
+    name: Build for ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+            output_name: libjoltc.so
+            sdl_output: libSDL3.so
+          - os: windows-latest
+            arch: x64
+            platform: windows
+            output_name: joltc.dll
+            sdl_output: SDL3.dll
+          - os: macos-latest
+            arch: arm64
+            platform: macos
+            output_name: libjoltc.dylib
+            sdl_output: libSDL3.dylib
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            output_name: libjoltc.so
+            sdl_output: libSDL3.so
+          - os: windows-11-arm
+            arch: arm64
+            platform: windows
+            output_name: joltc.dll
+            sdl_output: SDL3.dll
+          - os: ubuntu-latest
+            arch: arm64
+            platform: android
+            output_name: libjoltc.so
+            sdl_output: libSDL3.so
+            android: true
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------
+      # LINUX BUILD HEADERS FOR SDL BACKENDS
+      # (video/audio dev packages - CI runners have no GPU/display
+      # drivers, so these are header-only: builds compile against the
+      # real APIs, runtime GPU tests still need a driver host)
+      # ----------------------------------------
+      - name: Install Linux Development Headers
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config glslc \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libibus-1.0-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libdrm-dev libgbm-dev \
+            libegl1-mesa-dev libgles2-mesa-dev \
+            libdbus-1-dev libudev-dev libasound2-dev libpulse-dev
+
+      # ----------------------------------------
+      # CLONE & BUILD JOLTC INTERFACE
+      # ----------------------------------------
+      - name: Clone JoltC Bindings Layer
+        shell: bash
+        run: git clone https://github.com/amerkoleci/joltc.git JoltC
+
+      - name: Configure JoltC via CMake
+        shell: bash
+        run: |
+          EXTRA=""
+          if [ "${{ matrix.android }}" = "true" ]; then
+            NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+            if [ -z "$NDK" ]; then echo "Android NDK not found" >&2; exit 1; fi
+            EXTRA="-DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26"
+            EXTRA="$EXTRA -DJPH_USE_VK=OFF -DJPH_USE_DX12=OFF -DJPH_USE_MTL=OFF"
+          fi
+          cmake -B build_jolt -S JoltC \
+            -DJPH_BUILD_SHARED=ON \
+            -DJPH_SAMPLES=OFF \
+            -DJPH_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release $EXTRA
+
+      - name: Compile JoltC Shared Object
+        shell: bash
+        run: cmake --build build_jolt --config Release
+
+      # ----------------------------------------
+      # CLONE & BUILD SDL3
+      # ----------------------------------------
+      - name: Clone SDL3
+        shell: bash
+        run: git clone https://github.com/libsdl-org/SDL.git SDL
+
+      - name: Configure SDL3 via CMake
+        shell: bash
+        run: |
+          EXTRA=""
+          if [ "${{ matrix.android }}" = "true" ]; then
+            NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+            if [ -z "$NDK" ]; then echo "Android NDK not found" >&2; exit 1; fi
+            EXTRA="-DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26"
+          fi
+          cmake -B build_sdl -S SDL \
+            -DSDL_SHARED=ON \
+            -DSDL_STATIC=OFF \
+            -DCMAKE_BUILD_TYPE=Release $EXTRA
+
+      - name: Compile SDL3 Shared Object
+        shell: bash
+        run: cmake --build build_sdl --config Release
+
+      # ----------------------------------------
+      # STAGE AND ARCHIVE BUNDLES
+      # ----------------------------------------
+      - name: Organize Binaries for Packaging
+        shell: bash
+        run: |
+          mkdir -p redist/${{ matrix.platform }}_${{ matrix.arch }}
+
+          # Find and move Jolt binary based on platform structure
+          find build_jolt -name "${{ matrix.output_name }}" -exec cp {} redist/${{ matrix.platform }}_${{ matrix.arch }}/ \;
+
+          # Find and move SDL binary based on platform structure
+          find build_sdl -name "${{ matrix.sdl_output }}" -exec cp {} redist/${{ matrix.platform }}_${{ matrix.arch }}/ \;
+
+          echo "Staged artifacts:"
+          ls -l redist/${{ matrix.platform }}_${{ matrix.arch }}/
+
+      - name: Verify Artifacts Are Non-Empty
+        shell: bash
+        run: |
+          test -s "redist/${{ matrix.platform }}_${{ matrix.arch }}/${{ matrix.output_name }}"
+          test -s "redist/${{ matrix.platform }}_${{ matrix.arch }}/${{ matrix.sdl_output }}"
+
+      - name: Upload Cross-Platform Shared Library Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-libs-${{ matrix.platform }}-${{ matrix.arch }}
+          path: redist/
+
+  commit-packaged:
+    name: Auto-commit shared libs into packaged/
+    needs: build-libs
+    if: github.event_name == 'push' && needs.build-libs.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Place Libraries Into packaged/
+        shell: bash
+        run: |
+          declare -A MAP=(
+            [linux-x64]=linux-x86_64 [linux-arm64]=linux-arm64
+            [windows-x64]=windows-x64 [windows-arm64]=windows-arm64
+            [macos-arm64]=macos-arm64 [android-arm64]=android-arm64
+          )
+          for d in artifacts/shared-libs-*/; do
+            key=$(basename "$d" | sed 's/^shared-libs-//')
+            dest="Mu_engine/packaged/${MAP[$key]}/lib"
+            if [ -z "${MAP[$key]}" ]; then echo "unknown platform: $key" >&2; exit 1; fi
+            mkdir -p "$dest"
+            find "$d" -type f \( -name "*.so" -o -name "*.dll" -o -name "*.dylib" \) \
+              -exec cp {} "$dest/" \;
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Mu_engine/packaged
+          if git diff --cached --quiet; then
+            echo "packaged/ already up to date"
+          else
+            git commit -m "packaged: refresh shared libs from CI [skip ci]"
+            git push
+          fi

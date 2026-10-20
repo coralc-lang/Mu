@@ -1,0 +1,54 @@
+// bgfx - draw submission: bind buffers/uniforms/textures, set state, submit.
+// The `bgfx_encoder_*` family is the thread-safe equivalent for recording a
+// frame on worker threads; the non-encoder forms record on the API thread.
+import bgfx::types {
+    bgfx_view_id_t, bgfx_program_handle_t, bgfx_uniform_handle_t,
+    bgfx_texture_handle_t, bgfx_index_buffer_handle_t,
+    bgfx_vertex_buffer_handle_t, bgfx_dynamic_index_buffer_handle_t,
+    bgfx_dynamic_vertex_buffer_handle_t, bgfx_transient_index_buffer_t,
+    bgfx_transient_vertex_buffer_t, bgfx_instance_data_buffer_t,
+    bgfx_occlusion_query_handle_t, bgfx_encoder_t,
+};
+
+// --- buffers ---
+pub extern void bgfx_set_vertex_buffer(u8 stream, bgfx_vertex_buffer_handle_t handle, u32 startVertex, u32 numVertices);
+pub extern void bgfx_set_dynamic_vertex_buffer(u8 stream, bgfx_dynamic_vertex_buffer_handle_t handle, u32 startVertex, u32 numVertices);
+pub extern void bgfx_set_transient_vertex_buffer(u8 stream, const bgfx_transient_vertex_buffer_t* tvb, u32 startVertex, u32 numVertices);
+pub extern void bgfx_set_index_buffer(bgfx_index_buffer_handle_t handle, u32 firstIndex, u32 numIndices);
+pub extern void bgfx_set_dynamic_index_buffer(bgfx_dynamic_index_buffer_handle_t handle, u32 firstIndex, u32 numIndices);
+pub extern void bgfx_set_transient_index_buffer(const bgfx_transient_index_buffer_t* tib, u32 firstIndex, u32 numIndices);
+
+// --- uniforms / textures / transforms / state ---
+pub extern void bgfx_set_uniform(bgfx_uniform_handle_t handle, const rawptr value, u16 num);
+pub extern void bgfx_set_texture(u8 stage, bgfx_uniform_handle_t sampler, bgfx_texture_handle_t handle, u32 flags);
+pub extern u32 bgfx_set_transform(const rawptr mtx, u16 num);
+pub extern void bgfx_set_state(u64 state, u32 rgba);
+
+// --- instancing ---
+pub extern void bgfx_set_instance_data_buffer(const bgfx_instance_data_buffer_t* idb, u32 start, u32 num);
+pub extern void bgfx_set_instance_data_from_vertex_buffer(bgfx_vertex_buffer_handle_t handle, u32 startVertex, u32 num);
+pub extern void bgfx_set_instance_data_from_dynamic_vertex_buffer(bgfx_dynamic_vertex_buffer_handle_t handle, u32 startVertex, u32 num);
+
+// --- submit ---
+pub extern void bgfx_submit(bgfx_view_id_t id, bgfx_program_handle_t program, u32 depth, u8 flags);
+pub extern void bgfx_submit_occlusion_query(bgfx_view_id_t id, bgfx_program_handle_t program, bgfx_occlusion_query_handle_t occlusionQuery, u32 depth, u8 flags);
+
+// --- encoder (thread-safe recording) ---
+pub extern void bgfx_encoder_end(bgfx_encoder_t* encoder);
+pub extern void bgfx_encoder_set_state(bgfx_encoder_t* this, u64 state, u32 rgba);
+pub extern u16 bgfx_encoder_set_scissor(bgfx_encoder_t* this, u16 x, u16 y, u16 width, u16 height);
+pub extern u32 bgfx_encoder_set_transform(bgfx_encoder_t* this, const rawptr mtx, u16 num);
+pub extern void bgfx_encoder_set_uniform(bgfx_encoder_t* this, bgfx_uniform_handle_t handle, const rawptr value, u16 num);
+pub extern void bgfx_encoder_set_index_buffer(bgfx_encoder_t* this, bgfx_index_buffer_handle_t handle, u32 firstIndex, u32 numIndices);
+pub extern void bgfx_encoder_set_dynamic_index_buffer(bgfx_encoder_t* this, bgfx_dynamic_index_buffer_handle_t handle, u32 firstIndex, u32 numIndices);
+pub extern void bgfx_encoder_set_transient_index_buffer(bgfx_encoder_t* this, const bgfx_transient_index_buffer_t* tib, u32 firstIndex, u32 numIndices);
+pub extern void bgfx_encoder_set_vertex_buffer(bgfx_encoder_t* this, u8 stream, bgfx_vertex_buffer_handle_t handle, u32 startVertex, u32 numVertices);
+pub extern void bgfx_encoder_set_dynamic_vertex_buffer(bgfx_encoder_t* this, u8 stream, bgfx_dynamic_vertex_buffer_handle_t handle, u32 startVertex, u32 numVertices);
+pub extern void bgfx_encoder_set_transient_vertex_buffer(bgfx_encoder_t* this, u8 stream, const bgfx_transient_vertex_buffer_t* tvb, u32 startVertex, u32 numVertices);
+pub extern void bgfx_encoder_set_instance_data_buffer(bgfx_encoder_t* this, const bgfx_instance_data_buffer_t* idb, u32 start, u32 num);
+pub extern void bgfx_encoder_set_instance_data_from_vertex_buffer(bgfx_encoder_t* this, bgfx_vertex_buffer_handle_t handle, u32 startVertex, u32 num);
+pub extern void bgfx_encoder_set_instance_data_from_dynamic_vertex_buffer(bgfx_encoder_t* this, bgfx_dynamic_vertex_buffer_handle_t handle, u32 startVertex, u32 num);
+pub extern void bgfx_encoder_set_texture(bgfx_encoder_t* this, u8 stage, bgfx_uniform_handle_t sampler, bgfx_texture_handle_t handle, u32 flags);
+pub extern void bgfx_encoder_submit(bgfx_encoder_t* this, bgfx_view_id_t id, bgfx_program_handle_t program, u32 depth, u8 flags);
+pub extern void bgfx_encoder_submit_occlusion_query(bgfx_encoder_t* this, bgfx_view_id_t id, bgfx_program_handle_t program, bgfx_occlusion_query_handle_t occlusionQuery, u32 depth, u8 flags);
+pub extern void bgfx_encoder_discard(bgfx_encoder_t* this, u8 flags);

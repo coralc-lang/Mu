@@ -1,0 +1,17 @@
+// dr_mp3 externs - MP3 half of vendored dr_libs (github.com/mackron/
+// dr_libs, public domain / MIT-0), audio layer at M6 (ENGINE.md §14).
+// Named after upstream dr_mp3.h; drlibs.crl imports these. Implementation:
+// native/mu_drlibs.c → libmualibs.a.
+//
+// ABI: size_t = usize, drmp3_uint64 = u64, *_allocation_callbacks are
+// engine-null (default malloc). The config struct mirrors the C header
+// and fills on success.
+
+pub struct drmp3_config
+{
+    u32 channels;
+    u32 sampleRate;
+}
+
+pub extern rawptr drmp3_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, drmp3_config* pConfig, u64* pTotalFrameCount, rawptr pAllocationCallbacks);
+pub extern void drmp3_free(rawptr p, rawptr pAllocationCallbacks);

@@ -1,0 +1,36 @@
+// bgfx - init / shutdown / frame / memory / queries.
+import bgfx::types {
+    bgfx_init_t, bgfx_renderer_type_t, bgfx_render_frame_t,
+    bgfx_frame_buffer_handle_t, bgfx_memory_t,
+};
+
+// Fill `init` with bgfx's defaults, then override what you need.
+pub extern void bgfx_init_ctor(bgfx_init_t* init);
+pub extern u8 bgfx_init(const bgfx_init_t* init);
+pub extern void bgfx_shutdown();
+pub extern void bgfx_reset(u32 flags, rawptr swapChain);
+pub extern u32 bgfx_frame(u8 flags);
+pub extern bgfx_render_frame_t bgfx_render_frame(i32 msecs);
+pub extern bgfx_renderer_type_t bgfx_get_renderer_type();
+pub extern const cchar* bgfx_get_renderer_name(bgfx_renderer_type_t type);
+pub extern u8 bgfx_get_supported_renderers(u8 max, bgfx_renderer_type_t* out_enum);
+
+// Memory handed to resource-creation calls. `alloc` is write-then-transfer;
+// `copy`/`make_ref` wrap existing bytes (make_ref does NOT copy).
+pub extern bgfx_memory_t* bgfx_alloc(u32 size);
+pub extern bgfx_memory_t* bgfx_copy(const rawptr data, u32 size);
+pub extern bgfx_memory_t* bgfx_make_ref(const rawptr data, u32 size);
+pub extern bgfx_memory_t* bgfx_make_ref_release(const rawptr data, u32 size, rawptr releaseFn, rawptr userData);
+
+// Queries. caps/stats are rich C structs the engine reads selectively, so they
+// stay rawptr for now (see src/bgfx/types.crl for the pieces we modeled).
+pub extern rawptr bgfx_get_caps();
+pub extern rawptr bgfx_get_internal_data();
+pub extern rawptr bgfx_get_stats();
+pub extern rawptr bgfx_get_interface(u32 version);
+
+// Debug overlay (text). The printf forms are C-variadic and not bound; format
+// into a Coral buffer and use dbg_text_image, or add a wrapper TU.
+pub extern void bgfx_set_debug(u32 debug, bgfx_frame_buffer_handle_t handle, u8 scale);
+pub extern void bgfx_dbg_text_clear(u8 attr, u8 small);
+pub extern void bgfx_request_screen_shot(bgfx_frame_buffer_handle_t handle, const cchar* filePath);

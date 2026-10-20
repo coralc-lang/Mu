@@ -1,0 +1,15 @@
+// stb_truetype: metrics, rasterization, SDF glyphs (SDF font baking for the
+// UI, ENGINE.md §9). stbtt_fontinfo is an opaque struct — pass rawptr storage
+// of at least 256 8-aligned bytes; InitFont fills it.
+
+pub extern i32 stbtt_InitFont(rawptr info, const u8* data, i32 offset);
+pub extern f32 stbtt_ScaleForPixelHeight(const rawptr info, f32 pixels);
+pub extern void stbtt_GetFontVMetrics(const rawptr info, i32* ascent, i32* descent, i32* line_gap);
+pub extern i32 stbtt_FindGlyphIndex(const rawptr info, i32 unicode_codepoint);
+pub extern i32 stbtt_GetCodepointBox(const rawptr info, i32 codepoint, i32* x0, i32* y0, i32* x1, i32* y1);
+pub extern i32 stbtt_GetGlyphBox(const rawptr info, i32 glyph_index, i32* x0, i32* y0, i32* x1, i32* y1);
+pub extern i32 stbtt_GetCodepointAdvance(const rawptr info, i32 codepoint);
+pub extern i32 stbtt_GetCodepointKernAdvance(const rawptr info, i32 ch1, i32 ch2);
+pub extern rawptr stbtt_GetCodepointBitmap(const rawptr info, f32 scale_x, f32 scale_y, i32 codepoint, i32* width, i32* height, i32* xoff, i32* yoff);
+pub extern rawptr stbtt_GetGlyphSDF(const rawptr info, f32 scale, i32 glyph, i32 padding, u8 onedge_value, f32 pixel_dist_scale, i32* width, i32* height, i32* xoff, i32* yoff);
+pub extern void stbtt_FreeBitmap(rawptr bitmap, rawptr userdata);

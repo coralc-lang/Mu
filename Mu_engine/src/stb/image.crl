@@ -1,0 +1,9 @@
+// stb_image: decode (M5 asset load). ABI: stbi_uc = u8, int = i32,
+// pointers = rawptr on the Coral side.
+
+pub extern rawptr stbi_load(const cchar* filename, i32* x, i32* y, i32* comp, i32 desired_channels);
+pub extern rawptr stbi_load_from_memory(const rawptr buffer, i32 len, i32* x, i32* y, i32* comp, i32 desired_channels);
+pub extern void stbi_image_free(rawptr retval_from_stbi_load);
+pub extern const cchar* stbi_failure_reason();
+pub extern i32 stbi_info(const cchar* filename, i32* x, i32* y, i32* comp);
+pub extern void stbi_set_flip_vertically_on_load(i32 flag_true_if_should_flip);

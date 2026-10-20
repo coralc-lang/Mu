@@ -1,0 +1,25 @@
+// Renderer interface - M0: null backend, engine runs headless.
+// (ENGINE.md §3/§6: call sites are written against this API from day one).
+
+pub struct Renderer
+{
+    rawptr ctx;
+    void(rawptr, rawptr, rawptr) draw;    // ctx, scene, ui
+    void(rawptr) shutdown;
+}
+
+void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
+{
+    // headless: nothing to present
+}
+
+void _nullShutdown(rawptr ctx) { }
+
+pub Renderer nullRenderer()
+{
+    return Renderer {
+        .ctx = null,
+        .draw = _nullDraw,
+        .shutdown = _nullShutdown
+    };
+}

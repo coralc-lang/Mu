@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/cerie/Documents/Mu/Mu_engine/build/native/cmake_install.cmake",
+		"/home/cerie/Documents/Mu/Mu_engine/build/native/joltc/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,121 @@
+name: Build Mu Vendor Archives (mualibs)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-mualibs:
+    name: mualibs for ${{ matrix.platform }}_${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+            output_name: libmualibs.a
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            output_name: libmualibs.a
+          - os: windows-latest
+            arch: x64
+            platform: windows
+            output_name: mualibs.lib
+          - os: windows-11-arm
+            arch: arm64
+            platform: windows
+            output_name: mualibs.lib
+          - os: macos-latest
+            arch: arm64
+            platform: macos
+            output_name: libmualibs.a
+          - os: ubuntu-latest
+            arch: arm64
+            platform: android
+            output_name: libmualibs.a
+            android: true
+          - os: ubuntu-latest
+            arch: wasm32
+            platform: wasm
+            output_name: libmualibs.a
+            emscripten: true
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        if: matrix.emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      # ----------------------------------------
+      # CONFIGURE (native / android ndk / emscripten)
+      # ----------------------------------------
+      - name: Configure mualibs (native)
+        if: ${{ !matrix.android && !matrix.emscripten }}
+        shell: bash
+        run: |
+          cmake -S Mu_engine/native -B build/mualibs \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure mualibs (Android NDK)
+        if: matrix.android
+        shell: bash
+        run: |
+          NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$NDK" ] || [ ! -f "$NDK/build/cmake/android.toolchain.cmake" ]; then
+            echo "Android NDK not found (ANDROID_NDK_ROOT='$ANDROID_NDK_ROOT')" >&2
+            ls /usr/local/lib/android/sdk/ndk/ 2>/dev/null || true
+            exit 1
+          fi
+          cmake -S Mu_engine/native -B build/mualibs \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26
+
+      - name: Configure mualibs (Emscripten)
+        if: matrix.emscripten
+        shell: bash
+        run: |
+          emcmake cmake -S Mu_engine/native -B build/mualibs \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # ----------------------------------------
+      # COMPILE - mualibs target only (skip vendored JoltC)
+      # ----------------------------------------
+      - name: Compile mualibs
+        shell: bash
+        run: cmake --build build/mualibs --target mualibs ktx --config Release -j 2
+
+      # ----------------------------------------
+      # STAGE AND UPLOAD
+      # ----------------------------------------
+      - name: Organize Archive for Packaging
+        shell: bash
+        run: |
+          mkdir -p redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}
+          find build/mualibs \( -name "${{ matrix.output_name }}" \
+            -o -name "libktx.a" -o -name "ktx.lib" \
+            -o -name "libastcenc*.a" -o -name "*astcenc*.lib" \) \
+            -exec cp {} redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}/ \;
+          echo "Staged:"
+          ls -l redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}/
+
+      - name: Verify Archive Is Non-Empty
+        shell: bash
+        run: |
+          D="redist/mualibs_${{ matrix.platform }}_${{ matrix.arch }}"
+          test -s "$D/${{ matrix.output_name }}"
+          K=$(find "$D" \( -name "libktx.a" -o -name "ktx.lib" \))
+          test -n "$K" && test -s "$K"
+
+      - name: Upload mualibs Archive Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mualibs-${{ matrix.platform }}-${{ matrix.arch }}
+          path: redist/

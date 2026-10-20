@@ -1,0 +1,8 @@
+language: c
+arch:
+  - amd64
+  - ppc64le
+install: true
+script:
+  - cd tests
+  - make all

@@ -1,0 +1,26 @@
+// SDL3 audio (M6, decided now: SDL3 audio per ENGINE.md §2). Self-contained.
+pub typedef SDL_AudioStream = rawptr;
+pub typedef SDL_AudioDeviceID = u32;
+pub typedef SDL_AudioFormat = u32;          // C enum, 4 bytes
+
+pub const u32 SDL_AUDIO_S16 = 0x8010;
+pub const u32 SDL_AUDIO_F32 = 0x8120;
+
+pub struct SDL_AudioSpec
+{
+    SDL_AudioFormat format;
+    i32 channels;
+    i32 freq;
+}
+
+pub extern SDL_AudioDeviceID SDL_OpenAudioDevice(SDL_AudioDeviceID devid, const SDL_AudioSpec* spec);
+pub extern u8 SDL_PauseAudioDevice(SDL_AudioDeviceID devid);
+pub extern u8 SDL_ResumeAudioDevice(SDL_AudioDeviceID devid);
+pub extern void SDL_CloseAudioDevice(SDL_AudioDeviceID devid);
+pub extern SDL_AudioStream* SDL_CreateAudioStream(const SDL_AudioSpec* src_spec, const SDL_AudioSpec* dst_spec);
+pub extern u8 SDL_PutAudioStreamData(SDL_AudioStream* stream, const rawptr buf, i32 len);
+pub extern i32 SDL_GetAudioStreamQueued(SDL_AudioStream* stream);
+pub extern void SDL_DestroyAudioStream(SDL_AudioStream* stream);
+pub extern u8 SDL_BindAudioStream(SDL_AudioDeviceID devid, SDL_AudioStream* stream);
+// callback ABI: void (void* userdata, SDL_AudioStream*, int additional, int total)
+pub extern SDL_AudioStream* SDL_OpenAudioDeviceStream(SDL_AudioDeviceID devid, const SDL_AudioSpec* spec, rawptr callback, rawptr userdata);
