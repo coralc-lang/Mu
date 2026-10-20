@@ -1,5 +1,0 @@
-pub mod image = import image;
-pub mod image_write = import image_write;
-pub mod truetype = import truetype;
-pub mod vorbis = import vorbis;
-pub mod wrapper = import wrapper;

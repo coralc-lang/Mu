@@ -1,6 +1,0 @@
-// stb_image_write: encode (editor / debug capture).
-
-pub extern i32 stbi_write_png(const cchar* filename, i32 w, i32 h, i32 comp, const rawptr data, i32 stride_in_bytes);
-pub extern i32 stbi_write_bmp(const cchar* filename, i32 w, i32 h, i32 comp, const rawptr data);
-pub extern i32 stbi_write_tga(const cchar* filename, i32 w, i32 h, i32 comp, const rawptr data);
-pub extern i32 stbi_write_jpg(const cchar* filename, i32 x, i32 y, i32 comp, const rawptr data, i32 quality);
