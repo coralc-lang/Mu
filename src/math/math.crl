@@ -1,13 +1,20 @@
+// math glue (ENGINE.md §3, core layer) - Vec2/Vec3/Vec4/Quat/RVec3 + the ops
+// the scene/transform and physics layers share. Single definition: physics.crl
+// and scene.crl both import from here, so types never need casting.
+// Vectors are f32 (Jolt/JoltC is built single precision - JOLTC_DOUBLE_PRECISION
+// OFF), so these structs pass across the C ABI as-is.
+// Vector ops are methods so call sites chain: pos.add(q.rotate(off)).
+
 import std::math { sqrt };
 
-/// Two-component float64 vector.
+/// Two-component float32 vector.
 pub struct Vec2
 {
-    f64 x;
-    f64 y;
+    f32 x;
+    f32 y;
 
     /// Creates a vector from its components.
-    static Vec2 new(f64 x, f64 y)
+    static Vec2 new(f32 x, f32 y)
     {
         return Vec2 { .x = x, .y = y };
     }
@@ -15,49 +22,55 @@ pub struct Vec2
     /// Returns the component-wise sum with other.
     Vec2 add(Vec2 other)
     {
-        return Vec2 { .x = self.x + other.x, .y = self.y + other.y };
+        return Vec2 {
+            .x = self.x + other.x,
+            .y = self.y + other.y
+        };
     }
 
     /// Returns the component-wise difference with other.
     Vec2 sub(Vec2 other)
     {
-        return Vec2 { .x = self.x - other.x, .y = self.y - other.y };
+        return Vec2 {
+            .x = self.x - other.x,
+            .y = self.y - other.y
+        };
     }
 
     /// Returns the vector scaled by s.
-    Vec2 scale(f64 s)
+    Vec2 scale(f32 s)
     {
         return Vec2 { .x = self.x * s, .y = self.y * s };
     }
 
     /// Returns the dot product with other.
-    f64 dot(Vec2 other)
+    f32 dot(Vec2 other)
     {
         return self.x * other.x + self.y * other.y;
     }
 
     /// Returns the squared length.
-    f64 lengthSq()
+    f32 lengthSq()
     {
         return self.x * self.x + self.y * self.y;
     }
 
     /// Returns the length.
-    f64 length()
+    f32 length()
     {
-        return sqrt(self.lengthSq());
+        return (f32)sqrt((f64)self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
     Vec2 normalize()
     {
-        f64 len = self.length();
+        f32 len = self.length();
         if (len < 1e-15) return *self;
         return self.scale(1.0 / len);
     }
 
     /// Linearly interpolates from this vector to other by t.
-    Vec2 lerp(Vec2 other, f64 t)
+    Vec2 lerp(Vec2 other, f32 t)
     {
         return Vec2 {
             .x = self.x + (other.x - self.x) * t,
@@ -66,17 +79,29 @@ pub struct Vec2
     }
 }
 
-/// Three-component float64 vector.
+/// Three-component float32 vector.
 pub struct Vec3
 {
-    f64 x;
-    f64 y;
-    f64 z;
+    f32 x;
+    f32 y;
+    f32 z;
 
     /// Creates a vector from its components.
-    static Vec3 new(f64 x, f64 y, f64 z)
+    static Vec3 new(f32 x, f32 y, f32 z)
     {
         return Vec3 { .x = x, .y = y, .z = z };
+    }
+
+    /// Returns the zero vector.
+    static Vec3 zero()
+    {
+        return Vec3 { .x = 0.0f, .y = 0.0f, .z = 0.0f };
+    }
+
+    /// Returns the vector with every component equal to 1.
+    static Vec3 one()
+    {
+        return Vec3 { .x = 1.0f, .y = 1.0f, .z = 1.0f };
     }
 
     /// Returns the component-wise sum with other.
@@ -100,13 +125,23 @@ pub struct Vec3
     }
 
     /// Returns the vector scaled by s.
-    Vec3 scale(f64 s)
+    Vec3 scale(f32 s)
     {
         return Vec3 { .x = self.x * s, .y = self.y * s, .z = self.z * s };
     }
 
+    /// Returns the component-wise product with other.
+    Vec3 componentMul(Vec3 other)
+    {
+        return Vec3 {
+            .x = self.x * other.x,
+            .y = self.y * other.y,
+            .z = self.z * other.z
+        };
+    }
+
     /// Returns the dot product with other.
-    f64 dot(Vec3 other)
+    f32 dot(Vec3 other)
     {
         return self.x * other.x + self.y * other.y + self.z * other.z;
     }
@@ -122,27 +157,27 @@ pub struct Vec3
     }
 
     /// Returns the squared length.
-    f64 lengthSq()
+    f32 lengthSq()
     {
         return self.x * self.x + self.y * self.y + self.z * self.z;
     }
 
     /// Returns the length.
-    f64 length()
+    f32 length()
     {
-        return sqrt(self.lengthSq());
+        return (f32)sqrt((f64)self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
     Vec3 normalize()
     {
-        f64 len = self.length();
+        f32 len = self.length();
         if (len < 1e-15) return *self;
         return self.scale(1.0 / len);
     }
 
     /// Linearly interpolates from this vector to other by t.
-    Vec3 lerp(Vec3 other, f64 t)
+    Vec3 lerp(Vec3 other, f32 t)
     {
         return Vec3 {
             .x = self.x + (other.x - self.x) * t,
@@ -152,16 +187,16 @@ pub struct Vec3
     }
 }
 
-/// Four-component float64 vector.
+/// Four-component float32 vector.
 pub struct Vec4
 {
-    f64 x;
-    f64 y;
-    f64 z;
-    f64 w;
+    f32 x;
+    f32 y;
+    f32 z;
+    f32 w;
 
     /// Creates a vector from its components.
-    static Vec4 new(f64 x, f64 y, f64 z, f64 w)
+    static Vec4 new(f32 x, f32 y, f32 z, f32 w)
     {
         return Vec4 { .x = x, .y = y, .z = z, .w = w };
     }
@@ -189,7 +224,7 @@ pub struct Vec4
     }
 
     /// Returns the vector scaled by s.
-    Vec4 scale(f64 s)
+    Vec4 scale(f32 s)
     {
         return Vec4 {
             .x = self.x * s,
@@ -200,33 +235,33 @@ pub struct Vec4
     }
 
     /// Returns the dot product with other.
-    f64 dot(Vec4 other)
+    f32 dot(Vec4 other)
     {
         return self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w;
     }
 
     /// Returns the squared length.
-    f64 lengthSq()
+    f32 lengthSq()
     {
         return self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w;
     }
 
     /// Returns the length.
-    f64 length()
+    f32 length()
     {
-        return sqrt(self.lengthSq());
+        return (f32)sqrt((f64)self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
     Vec4 normalize()
     {
-        f64 len = self.length();
+        f32 len = self.length();
         if (len < 1e-15) return *self;
         return self.scale(1.0 / len);
     }
 
     /// Linearly interpolates from this vector to other by t.
-    Vec4 lerp(Vec4 other, f64 t)
+    Vec4 lerp(Vec4 other, f32 t)
     {
         return Vec4 {
             .x = self.x + (other.x - self.x) * t,
@@ -235,4 +270,47 @@ pub struct Vec4
             .w = self.w + (other.w - self.w) * t
         };
     }
+}
+
+/// Unit quaternion - rotation, chained with mul/rotate like the vectors.
+pub struct Quat
+{
+    f32 x;
+    f32 y;
+    f32 z;
+    f32 w;
+
+    /// Returns the identity (no rotation) quaternion.
+    static Quat identity()
+    {
+        return Quat { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
+    }
+
+    /// Hamilton product: a.mul(b) rotates by b first, then a.
+    Quat mul(Quat other)
+    {
+        return Quat {
+            .x = self.w * other.x + self.x * other.w + self.y * other.z - self.z * other.y,
+            .y = self.w * other.y - self.x * other.z + self.y * other.w + self.z * other.x,
+            .z = self.w * other.z + self.x * other.y - self.y * other.x + self.z * other.w,
+            .w = self.w * other.w - self.x * other.x - self.y * other.y - self.z * other.z
+        };
+    }
+
+    /// Rotates v: v' = v + 2q.w*(u×v) + 2*u×(u×v),  u = q.xyz
+    Vec3 rotate(Vec3 v)
+    {
+        Vec3 u = Vec3 { .x = self.x, .y = self.y, .z = self.z };
+        Vec3 t = u.cross(v).scale(2.0f);
+        return v.add(t.scale(self.w)).add(u.cross(t));
+    }
+}
+
+/// Position vector - f32, same layout as Vec3 (Jolt RVec3 is single precision
+/// here); kept distinct so physics call sites read as positions.
+pub struct RVec3
+{
+    f32 x;
+    f32 y;
+    f32 z;
 }

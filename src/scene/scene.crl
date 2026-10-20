@@ -123,21 +123,21 @@ pub struct Scene
     // parent = NIL roots the child. Rejects cycles (parent is a descendant).
     // Ok carries the child id; Err carries why the reparent was rejected -
     // the caller may log it (ENGINE.md §3 error convention).
-    Result<EntityId, str> setParent(EntityId child, EntityId parent)
+    Result<u32, str> setParent(EntityId child, EntityId parent)
     {
         if (child >= self.count || !self.entities[child].alive)
-            return Result<EntityId, str>::Err { .error = "setParent: child is dead or invalid" };
+            return Result<u32, str>::Err { .error = "setParent: child is dead or invalid" };
         if (parent != NIL)
         {
             if (parent >= self.count || !self.entities[parent].alive)
-                return Result<EntityId, str>::Err { .error = "setParent: parent is dead or invalid" };
+                return Result<u32, str>::Err { .error = "setParent: parent is dead or invalid" };
             if (parent == child)
-                return Result<EntityId, str>::Err { .error = "setParent: an entity cannot be its own parent" };
+                return Result<u32, str>::Err { .error = "setParent: an entity cannot be its own parent" };
             if (self._ancestorOf(parent, child))
-                return Result<EntityId, str>::Err { .error = "setParent: cycle rejected - parent is a descendant of child" };
+                return Result<u32, str>::Err { .error = "setParent: cycle rejected - parent is a descendant of child" };
         }
         self.entities[child].parent = parent;
-        return Result<EntityId, str>::Ok { .value = child };
+        return Result<u32, str>::Ok { .value = child };
     }
 
     // The system the loop runs each frame: compose every alive entity's
@@ -178,15 +178,15 @@ pub struct ComponentStore
     }
 
     // Ok carries the id; Err when out of range or the slot is taken.
-    Result<EntityId, str> add(EntityId id)
+    Result<u32, str> add(EntityId id)
     {
         if (id >= self.capacity)
-            return Result<EntityId, str>::Err { .error = "component add: entity id out of range" };
+            return Result<u32, str>::Err { .error = "component add: entity id out of range" };
         if (self.present[id] != 0)
-            return Result<EntityId, str>::Err { .error = "component add: slot already used" };
+            return Result<u32, str>::Err { .error = "component add: slot already used" };
         self.present[id] = 1;
         self.used = self.used + 1;
-        return Result<EntityId, str>::Ok { .value = id };
+        return Result<u32, str>::Ok { .value = id };
     }
 
     void remove(EntityId id)

@@ -294,7 +294,7 @@ static bool _nativeDespawn(EntityId id)
 static bool _nativeSetParent(EntityId child, EntityId parent)
 {
     if (MuNativeScene == null) return false;
-    Result<EntityId, str> r = MuNativeScene->setParent(child, parent);
+    Result<u32, str> r = MuNativeScene->setParent(child, parent);
     if (r.isOk()) return true;
     println("[mu:script] setParent rejected: {}", r.unwrapErr());
     return false;
