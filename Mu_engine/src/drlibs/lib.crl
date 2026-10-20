@@ -1,4 +1,0 @@
-pub mod drlibs = import drlibs;
-pub mod dr_wav = import dr_wav;
-pub mod dr_mp3 = import dr_mp3;
-pub mod dr_flac = import dr_flac;
