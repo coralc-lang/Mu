@@ -1,0 +1,10 @@
+// dr_flac externs - FLAC half of vendored dr_libs (github.com/mackron/
+// dr_libs, public domain / MIT-0), audio layer at M6 (ENGINE.md §14).
+// Named after upstream dr_flac.h; drlibs.crl imports these. Implementation:
+// native/mu_drlibs.c → libmualibs.a.
+//
+// ABI: size_t = usize, drflac_uint64 = u64, channels/sample rate are
+// u32* out-params, *_allocation_callbacks engine-null (default malloc).
+
+pub extern rawptr drflac_open_memory_and_read_pcm_frames_f32(const rawptr data, usize dataSize, u32* channels, u32* sampleRate, u64* totalPCMFrameCount, rawptr pAllocationCallbacks);
+pub extern void drflac_free(rawptr p, rawptr pAllocationCallbacks);

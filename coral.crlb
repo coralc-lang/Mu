@@ -1,0 +1,98 @@
+schema = 2;
+strict = true;
+
+build "MuEngine" {
+    root       = "src/";
+    entry      = "engine/main.crl";
+    target     = "native-x86_64";
+    opt        = "debug";
+    output     = "build/muengine";
+    module_map = ".coral/modules.map";
+    cache_dir  = ".coral/cache";
+
+    flags = ["--strict", "--warn-unused"];
+
+    modules = [
+        "alloc",
+        "bgfx",
+        "cgltf",
+        "core",
+        "drlibs",
+        "engine",
+        "fastnoise",
+        "ktx",
+        "math",
+        "mikktspace",
+        "miniz",
+        "physics",
+        "platform",
+        "render",
+        "scene",
+        "script",
+        "sdl",
+        "stb",
+        "tinyexr",
+        "tracy",
+        "zstd"
+    ];
+
+    link {
+        libs = [
+            "build/native/libmualibs.a",
+            "build/native/joltc/libJoltC.a",
+            "build/native/joltc/libJolt.a",
+            "packaged/linux-x86_64/lib/libbgfx.a",
+            "packaged/linux-x86_64/lib/libbimg.a",
+            "packaged/linux-x86_64/lib/libbx.a",
+            "m",
+            "pthread",
+            "dl",
+        ];
+    }
+}
+
+deps {
+    "jolt"  = { path = "third_party/jolt"; };
+    "joltc" = { path = "third_party/JoltPhysicsC"; };
+    "sdl"   = { path = "third_party/SDL"; };
+    "stb"   = { path = "third_party/stb"; };
+    "cgltf" = { path = "third_party/cgltf"; };
+    "miniz"   = { path = "third_party/miniz"; };
+    "tinyexr" = { path = "third_party/tinyexr"; };
+    "drlibs"  = { path = "third_party/dr_libs"; };
+    "fastnoise" = { path = "third_party/FastNoiseLite"; };
+    "mikktspace" = { path = "third_party/MikkTSpace"; };
+}
+
+phase "jolt" {
+    on = [
+        "third_party/jolt/Jolt/**/*.cpp",
+        "third_party/jolt/Jolt/**/*.h",
+        "third_party/JoltPhysicsC/JoltC/**/*.c",
+        "third_party/JoltPhysicsC/JoltC/**/*.cpp",
+        "third_party/JoltPhysicsC/JoltC/**/*.h",
+        "third_party/SDL/include/**/*.h",
+        "third_party/stb/*.[ch]",
+        "third_party/cgltf/*.h",
+        "third_party/miniz/*.[ch]",
+        "third_party/tinyexr/*.[ch]",
+        "third_party/tinyexr/*.hh",
+        "third_party/tinyexr/*.cc",
+        "third_party/dr_libs/*.h",
+        "third_party/FastNoiseLite/C/*.h",
+        "third_party/MikkTSpace/*.[ch]",
+        "native/**",
+    ];
+    run = "bash -c 'cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ >/dev/null && cmake --build build/native -j1 >/dev/null'";
+    output = "build/native/joltc/libJoltC.a";
+}
+
+task "run" {
+    after = ["build"];
+    exec  = "build/muengine";
+}
+
+task "test-physics" {
+    after = ["build"];
+    exec  = "bash -c 'clang -std=c11 native/jolt_smoke.c -I third_party/JoltPhysicsC/JoltC/include -o build/jolt_smoke -L build/native/joltc -lJoltC -lJolt -lstdc++ -lm -lpthread -ldl && timeout 15 build/jolt_smoke'";
+}

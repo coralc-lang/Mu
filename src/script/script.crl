@@ -1,0 +1,331 @@
+// Script host: natives, loader, entity bindings (ENGINE.md §5/§8/§11).
+// M1 — everything below is wired, but scripts don't execute yet; IR
+// execution lands at M2 (IR.md is the contract).
+//
+// Natives are signature-tagged fn pointers in a caller-provided static
+// table. At load, the host pre-resolves every Mu:: symbol a script
+// `use`s, so a miss fails there and then, with the path, instead of
+// mid-frame. Built-ins are prelude (always in scope); `use Mu::...` in a
+// script just records what it depends on, and @extern stays reserved for
+// foreign C the engine doesn't provide.
+//
+// Bindings map entities to script paths (composition only; M2 runs one
+// instance per binding with the entity as context). scriptSystem is the
+// Loop fn-ptr slot, wired from engine/main so core never imports this
+// module (Renderer.draw pattern).
+//
+// Growing it: a native that fits an existing signature arm is one plain
+// static fn plus one `natives->add(...)` line. A new signature means a
+// new arm + the add line, kept to the §5 boundary types (EntityId,
+// scalars, str, Vec2/Vec3).
+
+import(lib) std::io { ios::println };
+import(lib) std::data { option::Option, result::Result };
+import scene::scene { Scene, EntityId, NIL };
+import platform::platform { platformRequestQuit };
+
+// Engine state the default natives read. Plain fn pointers cross the
+// boundary, no closures (§5), so context lives host-side and stays out
+// of script-visible values.
+static Scene* MuNativeScene;
+static u64* MuNativeFrame;   // &Loop.frameCount
+
+// One arm per *signature*, not per native: a new native in an existing
+// shape doesn't touch this enum.
+pub variant Native
+{
+    UnitFn { void() f; }                        // fn()
+    StrFn { void(str) f; }                      // fn(str)
+    CountFn { u64() f; }                        // fn() -> u64
+    IdFn { EntityId() f; }                      // fn() -> EntityId (NIL when full)
+    IdPredFn { bool(EntityId) f; }              // fn(EntityId) -> bool
+    IdPairFn { bool(EntityId, EntityId) f; }    // fn(EntityId, EntityId) -> bool
+}
+
+pub struct NativeEntry
+{
+    str name;
+    Native native;
+}
+
+// library path → function pointer. The loader checks every `use
+// Mu::...;` a script makes against this table and fails with the path
+// when one's missing.
+pub struct NativeRegistry
+{
+    NativeEntry* entries;   // caller-provided storage (static, §10)
+    u32 capacity;
+    u32 count;
+
+    static NativeRegistry new(NativeEntry* entries, u32 capacity)
+    {
+        return NativeRegistry {
+            .entries = entries,
+            .capacity = capacity,
+            .count = 0
+        };
+    }
+
+    // Ok: entry count after insertion. Err strings say which of the two
+    // things went wrong (duplicate name vs full table).
+    Result<u32, str> add(str name, Native native)
+    {
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (_strEq(self.entries[i].name, name))
+                return Result<u32, str>::Err { .error = "native registry: duplicate name" };
+        }
+        if (self.count >= self.capacity)
+            return Result<u32, str>::Err { .error = "native registry: table full" };
+        self.entries[self.count].name = name;
+        self.entries[self.count].native = native;
+        self.count = self.count + 1;
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    // M2 fast path: a pointer into the table, resolved once at load;
+    // the IR host then calls through it every frame. Null when unknown.
+    Native* lookup(str name)
+    {
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (_strEq(self.entries[i].name, name))
+                return &self.entries[i].native;
+        }
+        return null;
+    }
+
+    // None when unknown; a lookup miss is data, not failure
+    Option<Native> resolve(str name)
+    {
+        Native* native = self.lookup(name);
+        if (native == null) return Option<Native>::None;
+        return Option<Native>::Some { .value = native[0] };
+    }
+}
+
+static bool _strEq(str a, str b)
+{
+    if (a.len != b.len) return false;
+    for (usize i = 0; i < a.len; i++)
+    {
+        if (a.ptr[i] != b.ptr[i]) return false;
+    }
+    return true;
+}
+
+// ENGINE.md §11: load / update / free. Stubs at M1; at M2 the IR runs
+// and the lifecycle hooks (onLoad / onUpdate / onEvent / onUnload, §5)
+// slot in inside these bodies. The §6 call site and ordering are already
+// live, so the frame path doesn't change shape then.
+pub struct ScriptHost
+{
+    NativeRegistry* natives;
+    str path;
+    bool loaded;
+    u64 updateCalls;   // diagnostics: frames ticked (survives free)
+
+    static ScriptHost new(NativeRegistry* natives)
+    {
+        return ScriptHost {
+            .natives = natives,
+            .path = "",
+            .loaded = false,
+            .updateCalls = 0
+        };
+    }
+
+    // Resolve one `use`d library symbol now — the M2 loader walks the
+    // script's imports exactly this way (DESIGN §14: fail loudly on
+    // mismatch). Err after printing the missing path (§3: E stays a
+    // literal).
+    Result<Native, str> require(str name)
+    {
+        Option<Native> native = self.natives->resolve(name);
+        switch (native)
+        {
+            Some { value } => { return Result<Native, str>::Ok { .value = value }; },
+            else => {
+                println("[mu:error] unresolved Mu:: library symbol: {}", name);
+                return Result<Native, str>::Err { .error = "load: unresolved library symbol (path above)" };
+            }
+        }
+    }
+
+    // M1: record the path. M2 replaces the body with IR execution —
+    // onLoad runs here, right after the imports resolved.
+    Result<u32, str> load(str path)
+    {
+        self.path = path;
+        self.loaded = true;
+        println("[mu] script loaded (M1 stub — executes at M2): {}", path);
+        return Result<u32, str>::Ok { .value = 0 };
+    }
+
+    // §6 slot: engine/main ticks this between scene.update and draw.
+    // M2: onUpdate (and queued onEvent, §12 ordering) runs inside here.
+    void update(f32 dt)
+    {
+        if (!self.loaded) return;
+        self.updateCalls = self.updateCalls + 1;
+    }
+
+    // M2: onUnload runs here before script state is dropped.
+    void free()
+    {
+        self.loaded = false;
+        self.path = "";
+    }
+}
+
+// --- scripts bound to entities (ENGINE.md §4/§5) ---
+// A binding pairs an entity with a script path — composition only, like
+// any other component (DESIGN §2); multiple scripts per entity allowed.
+// M2: one script instance per binding, the entity is its context, and
+// lifecycle hooks (§5) run per instance in the loop's script phase.
+
+pub struct ScriptBinding
+{
+    EntityId entity;
+    str path;
+}
+
+pub struct ScriptBindings
+{
+    Scene* scene;
+    ScriptBinding* entries;   // caller-provided storage (static, §10)
+    u32 capacity;
+    u32 count;
+
+    static ScriptBindings new(Scene* scene, ScriptBinding* entries, u32 capacity)
+    {
+        return ScriptBindings {
+            .scene = scene,
+            .entries = entries,
+            .capacity = capacity,
+            .count = 0
+        };
+    }
+
+    // Err: no scene, dead/invalid entity, or full table (§3 — the message
+    // says why). Ok: the binding count after insert.
+    Result<u32, str> bind(EntityId entity, str path)
+    {
+        if (self.scene == null)
+            return Result<u32, str>::Err { .error = "bind: no scene bound" };
+        if (!self.scene->alive(entity))
+            return Result<u32, str>::Err { .error = "bind: entity is dead or invalid" };
+        if (self.count >= self.capacity)
+            return Result<u32, str>::Err { .error = "bind: table full" };
+        self.entries[self.count].entity = entity;
+        self.entries[self.count].path = path;
+        self.count = self.count + 1;
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    // Detach every script from the entity; returns how many were removed.
+    u32 unbind(EntityId entity)
+    {
+        u32 removed = 0;
+        u32 i = 0;
+        while (i < self.count)
+        {
+            if (self.entries[i].entity == entity)
+            {
+                for (u32 j = i; j + 1 < self.count; j++)
+                    self.entries[j] = self.entries[j + 1];
+                self.count = self.count - 1;
+                removed = removed + 1;
+            }
+            else { i++; }
+        }
+        return removed;
+    }
+
+    // How many scripts carry this entity (M2: instance count).
+    u32 countFor(EntityId entity)
+    {
+        u32 n = 0;
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (self.entries[i].entity == entity) n = n + 1;
+        }
+        return n;
+    }
+}
+
+// --- the default native set (ENGINE.md §11) ---
+
+static void _nativeLog(str msg)
+{
+    println("[mu:script] {}", msg);
+}
+
+static void _nativeLogError(str msg)
+{
+    println("[mu:script:error] {}", msg);
+}
+
+static u64 _nativeFrame()
+{
+    if (MuNativeFrame == null) return 0;
+    return MuNativeFrame[0];
+}
+
+static EntityId _nativeSpawn()
+{
+    if (MuNativeScene == null) return NIL;
+    Option<EntityId> id = MuNativeScene->create();
+    switch (id)
+    {
+        Some { value } => { return value; },
+        else => { return NIL; }
+    }
+}
+
+static bool _nativeDespawn(EntityId id)
+{
+    if (MuNativeScene == null) return false;
+    bool was = MuNativeScene->alive(id);
+    MuNativeScene->destroy(id);
+    return was;
+}
+
+static bool _nativeSetParent(EntityId child, EntityId parent)
+{
+    if (MuNativeScene == null) return false;
+    Result<EntityId, str> r = MuNativeScene->setParent(child, parent);
+    if (r.isOk()) return true;
+    println("[mu:script] setParent rejected: {}", r.unwrapErr());
+    return false;
+}
+
+static void _nativeQuit()
+{
+    platformRequestQuit();
+}
+
+// Register the engine library and bind host-side context. Keys are Mu::
+// paths — exactly what scripts `use Mu::...;` (DESIGN §2); one line per
+// native, see the file header for the growth path. Ok: natives registered.
+pub Result<u32, str> registerDefaultNatives(NativeRegistry* natives, Scene* scene, u64* frameCount)
+{
+    MuNativeScene = scene;
+    MuNativeFrame = frameCount;
+    natives->add("Mu::log::info", Native::StrFn { .f = _nativeLog }).unwrap();
+    natives->add("Mu::log::error", Native::StrFn { .f = _nativeLogError }).unwrap();
+    natives->add("Mu::timing::frame", Native::CountFn { .f = _nativeFrame }).unwrap();
+    natives->add("Mu::scene::spawn", Native::IdFn { .f = _nativeSpawn }).unwrap();
+    natives->add("Mu::scene::despawn", Native::IdPredFn { .f = _nativeDespawn }).unwrap();
+    natives->add("Mu::scene::setParent", Native::IdPairFn { .f = _nativeSetParent }).unwrap();
+    natives->add("Mu::platform::quit", Native::UnitFn { .f = _nativeQuit }).unwrap();
+    return Result<u32, str>::Ok { .value = natives->count };
+}
+
+// The Loop ticks this through a fn ptr (§6 order): core never imports
+// script — engine/main wires ctx + fn, exactly like Renderer.draw.
+pub void scriptSystem(rawptr ctx, f32 dt)
+{
+    ScriptHost* host = (ScriptHost*)ctx;
+    host->update(dt);
+}

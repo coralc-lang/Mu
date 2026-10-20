@@ -1,0 +1,112 @@
+// M0 demo entry: headless loop over a small scene with a hierarchy,
+// 600 frames (CI cap per ENGINE.md §6), then a summary line.
+// M1 (ENGINE.md §8): native registry (Mu:: library), ScriptHost, entity→
+// script binding, and the ECS component type table - main.mu itself
+// compiles at M2.
+
+import(lib) std::io { ios::println };
+import(lib) std::data { result::Result };
+
+import math::math { Vec3 };
+import scene::scene { Scene, Entity, EntityId, ComponentStore, ComponentType, ComponentRegistry };
+import render::render { Renderer, nullRenderer };
+import core::core { Loop };
+import script::script { Native, NativeEntry, NativeRegistry, ScriptHost, ScriptBinding, ScriptBindings, registerDefaultNatives, scriptSystem };
+
+static Entity MuStorage[4096];
+static Scene MuScene;
+static Renderer MuRenderer;
+static Loop MuLoop;
+static u8 MuCompData[32768];
+static u8 MuCompPresent[4096];
+static ComponentType MuCompTypes[16];
+static NativeEntry MuNativeTable[64];
+static NativeRegistry MuNatives;
+static ScriptHost MuHost;
+static ScriptBinding MuBindings[8];
+
+pub i32 main()
+{
+    MuScene = Scene.new(MuStorage, 4096);
+    MuRenderer = nullRenderer();
+
+    EntityId root = MuScene.create().unwrap();
+    EntityId child = MuScene.create().unwrap();
+    EntityId grandchild = MuScene.create().unwrap();
+    MuScene.setParent(child, root).unwrap();
+    MuScene.setParent(grandchild, child).unwrap();
+
+    MuScene.entities[root].local.position.y = 1.0f;
+    MuScene.entities[child].local.position.x = 2.0f;
+    MuScene.entities[grandchild].local.position = Vec3.new(1.0f, 0.0f, 0.0f).scale(3.0f);
+
+    ComponentStore comps = ComponentStore.new(MuCompData, MuCompPresent, 4096, 8);
+    comps.add(root).unwrap();
+    comps.add(child).unwrap();
+    comps.add(grandchild).unwrap();
+
+    // ECS type table (ENGINE.md §4): name the per-type stores - M2's
+    // @component registration (DESIGN §16) and get/set natives resolve
+    // through this the same way.
+    ComponentRegistry compTypes = ComponentRegistry.new(MuCompTypes, 16);
+    compTypes.add("demo", &comps).unwrap();
+
+    MuLoop = Loop.new(&MuScene, &MuRenderer);
+
+    // --- M1: engine library + script host + entity bindings (§8/§11) ---
+    MuNatives = NativeRegistry.new(MuNativeTable, 64);
+    registerDefaultNatives(&MuNatives, &MuScene, &MuLoop.frameCount).unwrap();
+    MuHost = ScriptHost.new(&MuNatives);
+    ScriptBindings bindings = ScriptBindings.new(&MuScene, MuBindings, 8);
+    bindings.bind(child, "scripts/main.mu").unwrap();
+
+    // Resolve what main.mu `use`s (Mu:: library) up front - a missing
+    // symbol fails here, with its path, never mid-frame (§11).
+    MuHost.require("Mu::log::info").unwrap();
+    MuHost.require("Mu::timing::frame").unwrap();
+    MuHost.require("Mu::scene::spawn").unwrap();
+    MuHost.require("Mu::scene::despawn").unwrap();
+    MuHost.require("Mu::scene::setParent").unwrap();
+    MuHost.load("scripts/main.mu").unwrap();
+
+    // Negative probe: unknown paths are rejected loudly.
+    Result<Native, str> missing = MuHost.require("Mu::no_such::native");
+    if (missing.isErr()) println("negative probe: unknown library symbol rejected");
+
+    // Natives are callable today, typed through their arm - no IR yet.
+    Native* frameNative = MuNatives.lookup("Mu::timing::frame");
+    if (frameNative == null)
+    {
+        println("Mu::timing::frame missing from registry");
+    }
+    else
+    {
+        switch (frameNative[0])
+        {
+            CountFn { f } => { println("Mu::timing::frame() via registry: {}", f()); },
+            else => { println("resolved native is not a counter"); }
+        }
+    }
+
+    // ENGINE.md §6: script.update sits between scene.update and draw
+    MuLoop.scriptCtx = (rawptr)&MuHost;
+    MuLoop.scriptUpdate = scriptSystem;
+
+    MuLoop.run(600);
+
+    // expect grandchild world.x = 5, world.y = 1 after the first compose
+    // and script updates = 600 (the §6 slot is live every frame)
+    println("frames: {}  entities: {}  components: {}  grandchild world: {} {} {}",
+        MuLoop.frameCount, MuScene.count, comps.used,
+        MuScene.entities[grandchild].world.position.x,
+        MuScene.entities[grandchild].world.position.y,
+        MuScene.entities[grandchild].world.position.z);
+    println("script: updates={}  bindings={} (entity {})  natives: {}  component types: {}",
+        MuHost.updateCalls, bindings.count, child, MuNatives.count, compTypes.count);
+    // §11 lifecycle unload (runs onUnload) - NOT a memory free: ScriptHost
+    // owns no heap at M1; M2's IR state will drop through @drop instead.
+    MuHost.free();
+
+    MuRenderer.shutdown(MuRenderer.ctx);
+    return 0;
+}
