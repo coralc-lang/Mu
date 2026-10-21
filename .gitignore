@@ -1,0 +1,6 @@
+build/
+./coral/
+node_modules/
+*.vsix
+**.coral/
+third_party/**/.gitignore

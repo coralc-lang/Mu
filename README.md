@@ -2,11 +2,11 @@
 
 **Mu Engine** - a 3D-first, multiplatform game engine written in **Coral**,
 with **Mu** as its scripting language
-(Mu scripts : engine = GDScript : Godot). One repo holds the language
-(`Mu_coral/`), the specs (`DESIGN.md`, `grammar.md`, `IR.md`), and this
-engine.
+(Mu scripts : engine = GDScript : Godot). This repo holds the engine and
+the specs (`Mu_docs/DESIGN.md`, `Mu_docs/grammar.md`, `Mu_docs/IR.md`);
+the Coral compiler source lives in its own repo.
 
-- **[`../ENGINE.md`](../ENGINE.md)** - the authoritative design document:
+- **[`Mu_docs/ENGINE.md`](Mu_docs/ENGINE.md)** - the authoritative design document:
   every architecture, feature, and milestone section is marked *Decided*
   unless listed under Open items. Read that first; this README is the
   **state + usage** view.
@@ -58,7 +58,7 @@ coralc build                          # -> build/muengine, regenerates .coral/mo
   probes and the (intentional) negative missing-symbol message.
 - **Prebuilt archives** for shipping/cross targets live in
   `packaged/<platform>/lib/` - inventory and rebuild notes:
-  [`../Mu_docs/prebuilt-libs.md`](../Mu_docs/prebuilt-libs.md).
+  [`Mu_docs/prebuilt-libs.md`](Mu_docs/prebuilt-libs.md).
 - bgfx is linked from its prebuilt static archives
   (`packaged/<platform>/lib/libbgfx.a`, `libbimg.a`, `libbx.a`) - `coralc`
   never runs CMake for it. CI regenerates them via
@@ -257,7 +257,7 @@ contract) with lifecycle hooks inside `load`/`update`/`free`.
 
 M0/M1 above; M2 executes IR, M3 opens the window, M4 makes it 3D, M5
 assets, M6 audio+UI, M7 physics features+editor - full definitions in
-[ENGINE.md §8](../ENGINE.md).
+[ENGINE.md §8](Mu_docs/ENGINE.md).
 
 <!-- FUTURE - NOT IMPLEMENTED (tracked in ENGINE.md §9/§12-§16):
 - Input (M3): SDL3 events → down/pressed/released state, mouse, gamepad;
