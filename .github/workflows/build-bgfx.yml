@@ -1,0 +1,180 @@
+name: Build bgfx Static Backend
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-bgfx:
+    name: bgfx for ${{ matrix.platform }}_${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+            libs: "libbgfx.a libbimg.a libbx.a"
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux
+            libs: "libbgfx.a libbimg.a libbx.a"
+          - os: windows-latest
+            arch: x64
+            platform: windows
+            libs: "bgfx.lib bimg.lib bx.lib"
+          - os: windows-11-arm
+            arch: arm64
+            platform: windows
+            libs: "bgfx.lib bimg.lib bx.lib"
+          - os: macos-latest
+            arch: arm64
+            platform: macos
+            libs: "libbgfx.a libbimg.a libbx.a"
+          - os: ubuntu-latest
+            arch: arm64
+            platform: android
+            libs: "libbgfx.a libbimg.a libbx.a"
+            android: true
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ----------------------------------------
+      # LINUX BUILD HEADERS (bgfx picks its GL/Vulkan backends at build time;
+      # runners have no GPU driver, so this is compile-only)
+      # ----------------------------------------
+      - name: Install Linux Development Headers
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config cmake \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxfixes-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libdrm-dev libgbm-dev \
+            libegl1-mesa-dev libgles2-mesa-dev \
+            libgl1-mesa-dev \
+            libvulkan-dev glslang-tools
+
+      # ----------------------------------------
+      # CLONE bgfx.cmake (+ bx/bimg/bgfx submodules)
+      # ----------------------------------------
+      - name: Clone bgfx.cmake
+        shell: bash
+        run: git clone --recursive --depth 1 https://github.com/bkaradzic/bgfx.cmake.git bgfx.cmake
+
+      # ----------------------------------------
+      # CONFIGURE (native / android)
+      # ----------------------------------------
+      - name: Configure bgfx (native)
+        if: ${{ !matrix.android }}
+        shell: bash
+        run: |
+          cmake -S bgfx.cmake -B build_bgfx \
+            -DBGFX_LIBRARY_TYPE=STATIC \
+            -DBGFX_BUILD_EXAMPLES=OFF \
+            -DBGFX_BUILD_TESTS=OFF \
+            -DBGFX_BUILD_TOOLS=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure bgfx (Android NDK)
+        if: matrix.android
+        shell: bash
+        run: |
+          NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$NDK" ] || [ ! -f "$NDK/build/cmake/android.toolchain.cmake" ]; then
+            echo "Android NDK not found" >&2
+            exit 1
+          fi
+          cmake -S bgfx.cmake -B build_bgfx \
+            -DBGFX_LIBRARY_TYPE=STATIC \
+            -DBGFX_BUILD_EXAMPLES=OFF \
+            -DBGFX_BUILD_TESTS=OFF \
+            -DBGFX_BUILD_TOOLS=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26
+
+      # ----------------------------------------
+      # COMPILE (bgfx + bimg + bx only)
+      # ----------------------------------------
+      - name: Compile bgfx
+        shell: bash
+        run: cmake --build build_bgfx --target bgfx bimg bx --config Release -j 2
+
+      # ----------------------------------------
+      # STAGE AND UPLOAD
+      # ----------------------------------------
+      - name: Organize Archives for Packaging
+        shell: bash
+        run: |
+          mkdir -p "redist/bgfx_${{ matrix.platform }}_${{ matrix.arch }}"
+          for lib in ${{ matrix.libs }}; do
+            find build_bgfx -name "$lib" -exec cp {} "redist/bgfx_${{ matrix.platform }}_${{ matrix.arch }}/" \;
+          done
+          echo "Staged:"
+          ls -l "redist/bgfx_${{ matrix.platform }}_${{ matrix.arch }}/"
+
+      - name: Verify Archives Are Non-Empty
+        shell: bash
+        run: |
+          D="redist/bgfx_${{ matrix.platform }}_${{ matrix.arch }}"
+          n=$(find "$D" -type f | wc -l)
+          echo "found $n archives"
+          test "$n" -ge 1
+
+      - name: Upload bgfx Archive Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: bgfx-${{ matrix.platform }}-${{ matrix.arch }}
+          path: redist/
+
+  commit-packaged:
+    name: Auto-commit bgfx archives into packaged/
+    needs: build-bgfx
+    if: github.event_name == 'push' && needs.build-bgfx.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Place Archives Into packaged/
+        shell: bash
+        run: |
+          declare -A MAP=(
+            [linux-x64]=linux-x86_64 [linux-arm64]=linux-arm64
+            [windows-x64]=windows-x64 [windows-arm64]=windows-arm64
+            [macos-arm64]=macos-arm64 [android-arm64]=android-arm64
+          )
+          ROOT="packaged"
+          if [ -d Mu_engine ]; then ROOT="Mu_engine/packaged"; fi
+          for d in artifacts/bgfx-*/; do
+            key=$(basename "$d" | sed 's/^bgfx-//')
+            dest="$ROOT/${MAP[$key]}/lib"
+            if [ -z "${MAP[$key]}" ]; then echo "unknown platform: $key" >&2; exit 1; fi
+            mkdir -p "$dest"
+            find "$d" -type f -exec cp {} "$dest/" \;
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$ROOT"
+          if git diff --cached --quiet; then
+            echo "packaged/ already up to date"
+          else
+            git commit -m "packaged: refresh bgfx archives from CI [skip ci]"
+            git push
+          fi
