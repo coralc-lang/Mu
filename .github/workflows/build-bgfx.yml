@@ -160,16 +160,18 @@ jobs:
             [windows-x64]=windows-x64 [windows-arm64]=windows-arm64
             [macos-arm64]=macos-arm64 [android-arm64]=android-arm64
           )
+          ROOT="packaged"
+          if [ -d Mu_engine ]; then ROOT="Mu_engine/packaged"; fi
           for d in artifacts/bgfx-*/; do
             key=$(basename "$d" | sed 's/^bgfx-//')
-            dest="packaged/${MAP[$key]}/lib"
+            dest="$ROOT/${MAP[$key]}/lib"
             if [ -z "${MAP[$key]}" ]; then echo "unknown platform: $key" >&2; exit 1; fi
             mkdir -p "$dest"
             find "$d" -type f -exec cp {} "$dest/" \;
           done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaged
+          git add "$ROOT"
           if git diff --cached --quiet; then
             echo "packaged/ already up to date"
           else
