@@ -162,14 +162,14 @@ jobs:
           )
           for d in artifacts/bgfx-*/; do
             key=$(basename "$d" | sed 's/^bgfx-//')
-            dest="Mu_engine/packaged/${MAP[$key]}/lib"
+            dest="packaged/${MAP[$key]}/lib"
             if [ -z "${MAP[$key]}" ]; then echo "unknown platform: $key" >&2; exit 1; fi
             mkdir -p "$dest"
             find "$d" -type f -exec cp {} "$dest/" \;
           done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Mu_engine/packaged
+          git add packaged
           if git diff --cached --quiet; then
             echo "packaged/ already up to date"
           else
