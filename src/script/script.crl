@@ -19,8 +19,6 @@
 // new arm + the add line, kept to the §5 boundary types (EntityId,
 // scalars, str, Vec2/Vec3).
 
-import(lib) std::io { ios::println };
-import(lib) std::data { option::Option, result::Result };
 import scene::scene { Scene, EntityId, NIL };
 import platform::platform { platformRequestQuit };
 

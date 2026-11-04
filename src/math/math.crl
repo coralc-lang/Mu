@@ -5,7 +5,7 @@
 // OFF), so these structs pass across the C ABI as-is.
 // Vector ops are methods so call sites chain: pos.add(q.rotate(off)).
 
-import std::math { sqrt };
+import std::math { F32 };
 
 /// Two-component float32 vector.
 pub struct Vec2
@@ -58,7 +58,7 @@ pub struct Vec2
     /// Returns the length.
     f32 length()
     {
-        return (f32)sqrt((f64)self.lengthSq());
+        return F32::sqrt(self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
@@ -165,7 +165,7 @@ pub struct Vec3
     /// Returns the length.
     f32 length()
     {
-        return (f32)sqrt((f64)self.lengthSq());
+        return F32::sqrt(self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
@@ -249,7 +249,7 @@ pub struct Vec4
     /// Returns the length.
     f32 length()
     {
-        return (f32)sqrt((f64)self.lengthSq());
+        return F32::sqrt(self.lengthSq());
     }
 
     /// Returns a unit-length vector, or this vector when its length is near zero.
@@ -284,6 +284,13 @@ pub struct Quat
     static Quat identity()
     {
         return Quat { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
+    }
+
+    /// Components in order (x, y, z, w) - w is the scalar part; for an
+    /// axis-angle rotation w = cos(theta/2), xyz = axis * sin(theta/2).
+    static Quat new(f32 x, f32 y, f32 z, f32 w)
+    {
+        return Quat { .x = x, .y = y, .z = z, .w = w };
     }
 
     /// Hamilton product: a.mul(b) rotates by b first, then a.

@@ -3,8 +3,6 @@
 // Wall-clock time lands with platform at M3 - tests drive the loop headless
 // with the fixed 1/60 timestep only.
 
-import(lib) std::io { ios::println };
-
 import scene::scene { Scene };
 import render::render { Renderer };
 import platform::platform { platformPump, platformQuitRequested };

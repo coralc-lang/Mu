@@ -38,7 +38,7 @@ Prerequisites: `coralc` (this repo's compiler) on `PATH`, `clang`,
 `cmake`, a C++ toolchain (Jolt).
 
 ```sh
-cd Mu_engine
+cd Mu
 
 # 1. vendor static libs (once, or when third_party changes)
 cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
@@ -53,9 +53,14 @@ coralc build                          # -> build/muengine, regenerates .coral/mo
 
 - `coral.crlb` also defines a `run` task (`after = ["build"]`,
   `exec = "build/muengine"`) for driving it through the build file.
-- Expected demo output: scene summary line + `script: updates=600
-  bindings=1 ... natives: 7 component types: 1`, plus `Mu::` library
-  probes and the (intentional) negative missing-symbol message.
+- Expected demo output: the scene summary line (`frames: 600  entities:
+  717  components: 5  grandchild world: 5 1 0`), `script: updates=600
+  bindings=1 ... natives: 7 component types: 3`, two `stress:` lines
+  (`built=717 final=717 chain=200 forest=256 chain tip: 105 1 0` and
+  `components demo=5 chain=200 forest=511 checks=23 failures=0`), plus
+  the `Mu::` library probes and the (intentional) negative
+  missing-symbol message. Exit code is 0 only when every stress check
+  passes; a failed check prints `FAIL: <label>`.
 - **Prebuilt archives** for shipping/cross targets live in
   `packaged/<platform>/lib/` - inventory and rebuild notes:
   [`Mu_docs/prebuilt-libs.md`](Mu_docs/prebuilt-libs.md).

@@ -176,5 +176,11 @@ jobs:
             echo "packaged/ already up to date"
           else
             git commit -m "packaged: refresh bgfx archives from CI [skip ci]"
-            git push
+            # a sibling workflow's auto-commit can land first - rebase and retry
+            attempt=0
+            until git pull --rebase origin main && git push; do
+              attempt=$((attempt + 1))
+              if [ "$attempt" -ge 5 ]; then echo "auto-commit push failed after $attempt attempts" >&2; exit 1; fi
+              sleep 5
+            done
           fi

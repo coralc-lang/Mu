@@ -1,14 +1,8 @@
 // Game allocator (ENGINE.md §9): std's mimalloc behind the std Allocator
 // fn-ptr table (ctx + alloc/free/realloc). One shared instance for engine
 // and game code, initialized on first use.
-//
-// mimalloc lives recursively under std, not at its top level:
-//   std/lib.crl → pub mod allocator = import memory/allocators
-//   std/x86_64/{linux,windows}/memory/allocators/mimalloc.crl
-// The std manifests pick the platform copy; the import below resolves the
-// same way muc's `import(lib) std::data { option::Option, ... }` does.
 
-import(lib) std::allocator { mimalloc::MiAlloc, allocator::Allocator };
+import(lib) std::allocators { mimalloc::MiAlloc, allocator::Allocator };
 
 static MiAlloc MuAlloc;
 static bool MuAllocReady = false;

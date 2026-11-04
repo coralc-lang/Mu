@@ -3,27 +3,66 @@
 // M1 (ENGINE.md §8): native registry (Mu:: library), ScriptHost, entity→
 // script binding, and the ECS component type table - main.mu itself
 // compiles at M2.
+// Stress pass (ENGINE.md §4/§17): the same loop over ~700 entities - a
+// 200-deep transform chain, a 256-pair forest, a rotated subtree and
+// three named component stores - with runtime invariant checks. The
+// stress scene is engine-side only: nothing below asserts on script
+// execution (the Mu compiler is not complete yet).
 
-import(lib) std::io { ios::println };
-import(lib) std::data { result::Result };
-
-import math::math { Vec3 };
-import scene::scene { Scene, Entity, EntityId, ComponentStore, ComponentType, ComponentRegistry };
+import math::math { Vec3, Quat };
+import scene::scene { Scene, Entity, EntityId, NIL, ComponentStore, ComponentType, ComponentRegistry };
 import render::render { Renderer, nullRenderer };
 import core::core { Loop };
 import script::script { Native, NativeEntry, NativeRegistry, ScriptHost, ScriptBinding, ScriptBindings, registerDefaultNatives, scriptSystem };
 
-static Entity MuStorage[4096];
+static Entity[4096] MuStorage;
 static Scene MuScene;
 static Renderer MuRenderer;
 static Loop MuLoop;
-static u8 MuCompData[32768];
-static u8 MuCompPresent[4096];
-static ComponentType MuCompTypes[16];
-static NativeEntry MuNativeTable[64];
+static u8[32768] MuCompData;
+static u8[4096] MuCompPresent;
+static u8[32768] MuChainData;
+static u8[4096] MuChainPresent;
+static u8[32768] MuForestData;
+static u8[4096] MuForestPresent;
+static ComponentType[16] MuCompTypes;
+static NativeEntry[64] MuNativeTable;
 static NativeRegistry MuNatives;
 static ScriptHost MuHost;
-static ScriptBinding MuBindings[8];
+static ScriptBinding[8] MuBindings;
+
+// Stress shape: the chain is deep enough to exercise recursive world
+// compose top-down (§4); the forest is wide enough to fill the sparse
+// per-type stores and to lose one member to destroy().
+const u32 CHAIN_N = 200;
+const u32 FOREST_N = 256;
+const f32 NEAR_EPS = 0.0001f;
+
+// The demo root sits at y=1, the grandchild at (5,1,0); every chain link
+// adds local.x = 0.5, so chain[99] lands at x=55 and the tip at x=105.
+const f32 CHAIN_TIP_X = 105.0f;
+const f32 CHAIN_MID_X = 55.0f;
+
+static u32 MuChecks = 0;
+static u32 MuFails = 0;
+
+// A check is a labelled invariant: it counts either way, and only a
+// failure prints - so the `checks=` / `failures=` line is the verdict.
+void _check(str label, bool ok)
+{
+    MuChecks++;
+    if (!ok)
+    {
+        MuFails++;
+        println("FAIL: {}", label);
+    }
+}
+
+bool _near(f32 a, f32 b)
+{
+    if (a > b) return (a - b) <= NEAR_EPS;
+    return (b - a) <= NEAR_EPS;
+}
 
 pub i32 main()
 {
@@ -38,18 +77,90 @@ pub i32 main()
 
     MuScene.entities[root].local.position.y = 1.0f;
     MuScene.entities[child].local.position.x = 2.0f;
-    MuScene.entities[grandchild].local.position = Vec3.new(1.0f, 0.0f, 0.0f).scale(3.0f);
+    MuScene.entities[grandchild].local.position = Vec3::new(1.0f, 0.0f, 0.0f).scale(3.0f);
 
+    // --- component stores: one per named type (§4/§17) ---
     ComponentStore comps = ComponentStore.new(MuCompData, MuCompPresent, 4096, 8);
     comps.add(root).unwrap();
     comps.add(child).unwrap();
     comps.add(grandchild).unwrap();
+    ComponentStore chainComps = ComponentStore.new(MuChainData, MuChainPresent, 4096, 8);
+    ComponentStore forestComps = ComponentStore.new(MuForestData, MuForestPresent, 4096, 8);
+
+    // --- stress: a CHAIN_N-deep chain hanging off the demo grandchild ---
+    // Each link is a half-unit offset, so world x is a running sum - a
+    // wrong compose order (children before parents) shows up immediately.
+    EntityId firstChain = NIL;
+    EntityId tip = grandchild;
+    for (u32 i = 0; i < CHAIN_N; i++)
+    {
+        EntityId n = MuScene.create().unwrap();
+        MuScene.setParent(n, tip).unwrap();
+        MuScene.entities[n].local.position.x = 0.5f;
+        chainComps.add(n).unwrap();
+        u64* mark = (u64*)chainComps.get(n).unwrap();
+        mark[0] = (u64)(n + 1000);
+        if (i == 0) firstChain = n;
+        tip = n;
+    }
+
+    // --- stress: a forest of FOREST_N independent parent/child pairs ---
+    EntityId forestFirstP = NIL;
+    EntityId forestFirstC = NIL;
+    EntityId forestLastP = NIL;
+    EntityId forestLastC = NIL;
+    for (u32 i = 0; i < FOREST_N; i++)
+    {
+        EntityId p = MuScene.create().unwrap();
+        EntityId c = MuScene.create().unwrap();
+        MuScene.setParent(c, p).unwrap();
+        MuScene.entities[p].local.position.y = 1.0f;
+        MuScene.entities[c].local.position.x = 0.25f;
+        forestComps.add(p).unwrap();
+        forestComps.add(c).unwrap();
+        u64* mark = (u64*)forestComps.get(c).unwrap();
+        mark[0] = (u64)(c + 1000);
+        if (i == 0)
+        {
+            forestFirstP = p;
+            forestFirstC = c;
+        }
+        if (i == FOREST_N - 1)
+        {
+            forestLastP = p;
+            forestLastC = c;
+        }
+    }
+
+    // --- stress: a rotated subtree (90 degrees about Z) ---
+    // The only rotation the engine could express before was identity, so
+    // this also pins Quat::new + rotate in the compose path (§4).
+    EntityId rot = MuScene.create().unwrap();
+    EntityId rotChild = MuScene.create().unwrap();
+    MuScene.setParent(rotChild, rot).unwrap();
+    MuScene.entities[rot].local.rotation = Quat.new(0.0f, 0.0f, 0.70710678f, 0.70710678f);
+    MuScene.entities[rotChild].local.position = Vec3.new(1.0f, 0.0f, 0.0f);
+    comps.add(rot).unwrap();
+    comps.add(rotChild).unwrap();
+
+    // Count taken before the loop: everything after this point is script
+    // spawn traffic (not asserted - the Mu compiler is not complete).
+    u32 built = MuScene.count;
+    EntityId midId = firstChain + (CHAIN_N / 2) - 1;
+
+    // Hierarchy safety probes: a cycle must be refused, and destroy()
+    // must kill the parent while detaching its child to a root.
+    _check("setParent refuses a cycle (root <- chain tip)", MuScene.setParent(root, tip).isErr());
+    MuScene.destroy(forestLastP);
+    forestComps.remove(forestLastP);
 
     // ECS type table (ENGINE.md §4): name the per-type stores - M2's
     // @component registration (DESIGN §16) and get/set natives resolve
     // through this the same way.
     ComponentRegistry compTypes = ComponentRegistry.new(MuCompTypes, 16);
     compTypes.add("demo", &comps).unwrap();
+    compTypes.add("chain", &chainComps).unwrap();
+    compTypes.add("forest", &forestComps).unwrap();
 
     MuLoop = Loop.new(&MuScene, &MuRenderer);
 
@@ -94,6 +205,80 @@ pub i32 main()
 
     MuLoop.run(600);
 
+    // --- invariant checks: compose, stores, registry, hierarchy ---
+    Entity* tipE = &MuScene.entities[tip];
+    Entity* midE = &MuScene.entities[midId];
+    Entity* gcE = &MuScene.entities[grandchild];
+    Entity* forestE = &MuScene.entities[forestFirstC];
+    Entity* orphanE = &MuScene.entities[forestLastC];
+    Entity* rotE = &MuScene.entities[rotChild];
+
+    _check("chain tip world (105, 1, 0)",
+        _near(tipE->world.position.x, CHAIN_TIP_X)
+        && _near(tipE->world.position.y, 1.0f)
+        && _near(tipE->world.position.z, 0.0f));
+    _check("chain mid world (55, 1, 0)",
+        _near(midE->world.position.x, CHAIN_MID_X)
+        && _near(midE->world.position.y, 1.0f)
+        && _near(midE->world.position.z, 0.0f));
+    _check("grandchild world unchanged (5, 1, 0)",
+        _near(gcE->world.position.x, 5.0f)
+        && _near(gcE->world.position.y, 1.0f)
+        && _near(gcE->world.position.z, 0.0f));
+    _check("forest child world (0.25, 1, 0) under its own parent",
+        MuScene.entities[forestFirstC].parent == forestFirstP
+        && _near(forestE->world.position.x, 0.25f)
+        && _near(forestE->world.position.y, 1.0f)
+        && _near(forestE->world.position.z, 0.0f));
+    _check("destroy detaches child to a root at local (0.25, 0, 0)",
+        MuScene.entities[forestLastC].parent == NIL
+        && _near(orphanE->world.position.x, 0.25f)
+        && _near(orphanE->world.position.y, 0.0f)
+        && _near(orphanE->world.position.z, 0.0f));
+    _check("rotated child world (0, 1, 0)",
+        _near(rotE->world.position.x, 0.0f)
+        && _near(rotE->world.position.y, 1.0f)
+        && _near(rotE->world.position.z, 0.0f));
+    _check("destroyed parent is dead", !MuScene.alive(forestLastP));
+    _check("scene count never shrinks (no id recycling)", MuScene.count >= built);
+
+    // Full liveness sweep over every id the scene handed out: only the
+    // one entity destroy() took may be dead.
+    bool allAlive = true;
+    for (u32 i = 0; i < built; i++)
+    {
+        if (i == forestLastP) continue;
+        if (!MuScene.alive(i)) allAlive = false;
+    }
+    _check("every built entity stays alive except the destroyed one", allAlive);
+
+    // per-type stores: presence, payload round-trip, slot reuse
+    _check("demo store holds the 3 demo entities + rotated pair", comps.used == 5);
+    _check("chain store holds every chain entity", chainComps.used == CHAIN_N);
+    _check("forest store holds both sides minus the removed slot",
+        forestComps.used == FOREST_N * 2 - 1);
+    _check("component slots stay inside their own store",
+        !comps.has(tip) && !chainComps.has(forestFirstC));
+    _check("removed component slot is free", !forestComps.has(forestLastP));
+    u64* tipMark = (u64*)chainComps.get(tip).unwrap();
+    u32 tipWant = tip + 1000;
+    _check("chain component payload round-trips", tipMark[0] == (u64)tipWant);
+    u64* forestMark = (u64*)forestComps.get(forestFirstC).unwrap();
+    u32 forestWant = forestFirstC + 1000;
+    _check("forest component payload round-trips", forestMark[0] == (u64)forestWant);
+
+    // named type table: resolve by name, stay isolated, miss as null
+    _check("registry names three types", compTypes.count == 3);
+    _check("registry resolves the chain type", compTypes.has(tip, "chain"));
+    _check("registry keeps stores isolated",
+        compTypes.has(forestFirstC, "forest")
+        && !compTypes.has(forestFirstC, "chain")
+        && !compTypes.has(tip, "forest"));
+    _check("registry resolves the demo type", compTypes.storeFor("demo") != null);
+    _check("registry misses an unknown type", compTypes.storeFor("no_such_type") == null);
+
+    _check("loop ran 600 frames", MuLoop.frameCount == 600);
+
     // expect grandchild world.x = 5, world.y = 1 after the first compose
     // and script updates = 600 (the §6 slot is live every frame)
     println("frames: {}  entities: {}  components: {}  grandchild world: {} {} {}",
@@ -103,10 +288,17 @@ pub i32 main()
         MuScene.entities[grandchild].world.position.z);
     println("script: updates={}  bindings={} (entity {})  natives: {}  component types: {}",
         MuHost.updateCalls, bindings.count, child, MuNatives.count, compTypes.count);
+    println("stress: built={}  final={}  chain={}  forest={}  chain tip: {} {} {}",
+        built, MuScene.count, CHAIN_N, FOREST_N,
+        tipE->world.position.x, tipE->world.position.y, tipE->world.position.z);
+    println("stress: components demo={} chain={} forest={}  checks={} failures={}",
+        comps.used, chainComps.used, forestComps.used, MuChecks, MuFails);
+
     // §11 lifecycle unload (runs onUnload) - NOT a memory free: ScriptHost
     // owns no heap at M1; M2's IR state will drop through @drop instead.
     MuHost.free();
 
     MuRenderer.shutdown(MuRenderer.ctx);
+    if (MuFails > 0) return 1;
     return 0;
 }
