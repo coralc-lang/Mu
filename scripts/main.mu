@@ -1,5 +1,3 @@
-#! engine.main
-
 // Demo script (ENGINE.md §8 M1) - compiled by muc at M2.
 // Engine built-ins are prelude - always in scope, bare calls, no @
 // prefix; the `use Mu::...` lines below are explicit tracking of what

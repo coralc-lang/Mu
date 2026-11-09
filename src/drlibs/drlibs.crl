@@ -15,7 +15,6 @@
 use dr_wav { drwav_open_memory_and_read_pcm_frames_f32, drwav_free };
 use dr_mp3 { drmp3_config, drmp3_open_memory_and_read_pcm_frames_f32, drmp3_free };
 use dr_flac { drflac_open_memory_and_read_pcm_frames_f32, drflac_free };
-use(lib) std::data { option::Option };
 
 // Short handles for the 41-character vendor opens. #[[inline]] marks them
 // inlinable, so the call site compiles down to the extern itself (same
