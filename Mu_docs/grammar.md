@@ -10,6 +10,11 @@ docs win for *intended* semantics.
 ## 1. Lexical categories
 
 - Whitespace, `// line`, `/* block */` (block comments are not nested).
+- Doc comments: `///` lines. A contiguous run (no blank lines between) directly
+  above a declaration is one doc block; `////` is a plain comment and ends the
+  block. The parser stores the block against the declaration's name line and
+  the LSP renders it in hover; nothing else consumes docs yet. (`//!` module
+  docs are future work.)
 - Tokens: keywords, identifiers, numbers, string/char literals, operators/delimiters.
 - Identifiers: XID_Start / XID_Continue (ASCII reduced form is optimized; many
   Unicode ranges are hardcoded — a correctness smell, not full UAX31).
@@ -52,6 +57,7 @@ are **not** stored/honored. The full set coralc should eventually support:
 - `#[[generate(...)]]` (planned) — the **generator** attribute like Rust `derive`,
   produces trait/impl boilerplate. Suggested spelling: `#[[generate(Drop, Eq)]]`
   (see "derive vs import" below).
+- `#[[fallthrough]]` for switches when you dont want to add for all cases or use an `else` case,
 - `#[[no_mangle]]`, `#[[test]]`, `#[[bench]]`, `#[[cfg]]`,
   `#[[link]]`, `#[[simd]]` — future slots.
 - Adding multiple attributes(chained), but should be compatible, say: `#[[reorder, packed]] struct foo {...}`
@@ -93,7 +99,7 @@ Tuple, `TypeParam`, `Distinct`, plus `Str` used as a `u8*` interned-id in AST.
 - **const / constant**: `const Type name = expr;` (sema must constant-fold where required).
 - **`typedef` / `pub typedef Name = Type;`**.
 - **`pub extern[c] Name<params>;`** → extern variable.
-- **`distinct`**: `pub distinct <Name> = <Type>;` (or `flag(Arch){…}`).
+- **`distinct`**: `pub distinct <Name> = <Type>;` (or `flag(Arch){…}` — unsupported).
 - **import** (4 legal forms, no string literal, no `.crl`):
   - `import name { syms };`   (sibling `name.crl`)
   - `import mod::sub { syms };`  (builder-resolved module)
@@ -183,7 +189,7 @@ Tuple, `TypeParam`, `Distinct`, plus `Str` used as a `u8*` interned-id in AST.
 - Fn-pointer params with names (`usize(K) hf`).
 - Struct field array decls with const-size exprs.
 - `comptime {}` blocks and `asm {}` blocks are parsed then dumped.
-- `#[[inline]]` etc.:
+- `#[[inline]]` etc.: parsed but not semantic.
 - `pub distinct X = flag(…)`, `any TraitName`, switch `|` syntax — decided but
   unimplemented.
 

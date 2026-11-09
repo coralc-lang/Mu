@@ -1,7 +1,7 @@
 // bgfx - draw submission: bind buffers/uniforms/textures, set state, submit.
 // The `bgfx_encoder_*` family is the thread-safe equivalent for recording a
 // frame on worker threads; the non-encoder forms record on the API thread.
-import bgfx::types {
+use bgfx::types {
     bgfx_view_id_t, bgfx_program_handle_t, bgfx_uniform_handle_t,
     bgfx_texture_handle_t, bgfx_index_buffer_handle_t,
     bgfx_vertex_buffer_handle_t, bgfx_dynamic_index_buffer_handle_t,

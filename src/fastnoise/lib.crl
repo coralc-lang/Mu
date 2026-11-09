@@ -1,1 +1,1 @@
-pub mod fastnoise = import fastnoise;
+pub mod fastnoise = use fastnoise;

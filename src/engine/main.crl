@@ -9,11 +9,11 @@
 // stress scene is engine-side only: nothing below asserts on script
 // execution (the Mu compiler is not complete yet).
 
-import math::math { Vec3, Quat };
-import scene::scene { Scene, Entity, EntityId, NIL, ComponentStore, ComponentType, ComponentRegistry };
-import render::render { Renderer, nullRenderer };
-import core::core { Loop };
-import script::script { Native, NativeEntry, NativeRegistry, ScriptHost, ScriptBinding, ScriptBindings, registerDefaultNatives, scriptSystem };
+use core::core { Loop };
+use math::math { Vec3, Quat };
+use render::render { Renderer, nullRenderer };
+use scene::scene { Scene, Entity, EntityId, NIL, ComponentStore, ComponentType, ComponentRegistry };
+use script::script { Native, NativeEntry, NativeRegistry, ScriptHost, ScriptBinding, ScriptBindings, registerDefaultNatives, scriptSystem };
 
 static Entity[4096] MuStorage;
 static Scene MuScene;

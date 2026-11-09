@@ -2,7 +2,7 @@
 // (public domain / MIT-0): WAV, MP3 and FLAC whole-file decoders for the
 // audio layer (M6, ENGINE.md §14). The raw externs are declared beside this
 // file, one per upstream header (dr_wav.crl / dr_mp3.crl / dr_flac.crl),
-// and imported here as though written in this file; implementations are
+// and useed here as though written in this file; implementations are
 // compiled from native/mu_drlibs.c into libmualibs.a.
 //
 // Decoders return a malloc'd interleaved f32 PCM buffer, wrapped as an
@@ -12,10 +12,10 @@
 // return Option because the vendor has no error string - absence is the
 // diagnostic, and the caller knows which file it asked for.
 
-import dr_wav { drwav_open_memory_and_read_pcm_frames_f32, drwav_free };
-import dr_mp3 { drmp3_config, drmp3_open_memory_and_read_pcm_frames_f32, drmp3_free };
-import dr_flac { drflac_open_memory_and_read_pcm_frames_f32, drflac_free };
-import(lib) std::data { option::Option };
+use dr_wav { drwav_open_memory_and_read_pcm_frames_f32, drwav_free };
+use dr_mp3 { drmp3_config, drmp3_open_memory_and_read_pcm_frames_f32, drmp3_free };
+use dr_flac { drflac_open_memory_and_read_pcm_frames_f32, drflac_free };
+use(lib) std::data { option::Option };
 
 // Short handles for the 41-character vendor opens. #[[inline]] marks them
 // inlinable, so the call site compiles down to the extern itself (same

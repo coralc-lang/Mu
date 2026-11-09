@@ -1,1 +1,1 @@
-pub mod script = import script;
+pub mod script = use script;

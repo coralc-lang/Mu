@@ -1,5 +1,5 @@
 // bgfx - init / shutdown / frame / memory / queries.
-import bgfx::types {
+use bgfx::types {
     bgfx_init_t, bgfx_renderer_type_t, bgfx_render_frame_t,
     bgfx_frame_buffer_handle_t, bgfx_memory_t,
 };

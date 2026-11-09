@@ -11,7 +11,7 @@
 // existing tangent list; see the vendored header for the full contract.
 //
 // Failure site: genTangSpace* return tbool - a valueless, message-less
-// status, so the raw int stays until the importer (M4) lands and picks the
+// status, so the raw int stays until the useer (M4) lands and picks the
 // Ok shape per the ENGINE.md §3 error convention.
 
 pub typedef tbool = i32;

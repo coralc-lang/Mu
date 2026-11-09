@@ -1,1 +1,1 @@
-pub mod math = import math;
+pub mod math = use math;

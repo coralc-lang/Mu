@@ -1,6 +1,6 @@
-pub mod types = import types;
-pub mod init = import init;
-pub mod views = import views;
-pub mod vertex_layout = import vertex_layout;
-pub mod resources = import resources;
-pub mod draw = import draw;
+pub mod types = use types;
+pub mod init = use init;
+pub mod views = use views;
+pub mod vertex_layout = use vertex_layout;
+pub mod resources = use resources;
+pub mod draw = use draw;

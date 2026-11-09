@@ -1,6 +1,6 @@
 // bgfx - resources: buffers, transient buffers, textures, shaders/programs,
 // uniforms, frame buffers.
-import bgfx::types {
+use bgfx::types {
     bgfx_memory_t, bgfx_vertex_layout_t, bgfx_transient_index_buffer_t,
     bgfx_transient_vertex_buffer_t, bgfx_texture_region_t, bgfx_uniform_type_t,
     bgfx_texture_format_t, bgfx_view_id_t,

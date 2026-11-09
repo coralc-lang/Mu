@@ -1,1 +1,1 @@
-pub mod tinyexr = import tinyexr;
+pub mod tinyexr = use tinyexr;

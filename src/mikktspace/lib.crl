@@ -1,1 +1,1 @@
-pub mod mikktspace = import mikktspace;
+pub mod mikktspace = use mikktspace;

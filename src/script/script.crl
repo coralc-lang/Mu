@@ -11,7 +11,7 @@
 //
 // Bindings map entities to script paths (composition only; M2 runs one
 // instance per binding with the entity as context). scriptSystem is the
-// Loop fn-ptr slot, wired from engine/main so core never imports this
+// Loop fn-ptr slot, wired from engine/main so core never uses this
 // module (Renderer.draw pattern).
 //
 // Growing it: a native that fits an existing signature arm is one plain
@@ -19,8 +19,8 @@
 // new arm + the add line, kept to the §5 boundary types (EntityId,
 // scalars, str, Vec2/Vec3).
 
-import scene::scene { Scene, EntityId, NIL };
-import platform::platform { platformRequestQuit };
+use scene::scene { Scene, EntityId, NIL };
+use platform::platform { platformRequestQuit };
 
 // Engine state the default natives read. Plain fn pointers cross the
 // boundary, no closures (§5), so context lives host-side and stays out
@@ -134,7 +134,7 @@ pub struct ScriptHost
     }
 
     // Resolve one `use`d library symbol now — the M2 loader walks the
-    // script's imports exactly this way (DESIGN §14: fail loudly on
+    // script's uses exactly this way (DESIGN §14: fail loudly on
     // mismatch). Err after printing the missing path (§3: E stays a
     // literal).
     Result<Native, str> require(str name)
@@ -151,7 +151,7 @@ pub struct ScriptHost
     }
 
     // M1: record the path. M2 replaces the body with IR execution —
-    // onLoad runs here, right after the imports resolved.
+    // onLoad runs here, right after the uses resolved.
     Result<u32, str> load(str path)
     {
         self.path = path;
@@ -320,7 +320,7 @@ pub Result<u32, str> registerDefaultNatives(NativeRegistry* natives, Scene* scen
     return Result<u32, str>::Ok { .value = natives->count };
 }
 
-// The Loop ticks this through a fn ptr (§6 order): core never imports
+// The Loop ticks this through a fn ptr (§6 order): core never uses
 // script — engine/main wires ctx + fn, exactly like Renderer.draw.
 pub void scriptSystem(rawptr ctx, f32 dt)
 {

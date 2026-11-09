@@ -1,5 +1,5 @@
 // bgfx - view setup (declarative: configure a view, then submit draw calls).
-import bgfx::types {
+use bgfx::types {
     bgfx_view_id_t, bgfx_view_mode_t, bgfx_frame_buffer_handle_t,
 };
 

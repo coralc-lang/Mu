@@ -2,7 +2,7 @@
 // fn-ptr table (ctx + alloc/free/realloc). One shared instance for engine
 // and game code, initialized on first use.
 
-import(lib) std::allocators { mimalloc::MiAlloc, allocator::Allocator };
+import std::allocators { mimalloc::MiAlloc, allocator::Allocator };
 
 static MiAlloc MuAlloc;
 static bool MuAllocReady = false;

@@ -1,1 +1,1 @@
-pub mod cgltf = import cgltf;
+pub mod cgltf = use cgltf;

@@ -306,8 +306,8 @@ pub struct bgfx_vertex_layout_t
 {
     u32 hash;
     u16 stride;
-    u16 offset[26];       // BGFX_ATTRIB_COUNT
-    u16 attributes[26];   // BGFX_ATTRIB_COUNT
+    u16[26] offset;       // BGFX_ATTRIB_COUNT
+    u16[26] attributes;   // BGFX_ATTRIB_COUNT
 }
 
 pub struct bgfx_texture_region_t
@@ -353,7 +353,7 @@ pub struct bgfx_instance_data_buffer_t
 
 pub struct bgfx_uniform_info_t
 {
-    u8 name[256];
+    u8[256] name;
     bgfx_uniform_type_t type;
     u16 num;
 }

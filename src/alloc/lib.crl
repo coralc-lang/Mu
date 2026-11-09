@@ -1,1 +1,1 @@
-pub mod alloc = import alloc;
+pub mod alloc = use alloc;

@@ -1,11 +1,11 @@
 // math glue (ENGINE.md §3, core layer) - Vec2/Vec3/Vec4/Quat/RVec3 + the ops
 // the scene/transform and physics layers share. Single definition: physics.crl
-// and scene.crl both import from here, so types never need casting.
+// and scene.crl both use from here, so types never need casting.
 // Vectors are f32 (Jolt/JoltC is built single precision - JOLTC_DOUBLE_PRECISION
 // OFF), so these structs pass across the C ABI as-is.
 // Vector ops are methods so call sites chain: pos.add(q.rotate(off)).
 
-import std::math { F32 };
+use std::math { F32 };
 
 /// Two-component float32 vector.
 pub struct Vec2

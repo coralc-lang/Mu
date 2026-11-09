@@ -1,5 +1,5 @@
 // bgfx - vertex layouts (describe attribute streams; consumed by buffers).
-import bgfx::types {
+use bgfx::types {
     bgfx_vertex_layout_t, bgfx_renderer_type_t, bgfx_attrib_t,
     bgfx_attrib_type_t,
 };

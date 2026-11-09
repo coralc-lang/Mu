@@ -13,9 +13,7 @@
 // LoadEXR covers single-frame RGBA load for now (deprecated upstream but
 // still supported - revisit at M5).
 
-import(lib) std::data { result::Result };
-import(lib) std::text::string { String };
-import(lib) platform::libc;
+import platform::libc;
 
 pub const i32 TINYEXR_SUCCESS = 0;
 

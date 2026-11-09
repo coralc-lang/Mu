@@ -1,1 +1,1 @@
-pub mod ktx = import ktx;
+pub mod ktx = use ktx;

@@ -8,7 +8,7 @@
 // auto-registration (DESIGN §16) and script-side get/set resolve by name;
 // scripts attach to entities through script::ScriptBindings (§4/§5).
 
-import math::math { Vec3, Quat };
+use math::math { Vec3, Quat };
 
 pub typedef EntityId = u32;
 

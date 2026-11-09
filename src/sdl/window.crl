@@ -7,7 +7,7 @@
 // nonzero as true. Enums are 32-bit. Not linked until the M3 build phase
 // adds SDL3 to `link`.
 
-import sdl::types { SDL_Window, SDL_PropertiesID };
+use sdl::types { SDL_Window, SDL_PropertiesID };
 
 pub typedef SDL_InitFlags = u32;
 pub typedef SDL_WindowFlags = u64;

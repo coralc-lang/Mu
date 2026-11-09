@@ -3,9 +3,9 @@
 // Wall-clock time lands with platform at M3 - tests drive the loop headless
 // with the fixed 1/60 timestep only.
 
-import scene::scene { Scene };
-import render::render { Renderer };
-import platform::platform { platformPump, platformQuitRequested };
+use scene::scene { Scene };
+use render::render { Renderer };
+use platform::platform { platformPump, platformQuitRequested };
 
 pub const f32 FIXED_DT = 1.0f / 60.0f;
 

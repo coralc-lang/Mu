@@ -1,4 +1,4 @@
-pub mod drlibs = import drlibs;
-pub mod dr_wav = import dr_wav;
-pub mod dr_mp3 = import dr_mp3;
-pub mod dr_flac = import dr_flac;
+pub mod drlibs = use drlibs;
+pub mod dr_wav = use dr_wav;
+pub mod dr_mp3 = use dr_mp3;
+pub mod dr_flac = use dr_flac;
