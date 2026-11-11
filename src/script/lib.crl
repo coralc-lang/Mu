@@ -1,1 +1,6 @@
-pub mod script = use script;
+pub mod native = use native;
+pub mod source = use source;
+pub mod loader = use loader;
+pub mod bindings = use bindings;
+pub mod types = use types;
+pub mod natives = use natives;

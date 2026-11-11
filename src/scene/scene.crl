@@ -95,8 +95,8 @@ pub struct Scene
         e->id = id;
         e->alive = true;
         e->parent = NIL;
-        e->local = Transform.zero();
-        e->world = Transform.zero();
+        e->local = Transform::zero();
+        e->world = Transform::zero();
         return Option<EntityId>::Some { .value = id };
     }
 

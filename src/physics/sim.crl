@@ -1,0 +1,102 @@
+// Lightweight scene simulation (headless demo path).
+// Jolt stays the production backend (M7); this integrator gives the engine
+// and scripts a real `Mu::physics::step` today: gravity, floor/wall bounce,
+// and entity transforms are enough to animate a scene, with no native
+// dependency at startup.
+
+use math::math { Vec3 };
+use scene::scene { Scene, EntityId };
+
+pub struct Motion
+{
+    EntityId entity;
+    Vec3 velocity;
+    f32 radius;
+}
+
+pub struct Simulation
+{
+    Scene* scene;
+    Motion* motions;    // caller-provided storage (static, ENGINE.md §10)
+    u32 capacity;
+    u32 count;
+    Vec3 gravity;
+    f32 floorY;
+    f32 minX;
+    f32 maxX;
+    f32 restitution;
+}
+
+pub Simulation simulation(Scene* scene, Motion* motions, u32 capacity)
+{
+    return Simulation {
+        .scene = scene,
+        .motions = motions,
+        .capacity = capacity,
+        .count = 0,
+        .gravity = Vec3::new(0.0f, -18.0f, 0.0f),
+        .floorY = 0.0f,
+        .minX = -8.0f,
+        .maxX = 8.0f,
+        .restitution = 0.86f
+    };
+}
+
+pub Result<u32, str> addMotion(Simulation* sim, EntityId entity, f32 radius, Vec3 velocity)
+{
+    if (sim == null || sim->scene == null)
+        return Result<u32, str>::Err { .error = "physics: no simulation or scene" };
+    if (!sim->scene->alive(entity))
+        return Result<u32, str>::Err { .error = "physics: entity is dead or invalid" };
+    if (sim->count >= sim->capacity)
+        return Result<u32, str>::Err { .error = "physics: motion table full" };
+
+    Motion* m = &sim->motions[sim->count];
+    m->entity = entity;
+    m->velocity = velocity;
+    m->radius = radius;
+    sim->count = sim->count + 1;
+    return Result<u32, str>::Ok { .value = sim->count - 1 };
+}
+
+// One fixed step: integrate, bounce off the floor and side walls, and write
+// local transforms. The next scene.update composes the new world transform.
+pub u32 step(Simulation* sim, f32 dt)
+{
+    if (sim == null || sim->scene == null) return 0;
+    if (dt < 0.0f) dt = 0.0f;
+
+    for (u32 i = 0; i < sim->count; i++)
+    {
+        Motion* m = &sim->motions[i];
+        if (!sim->scene->alive(m->entity)) continue;
+
+        Vec3 v = m->velocity.add(sim->gravity.scale(dt));
+        Vec3 p = sim->scene->entities[m->entity].local.position.add(v.scale(dt));
+
+        f32 floor = sim->floorY + m->radius;
+        if (p.y < floor)
+        {
+            p.y = floor;
+            if (v.y < 0.0f) v.y = -v.y * sim->restitution;
+            v.x = v.x * 0.995f;
+        }
+
+        f32 minX = sim->minX + m->radius;
+        f32 maxX = sim->maxX - m->radius;
+        if (p.x < minX)
+        {
+            p.x = minX;
+            if (v.x < 0.0f) v.x = -v.x * sim->restitution;
+        }
+        if (p.x > maxX)
+        {
+            p.x = maxX;
+            if (v.x > 0.0f) v.x = -v.x * sim->restitution;
+        }
+
+        m->velocity = v;
+        sim->scene->entities[m->entity].local.position = p;
+    }
+    return sim->count;
+}

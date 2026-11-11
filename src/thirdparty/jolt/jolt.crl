@@ -1,6 +1,10 @@
 // JoltC C API port - JoltC v5.6.0 (EvergineTeam/JoltPhysicsC, MIT),
 // bound against Jolt 5.6.0 in third_party/jolt.
 // ABI note: RVec3/Vec3/Quat are single precision (JOLTC_DOUBLE_PRECISION OFF).
+//
+// This file is the raw boundary only: typedefs, constants, and externs.
+// Engine-facing simulation code lives in sim.crl, so the binding surface can
+// grow without turning into a monolith.
 
 use math::math { Vec3, Quat, RVec3 };
 

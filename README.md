@@ -22,9 +22,9 @@ the Coral compiler source lives in its own repo.
 | Milestone | What | State |
 |---|---|---|
 | **M0** | Build file, modules, headless loop, scene + system | ✅ done |
-| **M1** | Script host API: native registry (`Mu::` library), entity→script bindings, ECS type table | 🟡 scaffold written - pending build verification |
+| **M1** | Script host API: hash-keyed native registry (`Mu::` library), source loader, entity→script bindings, Mu type table | ✅ done (IR execution at M2) |
 | **M2** | `muc` ↔ host: WallVM IR executed, `main.mu` runs in the loop | ⬜ planned |
-| **M3** | SDL3 window + bgfx backend, live input | ⬜ planned |
+| **M3** | SDL3 window + bgfx backend, live input (software framebuffer already renders headless) | ⬜ planned |
 | **M4** | 3D scene basics: camera, meshes, materials, lighting | ⬜ planned |
 | **M5** | Assets: handle table, aliases, loaders, hot reload | ⬜ planned |
 | **M6** | Audio (SDL3) + immediate-mode UI | ⬜ planned |
@@ -47,20 +47,20 @@ cmake --build build/native -j2        # -> libmualibs.a + libJolt{C,}.a
 # 2. the engine
 coralc build                          # -> build/muengine, regenerates .coral/modules.map
 
-# 3. the demo: 600-frame headless run (CI cap, ENGINE.md §6)
+# 3. the demo: 300-frame headless particle sandbox
 ./build/muengine
 ```
 
 - `coral.crlb` also defines a `run` task (`after = ["build"]`,
   `exec = "build/muengine"`) for driving it through the build file.
-- Expected demo output: the scene summary line (`frames: 600  entities:
-  717  components: 5  grandchild world: 5 1 0`), `script: updates=600
-  bindings=1 ... natives: 7 component types: 3`, two `stress:` lines
-  (`built=717 final=717 chain=200 forest=256 chain tip: 105 1 0` and
-  `components demo=5 chain=200 forest=511 checks=23 failures=0`), plus
-  the `Mu::` library probes and the (intentional) negative
-  missing-symbol message. Exit code is 0 only when every stress check
-  passes; a failed check prints `FAIL: <label>`.
+- Expected demo output: a hash-loader line (`script loaded: scripts/main.mu
+  (10 uses resolved by hash)`), the hash-dispatch key, the
+  `Mu::timing::now` / `Mu::scene::frame` probes, then `mu: 300 frames,
+  49 entities, 48 balls, ... presents: 300`, `script: 10 uses resolved,
+  1 bindings, 300 updates`, `natives: 13 hash-keyed, types: 30
+  (2 aliases, 2 structs, 1 variants, 2 consts, 6 fns)`, and
+  `frame: build/frame.ppm (640x360)`. The run writes `build/frame.ppm`,
+  a binary PPM of the final frame - exit code is 0 when it is written.
 - **Prebuilt archives** for shipping/cross targets live in
   `packaged/<platform>/lib/` - inventory and rebuild notes:
   [`Mu_docs/prebuilt-libs.md`](Mu_docs/prebuilt-libs.md).
@@ -89,12 +89,12 @@ Mu_engine/
 
 | Layer | Dir | Status |
 |---|---|---|
-| entry / main loop demo | `src/engine/` | live (M0) |
+| entry / particle sandbox demo | `src/engine/` | live (software-rendered) |
 | core - `Loop`, logging, `FIXED_DT` | `src/core/` | live |
 | math - Vec3/Quat, chainable | `src/math/` | live |
 | **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
-| **script** - ScriptHost, `Mu::` natives, bindings | `src/script/` | M1 scaffold (IR at M2) |
-| render - fn-ptr interface, null backend | `src/render/` | live interface, stub impl (bgfx at M3) |
+| **script** - ScriptHost, hash-keyed `Mu::` natives, loader, types | `src/script/` | live (IR at M2) |
+| render - fn-ptr interface, software framebuffer + PPM | `src/render/` | live headless (bgfx at M3) |
 | platform - headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
 | alloc - mimalloc game allocator | `src/alloc/` | live |
 | vendor extern ports | `src/{sdl,bgfx,stb,cgltf,miniz,tinyexr,drlibs,fastnoise,mikktspace,physics}/` | ports ready, gated by milestones |
@@ -215,22 +215,28 @@ leave behind, e.g. `// clip goes out of scope - freed`. Engine Coral
 follows the same rule (ENGINE.md §10): static storage where the shape
 is fixed, `gameAllocator()` elsewhere.
 
-### M1 `Mu::` native library
+### `Mu::` native library
 
 | Symbol | Signature | Notes |
 |---|---|---|
 | `Mu::log::info` | `fn(msg: &str)` | prints `[mu:script]` |
 | `Mu::log::error` | `fn(msg: &str)` | prints `[mu:script:error]` |
 | `Mu::timing::frame` | `fn() u64` | current loop frame count |
+| `Mu::timing::now` | `fn() u64` | elapsed milliseconds (fixed-step clock) |
 | `Mu::scene::spawn` | `fn() u32` | new entity id; `NIL` when full |
 | `Mu::scene::despawn` | `fn(u32) bool` | true if the entity was alive |
 | `Mu::scene::setParent` | `fn(u32, u32) bool` | cycle-checked reparent |
+| `Mu::scene::frame` | `fn() u64` | entities handed out by the scene |
+| `Mu::render` | module marker | `use Mu::render;` |
+| `Mu::render::paint` | `fn(x, y, w, h, rgba)` | fill a rect in the framebuffer |
+| `Mu::render::draw` | `fn()` | present the current frame |
+| `Mu::physics::step` | `fn(dt) u64` | advance the scene simulation |
 | `Mu::platform::quit` | `fn()` | requests loop exit |
 
 <!-- FUTURE NATIVES (not implemented - ENGINE.md §11/§13/§14):
 | Mu::input::isDown / action     | keyboard/gamepad via named action map (§13) |
-| Mu::render::*                  | camera/mesh/material queries once M4 lands |
-| Mu::physics::step / raycast    | Jolt-backed (§9, M7)                        |
+| Mu::render::{camera, mesh}     | camera/mesh/material queries once M4 lands |
+| Mu::physics::raycast           | Jolt-backed queries (§9, M7)                |
 | Mu::audio::play / bus::volume  | bus mixer voices (§14, M6)                  |
 | component get/set              | @component types via ComponentRegistry (§11)|
 -->
@@ -238,9 +244,9 @@ is fixed, `gameAllocator()` elsewhere.
 ### Adding a native (the growth path)
 
 Everything is one-line incremental (see the header of
-`src/script/script.crl`):
+`src/script/natives.crl`):
 
-1. write a plain `static` fn in `script.crl`;
+1. write a plain `static` fn in `src/script/natives.crl`;
 2. one `natives->add("Mu::module::name", Native::XxxFn { .f = fn })` line
    - existing signature arms cover most cases; a genuinely new signature
    is one new arm in `variant Native`;
@@ -252,9 +258,11 @@ Everything is one-line incremental (see the header of
     // main.mu:  use Mu::input::isDown;
 -->
 
-The M2 loader keeps the same contract: resolve every `use`d symbol at
-load (fail with the path), then execute muc's WallVM IR (`IR.md` is the
-contract) with lifecycle hooks inside `load`/`update`/`free`.
+The loader resolves every `use`d symbol by hashing its path (FNV-1a) and
+probing the registry's hash table - no string comparison on lookup. `use`
+groups and `as` aliases are expanded by the loader; `scripts/types.mu`
+is scanned by the Mu type table the same way. M2 keeps this contract and
+adds WallVM IR execution (`IR.md`) inside `load`/`update`/`free`.
 
 ---
 

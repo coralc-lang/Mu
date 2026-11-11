@@ -1,0 +1,209 @@
+// Mu type table (types.mu / DESIGN §3).
+// Type names are hashed with the same FNV-1a function as native paths.
+// The loader recognizes the declaration forms types.mu uses
+// (type/variant/struct/const/fn), copies each name into caller-owned storage,
+// and lets engine/script code resolve by hash.
+
+use script::native { hashSymbol };
+use script::source { readText, trim, isSpace, startsWith, tokenEnd };
+
+static u8[32768] MuTypeSource;
+
+pub enum MuTypeKind
+{
+    Builtin,
+    Alias,
+    Struct,
+    Variant,
+    Const,
+    Function,
+    Container
+}
+
+pub struct MuTypeEntry
+{
+    u64 hash;
+    str name;
+    MuTypeKind kind;
+}
+
+pub struct MuTypeTable
+{
+    MuTypeEntry* entries;
+    u32 capacity;
+    u32 count;
+    u8* arena;          // stable name storage
+    usize arenaCapacity;
+    usize arenaUsed;
+
+    static MuTypeTable new(MuTypeEntry* entries, u32 capacity, u8* arena, usize arenaCapacity)
+    {
+        return MuTypeTable {
+            .entries = entries,
+            .capacity = capacity,
+            .count = 0,
+            .arena = arena,
+            .arenaCapacity = arenaCapacity,
+            .arenaUsed = 0
+        };
+    }
+
+    Result<u32, str> add(str name, MuTypeKind kind)
+    {
+        if (self.count >= self.capacity)
+            return Result<u32, str>::Err { .error = "mu types: table full" };
+        u64 hash = hashSymbol(name);
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (self.entries[i].hash == hash)
+            {
+                if (_strEq(self.entries[i].name, name))
+                    return Result<u32, str>::Err { .error = "mu types: duplicate name" };
+                return Result<u32, str>::Err { .error = "mu types: hash collision" };
+            }
+        }
+        if (self.arenaUsed + name.len > self.arenaCapacity)
+            return Result<u32, str>::Err { .error = "mu types: name arena full" };
+
+        u8* stored = self.arena + self.arenaUsed;
+        for (usize i = 0; i < name.len; i++) stored[i] = name.ptr[i];
+        self.arenaUsed = self.arenaUsed + name.len;
+
+        self.entries[self.count].hash = hash;
+        self.entries[self.count].name = str { .ptr = stored, .len = name.len };
+        self.entries[self.count].kind = kind;
+        self.count = self.count + 1;
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    MuTypeEntry* lookupHash(u64 hash)
+    {
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (self.entries[i].hash == hash) return &self.entries[i];
+        }
+        return null;
+    }
+
+    MuTypeEntry* lookup(str name)
+    {
+        return self.lookupHash(hashSymbol(name));
+    }
+
+    u32 countOf(MuTypeKind kind)
+    {
+        u32 n = 0;
+        for (u32 i = 0; i < self.count; i++)
+        {
+            if (self.entries[i].kind == kind) n = n + 1;
+        }
+        return n;
+    }
+
+    Result<u32, str> load(str path)
+    {
+        usize len = readText(path, MuTypeSource, 32768);
+        if (len == 0)
+            return Result<u32, str>::Err { .error = "mu types: file not found or empty" };
+
+        str source = str { .ptr = MuTypeSource, .len = len };
+        usize i = 0;
+        while (i < source.len)
+        {
+            usize start = i;
+            while (i < source.len && source.ptr[i] != '\n') i = i + 1;
+            str line = trim(str { .ptr = source.ptr + start, .len = i - start });
+            self._scanLine(line);
+            if (i < source.len) i = i + 1;
+        }
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    void _scanLine(str line)
+    {
+        if (line.len == 0) return;
+        if (line.ptr[0] == '/' && line.len > 1 && line.ptr[1] == '/') return;
+
+        if (startsWith(line, "type "))
+        {
+            self._addToken(trim(str { .ptr = line.ptr + 5, .len = line.len - 5 }), MuTypeKind::Alias);
+            return;
+        }
+        if (startsWith(line, "variant "))
+        {
+            self._addToken(trim(str { .ptr = line.ptr + 8, .len = line.len - 8 }), MuTypeKind::Variant);
+            return;
+        }
+        if (startsWith(line, "struct "))
+        {
+            self._addToken(trim(str { .ptr = line.ptr + 7, .len = line.len - 7 }), MuTypeKind::Struct);
+            return;
+        }
+        if (startsWith(line, "const "))
+        {
+            str rest = trim(str { .ptr = line.ptr + 6, .len = line.len - 6 });
+            usize firstEnd = tokenEnd(rest, 0);
+            str first = str { .ptr = rest.ptr, .len = firstEnd };
+            usize j = firstEnd;
+            while (j < rest.len && isSpace(rest.ptr[j])) j = j + 1;
+            if (j < rest.len && (rest.ptr[j] == '=' || rest.ptr[j] == ':'))
+            {
+                self.add(first, MuTypeKind::Const);
+            }
+            else
+            {
+                usize secondStart = j;
+                usize secondEnd = tokenEnd(rest, secondStart);
+                if (secondEnd > secondStart)
+                    self.add(str { .ptr = rest.ptr + secondStart, .len = secondEnd - secondStart },
+                        MuTypeKind::Const);
+            }
+            return;
+        }
+        if (startsWith(line, "fn "))
+        {
+            str rest = trim(str { .ptr = line.ptr + 3, .len = line.len - 3 });
+            self._addToken(rest, MuTypeKind::Function);
+        }
+    }
+
+    void _addToken(str text, MuTypeKind kind)
+    {
+        usize end = tokenEnd(text, 0);
+        if (end == 0) return;
+        self.add(str { .ptr = text.ptr, .len = end }, kind);
+    }
+}
+
+static bool _strEq(str a, str b)
+{
+    if (a.len != b.len) return false;
+    for (usize i = 0; i < a.len; i++)
+    {
+        if (a.ptr[i] != b.ptr[i]) return false;
+    }
+    return true;
+}
+
+// Built-in containers and scalar/boundary names referenced by types.mu.
+pub void registerMuBuiltins(MuTypeTable* types)
+{
+    types->add("Array", MuTypeKind::Container);
+    types->add("Map", MuTypeKind::Container);
+    types->add("Set", MuTypeKind::Container);
+    types->add("Queue", MuTypeKind::Container);
+    types->add("Pool", MuTypeKind::Container);
+    types->add("Bitset", MuTypeKind::Container);
+
+    types->add("string", MuTypeKind::Builtin);
+    types->add("bool", MuTypeKind::Builtin);
+    types->add("f32", MuTypeKind::Builtin);
+    types->add("f64", MuTypeKind::Builtin);
+    types->add("i8", MuTypeKind::Builtin);
+    types->add("i32", MuTypeKind::Builtin);
+    types->add("i64", MuTypeKind::Builtin);
+    types->add("u8", MuTypeKind::Builtin);
+    types->add("u16", MuTypeKind::Builtin);
+    types->add("u32", MuTypeKind::Builtin);
+    types->add("u64", MuTypeKind::Builtin);
+}

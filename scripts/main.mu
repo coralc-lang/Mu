@@ -1,37 +1,49 @@
-// Demo script (ENGINE.md §8 M1) - compiled by muc at M2.
-// Engine built-ins are prelude - always in scope, bare calls, no @
-// prefix; the `use Mu::...` lines below are explicit tracking of what
-// this script depends on (DESIGN §2/§14). `@extern` stays reserved for
-// genuinely foreign functions - C the engine does not provide. Lifecycle
-// hooks (§5) run inside the loop's script phase; this script is bound
-// to an entity through ScriptBindings (engine side).
+// Mu gameplay script for the particle sandbox (ENGINE.md §5/§8).
+// The engine pre-resolves these `use` paths by hash at load; at M2 the host
+// executes the lifecycle hooks below from the loop's script phase.
 
+use Mu::render::{paint};
+use Mu::render;
+use Mu::render::draw as blit;
+use Mu::physics::step;
+use Mu::scene::{spawn, despawn, frame};
 use Mu::log::info;
-use Mu::timing::frame;
-use Mu::scene::{spawn, despawn, setParent};
+use Mu::timing::{frame, now};
 
 fn onLoad() {
-    let child = spawn();
-    if setParent(child, 0) {
-        info("main.mu: spawned entity parented under root");
-    } else {
-        info("main.mu: setParent rejected");
-    }
+    info("particles.mu: online");
+    paint(16, 28, 96, 4, 0x45D6A8FF);
+    blit();
 }
 
 fn onUpdate(dt: f32) {
-    let f = frame();
-    if f == 300 && dt > 0.0 {
-        info("main.mu: frame 300 - onUpdate is live");
+    step(dt);
+
+    let tick = Mu::timing::frame();
+    let elapsed = now();
+    let live = Mu::scene::frame();
+
+    // Recording pulse in the lower-left corner of the HUD.
+    let phase = (tick % 60) as i32;
+    paint(16, 28, 96, 3, 0x18322EFF);
+    paint(16, 28, phase + 2, 3, 0x45D6A8FF);
+
+    if tick % 120 == 0 {
+        info("particles.mu: heartbeat");
     }
-    if f == 500 {
-        let doomed = spawn();
-        if despawn(doomed) {
-            info("main.mu: spawn/despawn round-trip ok");
+    if tick == 180 {
+        let spare = spawn();
+        if despawn(spare) {
+            info("particles.mu: spawn/despawn round-trip ok");
         }
     }
+    if tick == 240 && elapsed > 3000 && live > 0 {
+        info("particles.mu: update loop is live");
+    }
+
+    blit();
 }
 
 fn onUnload() {
-    info("main.mu: onUnload");
+    info("particles.mu: offline");
 }

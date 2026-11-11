@@ -82,7 +82,7 @@ Mu_engine/
     demo registers `demo`; @component auto-registration (DESIGN §16) and
     the M2 component get/set natives (§11) feed/dispatch through this
     same table — one add line per component type.
-  - `ScriptBindings` (in `script/script.crl`) — entity → script path:
+  - `ScriptBindings` (in `script/bindings.crl`) — entity → script path:
     composition-only attachment, multiple scripts per entity,
     `bind` rejects dead entities, `unbind` / `countFor`. M2 instantiates
     one script instance per binding (§5).
@@ -159,7 +159,7 @@ Mu/
       engine/        # entry module: lib.crl + main.crl (the `main()` entry)
       math/          # Vec3/Quat/RVec3 — methods, chainable
       scene/         # entities, transform hierarchy, ComponentStore
-      render/        # Renderer fn-ptr interface (+ null backend)
+      render/        # Renderer fn-ptr interface (+ software framebuffer/PPM)
       physics/       # JoltC v5.6.0 extern port
       sdl/           # SDL 3.4.18 extern port (window/input/audio only, ready before M3)
       bgfx/          # bgfx C99 extern port (graphics-API-agnostic backend, ready before M3/M4)
@@ -239,9 +239,9 @@ Core features adopted now (cheap to design early, painful to retrofit):
   that looks considered. UI quality is a milestone gate, not a polish item.
 - **Physics engine: Jolt 5.6.0 + JoltC.** Jolt is pinned at **v5.6.0**;
   its C API is **EvergineTeam/JoltPhysicsC** (targets v5.6.0, MIT, 259-test
-  suite), ported 1:1 to Coral as `Mu_engine/src/physics/physics.crl`
-  (`extern` decls, unmangled, ABI-checked typedefs: ObjectLayer = u16,
-  BroadPhaseLayer = u8, BodyID = u32). Native side builds static
+  suite), ported 1:1 to Coral as `src/physics/jolt.crl` (raw `extern` decls,
+  ABI-checked typedefs: ObjectLayer = u16, BroadPhaseLayer = u8,
+  BodyID = u32); the headless integrator lives in `src/physics/sim.crl`. Native side builds static
   `libJoltC.a` + `libJolt.a` from `native/CMakeLists.txt`. Character
   controller, collision layers, queries, ragdolls keep their own plan (M7).
 - **Game allocator: mimalloc (Coral std).** Not a top-level std file — it
@@ -294,30 +294,38 @@ Core features adopted now (cheap to design early, painful to retrofit):
 - Consequence for CI: allocation is deterministic and bounded — capped
   headless runs (§6) never depend on GC pauses or runtime RC decisions.
 
-## 11. Script host & native registry (M1/M2) — **Scaffolded (M1) / Planned (M2)**
+## 11. Script host & native registry (M1/M2) — **M1 live / M2 planned**
 
-- **Scaffold (2026-10-09, `src/script/`):**
-  - `NativeRegistry` — name → function-pointer table; values are
-    signature-tagged (`variant Native`, **one arm per signature**, not per
-    native); caller-provided static storage like Scene (§10); `resolve`
-    for lookups, `lookup` for the M2 dispatch path (pointer into the table).
-  - `ScriptHost` — `load` / `update` / `free` stubs (M2 replaces bodies
-    with IR execution) plus `require(name)`, which resolves a script's
-    @extern list up front and fails with the missing name (DESIGN §14).
+- **M1 (live, `src/script/`):**
+  - `NativeRegistry` — **FNV-1a path hash → function-pointer table**
+    (open-addressed, caller-provided static storage like Scene, §10).
+    Values are signature-tagged (`variant Native`, **one arm per
+    signature**, not per native). `lookupHash` is the dispatch path; the
+    loader never compares strings.
+  - `ScriptHost.load` reads the `.mu` source, expands `use` groups and
+    `as` aliases, hashes every `Mu::...` path, and probes the registry —
+    a miss fails there with the path (DESIGN §14). IR execution replaces
+    the body at M2.
   - Engine-library natives (Mu:: paths, DESIGN §2 `use`):
     `Mu::log::info`, `Mu::log::error`, `Mu::timing::frame`,
-    `Mu::scene::spawn`, `Mu::scene::despawn`, `Mu::scene::setParent`,
-    `Mu::platform::quit` (the cross-layer request `platform/` always
-    anticipated). Context (scene, frame counter) is bound host-side —
-    plain fn pointers, no closures cross the boundary (§5); `@extern`
-    is not involved (foreign-only). Entity→script binding lives here too
+    `Mu::timing::now`, `Mu::scene::spawn`, `Mu::scene::despawn`,
+    `Mu::scene::setParent`, `Mu::scene::frame`, `Mu::render` (module
+    marker), `Mu::render::paint`, `Mu::render::draw`,
+    `Mu::physics::step`, `Mu::platform::quit`. Context (scene, clock,
+    framebuffer, simulation) is bound host-side — plain fn pointers, no
+    closures cross the boundary (§5); `@extern` is not involved
+    (foreign-only). Entity→script binding lives here too
     (`ScriptBindings`, §4/§5).
+  - `MuTypeTable` scans `scripts/types.mu` for type/variant/struct/
+    const/fn declarations, stores names in caller-owned arena storage,
+    and registers built-in containers (`Array`, `Map`, `Set`, `Queue`,
+    `Pool`, `Bitset`).
   - `scriptSystem` — ticked by `Loop` through a fn-ptr slot in `frame()`
     at the §6 position; `engine/main` wires ctx+fn, so core never imports
     script (same pattern as `Renderer.draw`).
-  - Demo: `Mu_engine/scripts/main.mu` (written, compiled by muc at M2);
-    `engine/main` exercises require/resolve/load, the negative
-    missing-native probe, and reports `script updates: 600` from the run.
+  - Demo: `engine/main` is a software-rendered 300-frame particle
+    sandbox. It reports hash-loader results, calls registered natives
+    through their typed arm, and writes `build/frame.ppm`.
 - **Growth path (incremental by construction):** a native that fits an
   existing signature = one static fn + one `natives->add(...)` line; a new
   boundary signature = one new `Native` arm + the add line. Registry,
@@ -333,9 +341,11 @@ Core features adopted now (cheap to design early, painful to retrofit):
   used symbol against the table and fails with the path. `@extern fn ...;`
   stays for foreign C functions only (DESIGN §14).
 - Initial natives (the `Mu::` library): `Mu::log::info`, `Mu::log::error`,
-  `Mu::timing::frame`, `Mu::scene::spawn` / `Mu::scene::despawn`,
-  `Mu::scene::setParent`, `Mu::platform::quit`, plus component get/set
-  for `@component` types (§9).
+  `Mu::timing::frame` / `Mu::timing::now`, `Mu::scene::spawn` /
+  `Mu::scene::despawn` / `Mu::scene::setParent` / `Mu::scene::frame`,
+  `Mu::render` (module marker) / `Mu::render::paint` /
+  `Mu::render::draw`, `Mu::physics::step`, `Mu::platform::quit`, plus
+  component get/set for `@component` types (§9).
 - Boundary types only (§5): `EntityId (u32)`, scalars, `Vec2/Vec3`, `str`.
   No Coral structs, no pointers cross.
 - Lifecycle hooks driven by the loop (§6): `onLoad`, `onUpdate(dt)`,

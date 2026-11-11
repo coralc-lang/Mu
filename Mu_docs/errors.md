@@ -190,22 +190,22 @@ No codes, no severity levels, no warning channel. Two styles:
 |---|---|---|
 | `[mu] {msg}` | `core::logInfo` | `src/core/core.crl:16` |
 | `[mu:error] {msg}` | `core::logError` | `src/core/core.crl:21` |
-| `[mu:error] unresolved Mu:: library symbol: {name}` | `ScriptHost.require()` miss at load | `src/script/script.crl:149` |
-| `[mu] script loaded (M1 stub — executes at M2): {path}` | load notice (scripts do not execute yet) | `src/script/script.crl:161` |
-| `[mu:script] {msg}` | native `Mu::log::info` | `src/script/script.crl:261` |
-| `[mu:script:error] {msg}` | native `Mu::log::error` | `src/script/script.crl:266` |
-| `[mu:script] setParent rejected: {err}` | `Scene::setParent` returned `Err` | `src/script/script.crl:299` |
+| `[mu:error] unresolved Mu:: library symbol: {name}` | `ScriptHost.require()` miss at load | `src/script/loader.crl:42` |
+| `[mu] script loaded (M1 stub — executes at M2): {path}` | load notice (scripts do not execute yet) | `src/script/loader.crl:67` |
+| `[mu:script] {msg}` | native `Mu::log::info` | `src/script/natives.crl:20` |
+| `[mu:script:error] {msg}` | native `Mu::log::error` | `src/script/natives.crl:25` |
+| `[mu:script] setParent rejected: {err}` | `Scene::setParent` returned `Err` | `src/script/natives.crl:64` |
 
 ### 2.2 Returned error strings
 
 | string | trigger | site |
 |---|---|---|
-| `native registry: duplicate name` | duplicate `Mu::…` registration | `script.crl:76` |
-| `native registry: table full` | registry capacity exhausted | `script.crl:79` |
-| `load: unresolved library symbol (path above)` | `require()` miss (pairs with printed #3) | `script.crl:150` |
-| `bind: no scene bound` | bind before a scene exists | `script.crl:215` |
-| `bind: entity is dead or invalid` | despawned/out-of-range id at bind | `script.crl:217` |
-| `bind: table full` | binding capacity exhausted | `script.crl:219` |
+| `native registry: duplicate name` | duplicate `Mu::…` registration | `script/native.crl:120` |
+| `native registry: table full` | registry capacity exhausted | `script/native.crl:111` |
+| `load: unresolved library symbol (path above)` | `require()` miss (pairs with printed #3) | `script/loader.crl:43` |
+| `bind: no scene bound` | bind before a scene exists | `script/bindings.crl:31` |
+| `bind: entity is dead or invalid` | despawned/out-of-range id at bind | `script/bindings.crl:33` |
+| `bind: table full` | binding capacity exhausted | `script/bindings.crl:35` |
 | `setParent: child is dead or invalid` | `Scene::setParent` | `scene.crl:129` |
 | `setParent: parent is dead or invalid` | idem | `scene.crl:133` |
 | `setParent: cycle rejected - parent is a descendant of child` | cycle guard | `scene.crl:135` |

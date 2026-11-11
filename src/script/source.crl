@@ -1,0 +1,77 @@
+// Small text/file helpers shared by the script loader and Mu type scanner.
+// All engine file I/O goes through std::fios (not raw libc), keeping the
+// stdio boundary in one place.
+
+import std::fios { FileHandle, fileOpen, fileRead, fileClose };
+import std::fs { IoError };
+
+pub usize readText(str path, u8* buffer, usize capacity)
+{
+    if (capacity == 0) return 0;
+    Result<FileHandle, IoError> opened = fileOpen(path, "rb");
+    if (opened.isErr()) return 0;
+
+    FileHandle file = opened.unwrap();
+    usize total = 0;
+    while (total < capacity - 1)
+    {
+        Result<usize, IoError> got = fileRead(file, buffer + total, capacity - 1 - total);
+        if (got.isErr()) break;
+        usize n = got.unwrap();
+        if (n == 0) break;
+        total = total + n;
+    }
+    fileClose(file);
+    buffer[total] = 0;
+    return total;
+}
+
+pub bool isSpace(u8 c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+pub str trim(str s)
+{
+    usize start = 0;
+    usize end = s.len;
+    while (start < end && isSpace(s.ptr[start])) start = start + 1;
+    while (end > start && isSpace(s.ptr[end - 1])) end = end - 1;
+    return str { .ptr = s.ptr + start, .len = end - start };
+}
+
+pub bool startsWith(str s, str prefix)
+{
+    if (prefix.len > s.len) return false;
+    for (usize i = 0; i < prefix.len; i++)
+    {
+        if (s.ptr[i] != prefix.ptr[i]) return false;
+    }
+    return true;
+}
+
+pub usize findAs(str s)
+{
+    if (s.len < 4) return s.len;
+    for (usize i = 0; i + 3 < s.len; i++)
+    {
+        if (s.ptr[i] == ' ' && s.ptr[i + 1] == 'a'
+            && s.ptr[i + 2] == 's' && s.ptr[i + 3] == ' ')
+            return i;
+    }
+    return s.len;
+}
+
+pub usize tokenEnd(str s, usize start)
+{
+    usize i = start;
+    while (i < s.len)
+    {
+        u8 c = s.ptr[i];
+        if (isSpace(c) || c == '{' || c == '}' || c == '=' || c == ';'
+            || c == '(' || c == ')' || c == '[' || c == ']' || c == ':')
+            break;
+        i = i + 1;
+    }
+    return i;
+}

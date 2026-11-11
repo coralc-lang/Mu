@@ -48,7 +48,7 @@ are **not** stored/honored. The full set coralc should eventually support:
 - `#[[inline]]` — hint the fn is inlinable (recognized spelling like inline)
 - `#[[const]]` — const method/fn (cannot mutate self/params) ⇐ also spelled
   `Type name(params) const {}`.
-- `#[[no_std]]`? not yet.  `extern("C") name()`.
+- `#[[no_std]]`? not yet. `#[[extern]]`? fn extern already uses `extern name()` or `extern("C") name()`.
 - `#[[threadlocal]]` — static storage is thread-local
 - `#[[noalias]]` — the pointer arg does not alias
 - `#[[condassign]]` — allow `=` (assign) at the top level of the next condition

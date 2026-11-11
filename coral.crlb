@@ -4,7 +4,7 @@ strict = true;
 build "MuEngine" {
     root       = "src/";
     entry      = "engine/main.crl";
-    target     = "native-x86_64";
+    target     = "x86_64";
     opt        = "debug";
     output     = "build/muengine";
     module_map = ".coral/modules.map";
@@ -14,26 +14,15 @@ build "MuEngine" {
 
     modules = [
         "alloc",
-        "bgfx",
-        "cgltf",
         "core",
-        "drlibs",
         "engine",
-        "fastnoise",
-        "ktx",
         "math",
-        "mikktspace",
-        "miniz",
         "physics",
         "platform",
         "render",
         "scene",
         "script",
-        "sdl",
-        "stb",
-        "tinyexr",
-        "tracy",
-        "zstd"
+        "thirdparty"
     ];
 
     link {
