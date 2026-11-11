@@ -1,0 +1,123 @@
+// Hash-keyed Coral <-> Mu binding table.
+//
+// The compiler owns symbol mangling and emits the u64 hash of the canonical
+// symbol bytes (FNV-1a 64, see core/hash.crl). This module never parses source,
+// demangles, or compares names. A function and a type share the same table:
+//
+//   hash -> Binding::Function { Native }   // callable engine/native symbol
+//        -> Binding::Type { size, align }  // registered type layout
+//
+// The table is optional safety for the host (collision/duplicate detection and
+// type metadata); direct linked symbols still work without it. Storage is
+// caller-provided (static, ENGINE.md §10), like Scene and ScriptBindings.
+
+use scene::scene { EntityId };
+
+// One arm per *signature*, not per function.
+pub variant Native
+{
+    Module,                                     // module marker for `use Mu::render;`
+    UnitFn { void() f; }                        // fn()
+    StrFn { void(str) f; }                      // fn(str)
+    CountFn { u64() f; }                        // fn() -> u64
+    IdFn { EntityId() f; }                      // fn() -> EntityId (NIL when full)
+    IdPredFn { bool(EntityId) f; }              // fn(EntityId) -> bool
+    IdPairFn { bool(EntityId, EntityId) f; }    // fn(EntityId, EntityId) -> bool
+    PaintFn { void(i32, i32, i32, i32, u32) f; }// fn(x, y, w, h, rgba)
+    DeltaFn { u64(f32) f; }                     // fn(dt) -> count
+}
+
+pub variant Binding
+{
+    Function { Native native },
+    Type { u32 size; u32 align; }
+}
+
+pub struct BindingEntry
+{
+    u64 hash;
+    Binding binding;
+    bool used;
+}
+
+pub struct BindingTable
+{
+    BindingEntry* entries;   // caller-provided storage (static, §10)
+    u32 capacity;
+    u32 count;
+
+    static BindingTable new(BindingEntry* entries, u32 capacity)
+    {
+        BindingTable table = BindingTable {
+            .entries = entries,
+            .capacity = capacity,
+            .count = 0
+        };
+        for (u32 i = 0; i < capacity; i++)
+        {
+            table.entries[i].hash = 0;
+            table.entries[i].used = false;
+        }
+        return table;
+    }
+
+    u32 _slot(u64 hash)
+    {
+        if (self.capacity == 0) return 0;
+        return (u32)(hash % (u64)self.capacity);
+    }
+
+    // Caller-provided capacity is intentionally finite; a full table is a
+    // registration bug, not a runtime condition.
+    Result<u32, str> _insert(u64 hash, Binding binding)
+    {
+        if (self.capacity == 0)
+            return Result<u32, str>::Err { .error = "binding: no storage" };
+        if (self.count >= self.capacity)
+            return Result<u32, str>::Err { .error = "binding: table full" };
+
+        u32 index = self._slot(hash);
+        while (self.entries[index].used)
+        {
+            if (self.entries[index].hash == hash)
+                return Result<u32, str>::Err { .error = "binding: duplicate hash" };
+            index = index + 1;
+            if (index >= self.capacity) index = 0;
+        }
+
+        self.entries[index].hash = hash;
+        self.entries[index].binding = binding;
+        self.entries[index].used = true;
+        self.count = self.count + 1;
+        return Result<u32, str>::Ok { .value = self.count };
+    }
+
+    Result<u32, str> addFunction(u64 hash, Native native)
+    {
+        return self._insert(hash, Binding::Function { .native = native });
+    }
+
+    Result<u32, str> addType(u64 hash, u32 size, u32 align)
+    {
+        return self._insert(hash, Binding::Type { .size = size, .align = align });
+    }
+
+    // Dispatch path: one hash probe, then the typed arm. No names involved.
+    // Null means absent; callers switch on the Binding variant directly.
+    Binding* lookup(u64 hash)
+    {
+        if (self.capacity == 0) return null;
+        u32 index = self._slot(hash);
+        u32 probes = 0;
+        while (probes < self.capacity)
+        {
+            if (!self.entries[index].used) return null;
+            if (self.entries[index].hash == hash)
+                return &self.entries[index].binding;
+            index = index + 1;
+            if (index >= self.capacity) index = 0;
+            probes = probes + 1;
+        }
+        return null;
+    }
+}

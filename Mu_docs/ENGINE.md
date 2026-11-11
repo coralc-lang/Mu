@@ -294,65 +294,38 @@ Core features adopted now (cheap to design early, painful to retrofit):
 - Consequence for CI: allocation is deterministic and bounded — capped
   headless runs (§6) never depend on GC pauses or runtime RC decisions.
 
-## 11. Script host & native registry (M1/M2) — **M1 live / M2 planned**
+## 11. Script host & binding table (M1/M2) — **M1 live / M2 planned**
 
-- **M1 (live, `src/script/`):**
-  - `NativeRegistry` — **FNV-1a path hash → function-pointer table**
-    (open-addressed, caller-provided static storage like Scene, §10).
-    Values are signature-tagged (`variant Native`, **one arm per
-    signature**, not per native). `lookupHash` is the dispatch path; the
-    loader never compares strings.
-  - `ScriptHost.load` reads the `.mu` source, expands `use` groups and
-    `as` aliases, hashes every `Mu::...` path, and probes the registry —
-    a miss fails there with the path (DESIGN §14). IR execution replaces
-    the body at M2.
-  - Engine-library natives (Mu:: paths, DESIGN §2 `use`):
-    `Mu::log::info`, `Mu::log::error`, `Mu::timing::frame`,
-    `Mu::timing::now`, `Mu::scene::spawn`, `Mu::scene::despawn`,
-    `Mu::scene::setParent`, `Mu::scene::frame`, `Mu::render` (module
-    marker), `Mu::render::paint`, `Mu::render::draw`,
-    `Mu::physics::step`, `Mu::platform::quit`. Context (scene, clock,
-    framebuffer, simulation) is bound host-side — plain fn pointers, no
-    closures cross the boundary (§5); `@extern` is not involved
-    (foreign-only). Entity→script binding lives here too
-    (`ScriptBindings`, §4/§5).
-  - `MuTypeTable` scans `scripts/types.mu` for type/variant/struct/
-    const/fn declarations, stores names in caller-owned arena storage,
-    and registers built-in containers (`Array`, `Map`, `Set`, `Queue`,
-    `Pool`, `Bitset`).
-  - `scriptSystem` — ticked by `Loop` through a fn-ptr slot in `frame()`
-    at the §6 position; `engine/main` wires ctx+fn, so core never imports
-    script (same pattern as `Renderer.draw`).
-  - Demo: `engine/main` is a software-rendered 300-frame particle
-    sandbox. It reports hash-loader results, calls registered natives
-    through their typed arm, and writes `build/frame.ppm`.
-- **Growth path (incremental by construction):** a native that fits an
-  existing signature = one static fn + one `natives->add(...)` line; a new
-  boundary signature = one new `Native` arm + the add line. Registry,
-  host, and loop call sites never change — lifecycle hook bodies (§5),
-  `@component` get/set natives (below), and further natives slot in behind
-  the same API. Boundary types only (§5): `EntityId (u32)`, scalars,
-  `Vec2/Vec3`, `str`.
-
-- `ScriptHost` with `load()`, `update(dt)`, `free()` — stubs at M1, real
-  execution at M2 (§8).
-- **Native registry:** library path → function-pointer table owned by the
-  host. Scripts `use Mu::...;` (DESIGN §2); at load the host resolves each
-  used symbol against the table and fails with the path. `@extern fn ...;`
-  stays for foreign C functions only (DESIGN §14).
-- Initial natives (the `Mu::` library): `Mu::log::info`, `Mu::log::error`,
-  `Mu::timing::frame` / `Mu::timing::now`, `Mu::scene::spawn` /
-  `Mu::scene::despawn` / `Mu::scene::setParent` / `Mu::scene::frame`,
-  `Mu::render` (module marker) / `Mu::render::paint` /
-  `Mu::render::draw`, `Mu::physics::step`, `Mu::platform::quit`, plus
-  component get/set for `@component` types (§9).
-- Boundary types only (§5): `EntityId (u32)`, scalars, `Vec2/Vec3`, `str`.
-  No Coral structs, no pointers cross.
-- Lifecycle hooks driven by the loop (§6): `onLoad`, `onUpdate(dt)`,
-  `onEvent(...)`, `onUnload` — any may be absent.
-- M2: muc's WallVM IR output is consumed and executed; `main.mu`'s
-  `onUpdate` runs inside the loop. `IR.md` is the contract.
-
+- **Binding identity is compiler-owned.** `muc` mangles and hashes canonical
+  symbols; the engine never parses `.mu`, expands `use` groups, demangles, or
+  compares names at runtime. Full details: [`BINDINGS.md`](BINDINGS.md).
+- **Hash:** FNV-1a 64 over the compiler's exact symbol bytes
+  (`src/core/hash.crl`), fixed constants, no per-run seed.
+- **Binding table** (`src/script/abi.crl`) — open-addressed
+  `u64 -> Binding`, caller-provided static storage (like `Scene`, §10):
+  - `Binding::Function { Native }` — signature-tagged function pointer
+    (`variant Native`, one arm per boundary signature, not per function).
+  - `Binding::Type { size, align }` — optional type-layout metadata for
+    tools/hot reload/@component access; not needed to resolve symbols.
+  - Registration uses compiler-emitted hash constants. Hand-written
+    `Mu::...` source strings are not ABI names and are not registered.
+  - `lookup(hash)` probes by hash only; duplicate/full tables fail at
+    registration. The table is optional safety; direct linked symbols work
+    without it.
+- **`ScriptHost`** (`src/script/loader.crl`) is the IR/lifecycle seam:
+  `load()`, `update(dt)`, `free()`. `load` records the module; M2 replaces it
+  with WallVM IR ingestion (`IR.md`). `requireHash` / `requireFunction`
+  resolve compiler-emitted hashes against the table for diagnostics.
+- **`ScriptBindings`** (`src/script/bindings.crl`) remains the
+  entity → script-path attachment (§4/§5).
+- **`scriptSystem`** is ticked by `Loop` through a fn-ptr slot at the §6
+  position; core never imports script (same pattern as `Renderer.draw`).
+- **Growth path:** a native that fits an existing signature is one static
+  function + one `addFunction(hash, Native::XxxFn { ... })` line. A new
+  boundary signature is one new `Native` arm. No loader/parser change.
+  Boundary types only (§5): `EntityId (u32)`, scalars, `Vec2/Vec3`, `str`.
+- **Types:** no runtime type table is required. Type hashes resolve through
+  the same `BindingTable`; layout entries are optional safety metadata.
 ## 12. Signals — **Planned**
 
 - One engine-owned registry: signal name → subscriber list (engine

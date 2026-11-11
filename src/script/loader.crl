@@ -1,220 +1,69 @@
-// Script loader: read a .mu source file, expand its `use` groups/aliases,
-// hash every Mu:: path, and prove each one against the native registry.
-// IR execution (M2) slots into load/update/free without changing callers.
+// Script host lifecycle. This is the compiler seam, not a parser:
+// muc compiles .mu ahead of time and hands the host IR plus compiler-emitted
+// symbol hashes. Runtime source scanning, `use` expansion, and type parsing
+// are compiler work and intentionally absent here.
+//
+// M2 replaces load() with IR ingestion and update() with WallVM execution.
+// The binding table is available now so natives can be resolved by hash.
 
-use script::native { Native, NativeRegistry };
-use script::source { readText, trim, isSpace, findAs };
-
-static u8[32768] MuScriptSource;
+use script::abi { Binding, BindingTable, Native };
 
 pub struct ScriptHost
 {
-    NativeRegistry* natives;
+    BindingTable* bindings;
     str path;
     bool loaded;
     u64 updateCalls;      // diagnostics: frames ticked (survives free)
-    u32 usesResolved;
-    u32 usesMissing;
 
-    static ScriptHost new(NativeRegistry* natives)
+    static ScriptHost new(BindingTable* bindings)
     {
         return ScriptHost {
-            .natives = natives,
+            .bindings = bindings,
             .path = "",
             .loaded = false,
-            .updateCalls = 0,
-            .usesResolved = 0,
-            .usesMissing = 0
+            .updateCalls = 0
         };
     }
 
-    // Resolve one symbol now by hashing the path (same key as add()).
-    Result<Native, str> require(str name)
+    // Resolve a compiler-emitted hash. `path` is only for the diagnostic.
+    Result<Binding*, str> requireHash(u64 hash, str path)
     {
-        return self.requireHash(self.natives->hashOf(name), name);
-    }
-
-    Result<Native, str> requireHash(u64 hash, str name)
-    {
-        Native* native = self.natives->lookupHash(hash);
-        if (native == null)
+        Binding* binding = self.bindings->lookup(hash);
+        if (binding == null)
         {
-            println("[mu:error] unresolved Mu:: library symbol: {}", name);
-            return Result<Native, str>::Err { .error = "load: unresolved library symbol (path above)" };
+            println("[mu:error] unresolved binding: {}", path);
+            return Result<Binding*, str>::Err { .error = "binding: not found" };
         }
-        return Result<Native, str>::Ok { .value = native[0] };
+        return Result<Binding*, str>::Ok { .value = binding };
     }
 
+    Result<Native, str> requireFunction(u64 hash, str path)
+    {
+        Binding* binding = self.bindings->lookup(hash);
+        if (binding == null)
+        {
+            println("[mu:error] unresolved function binding: {}", path);
+            return Result<Native, str>::Err { .error = "binding: function not found" };
+        }
+        switch (binding[0])
+        {
+            Function { native } => {
+                return Result<Native, str>::Ok { .value = native };
+            },
+            else => {
+                println("[mu:error] binding is not a function: {}", path);
+                return Result<Native, str>::Err { .error = "binding: not a function" };
+            }
+        }
+        return Result<Native, str>::Err { .error = "binding: not a function" };
+    }
+
+    // Compiler/IR hook: the host records the module; nothing is parsed here.
     Result<u32, str> load(str path)
     {
         self.path = path;
-        self.usesResolved = 0;
-        self.usesMissing = 0;
-
-        usize len = readText(path, MuScriptSource, 32768);
-        if (len == 0)
-        {
-            println("[mu:error] script not found or empty: {}", path);
-            return Result<u32, str>::Err { .error = "load: script not found or empty" };
-        }
-
-        str source = str { .ptr = MuScriptSource, .len = len };
-        self._scanUses(source);
-        if (self.usesMissing > 0)
-            return Result<u32, str>::Err { .error = "load: unresolved library symbol(s)" };
-
         self.loaded = true;
-        println("[mu] script loaded: {} ({} uses resolved by hash)", path, self.usesResolved);
-        return Result<u32, str>::Ok { .value = self.usesResolved };
-    }
-
-    void _scanUses(str source)
-    {
-        usize i = 0;
-        bool lineComment = false;
-        while (i < source.len)
-        {
-            u8 c = source.ptr[i];
-            if (lineComment)
-            {
-                if (c == '\n') lineComment = false;
-                i = i + 1;
-                continue;
-            }
-            if (c == '/' && i + 1 < source.len && source.ptr[i + 1] == '/')
-            {
-                lineComment = true;
-                i = i + 2;
-                continue;
-            }
-
-            bool isUse = c == 'u' && i + 3 < source.len
-                && source.ptr[i + 1] == 's' && source.ptr[i + 2] == 'e'
-                && source.ptr[i + 3] == ' ';
-            if (isUse)
-            {
-                bool boundary = i == 0;
-                if (!boundary)
-                {
-                    u8 prev = source.ptr[i - 1];
-                    boundary = isSpace(prev) || prev == ';' || prev == '{' || prev == '}';
-                }
-                if (boundary)
-                {
-                    usize start = i + 4;
-                    usize end = start;
-                    while (end < source.len && source.ptr[end] != ';'
-                        && source.ptr[end] != '\n')
-                        end = end + 1;
-                    self._resolveUse(str { .ptr = source.ptr + start, .len = end - start });
-                    i = end;
-                    continue;
-                }
-            }
-            i = i + 1;
-        }
-    }
-
-    void _resolveUse(str text)
-    {
-        str usePath = trim(text);
-        usize brace = usePath.len;
-        for (usize i = 0; i < usePath.len; i++)
-        {
-            if (usePath.ptr[i] == '{') { brace = i; break; }
-        }
-
-        usize alias = findAs(str { .ptr = usePath.ptr, .len = brace });
-        if (alias < brace)
-        {
-            usePath = trim(str { .ptr = usePath.ptr, .len = alias });
-            brace = usePath.len;
-        }
-
-        if (brace == usePath.len)
-        {
-            self._resolvePath(usePath);
-            return;
-        }
-
-        usize close = usePath.len;
-        for (usize i = brace + 1; i < usePath.len; i++)
-        {
-            if (usePath.ptr[i] == '}') { close = i; break; }
-        }
-        if (close == usePath.len)
-        {
-            self.usesMissing = self.usesMissing + 1;
-            println("[mu:error] malformed use group: {}", usePath);
-            return;
-        }
-
-        str prefix = trim(str { .ptr = usePath.ptr, .len = brace });
-        usize start = brace + 1;
-        usize depth = 0;
-        for (usize i = brace + 1; i <= close; i++)
-        {
-            bool atEnd = i == close;
-            if (!atEnd)
-            {
-                u8 c = usePath.ptr[i];
-                if (c == '{') { depth = depth + 1; continue; }
-                if (c == '}') { depth = depth - 1; continue; }
-                if (c != ',' || depth != 0) continue;
-            }
-            str item = trim(str { .ptr = usePath.ptr + start, .len = i - start });
-            self._resolveItem(prefix, item);
-            start = i + 1;
-        }
-    }
-
-    void _resolveItem(str prefix, str item)
-    {
-        if (item.len == 0) return;
-
-        u8[192] path;
-        usize n = 0;
-        for (usize i = 0; i < prefix.len && n < 190; i++)
-        {
-            path[n] = prefix.ptr[i];
-            n = n + 1;
-        }
-        bool needSep = n > 0;
-        if (needSep && path[n - 1] == ':') needSep = false;
-        if (needSep && item.len > 1 && item.ptr[0] == ':' && item.ptr[1] == ':')
-            needSep = false;
-        if (needSep)
-        {
-            path[n] = ':';
-            path[n + 1] = ':';
-            n = n + 2;
-        }
-        for (usize i = 0; i < item.len && n < 191; i++)
-        {
-            path[n] = item.ptr[i];
-            n = n + 1;
-        }
-
-        str full = str { .ptr = path, .len = n };
-        usize alias = findAs(full);
-        if (alias < full.len)
-            full = trim(str { .ptr = full.ptr, .len = alias });
-        self._resolvePath(full);
-    }
-
-    void _resolvePath(str path)
-    {
-        if (path.len == 0) return;
-        u64 hash = self.natives->hashOf(path);
-        if (self.natives->lookupHash(hash) != null)
-        {
-            self.usesResolved = self.usesResolved + 1;
-        }
-        else
-        {
-            self.usesMissing = self.usesMissing + 1;
-            println("[mu:error] unresolved Mu:: library symbol: {}", path);
-        }
+        return Result<u32, str>::Ok { .value = 0 };
     }
 
     // §6 slot: engine/main ticks this between scene.update and draw.
@@ -229,4 +78,11 @@ pub struct ScriptHost
         self.loaded = false;
         self.path = "";
     }
+}
+
+// Loop slot: tick the host without making core depend on script.
+pub void scriptSystem(rawptr ctx, f32 dt)
+{
+    ScriptHost* host = (ScriptHost*)ctx;
+    host->update(dt);
 }

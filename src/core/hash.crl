@@ -1,0 +1,38 @@
+// ABI hashing: FNV-1a 64 over the compiler's canonical symbol bytes.
+// The engine never reconstructs mangled names; it only hashes the exact
+// bytes the Mu/Coral compilers produced (or the paths they will produce).
+// Fixed constants only - no per-run seed, so hashes are stable across runs,
+// machines, and hot reloads.
+
+pub const u64 FNV1A_OFFSET_BASIS = 0xcbf29ce484222325;
+pub const u64 FNV1A_PRIME = 0x100000001b3;
+
+pub u64 hashBytes(const u8* bytes, usize len)
+{
+    u64 h = FNV1A_OFFSET_BASIS;
+    for (usize i = 0; i < len; i++)
+    {
+        h = h ^ (u64)bytes[i];
+        h = h * FNV1A_PRIME;
+    }
+    return h;
+}
+
+pub u64 hashStr(str text)
+{
+    return hashBytes(text.ptr, text.len);
+}
+
+pub u64 hashCstr(const cchar* text)
+{
+    if (text == null) return FNV1A_OFFSET_BASIS;
+    u64 h = FNV1A_OFFSET_BASIS;
+    usize i = 0;
+    while (text[i] != 0)
+    {
+        h = h ^ (u64)(u8)text[i];
+        h = h * FNV1A_PRIME;
+        i = i + 1;
+    }
+    return h;
+}

@@ -22,9 +22,9 @@ the Coral compiler source lives in its own repo.
 | Milestone | What | State |
 |---|---|---|
 | **M0** | Build file, modules, headless loop, scene + system | ✅ done |
-| **M1** | Script host API: hash-keyed native registry (`Mu::` library), source loader, entity→script bindings, Mu type table | ✅ done (IR execution at M2) |
+| **M1** | Script host API: FNV-1a hash binding table for functions/types, entity→script bindings | ✅ done (IR execution at M2) |
 | **M2** | `muc` ↔ host: WallVM IR executed, `main.mu` runs in the loop | ⬜ planned |
-| **M3** | SDL3 window + bgfx backend, live input (software framebuffer already renders headless) | ⬜ planned |
+| **M3** | SDL3 window + bgfx backend, live input | ⬜ planned |
 | **M4** | 3D scene basics: camera, meshes, materials, lighting | ⬜ planned |
 | **M5** | Assets: handle table, aliases, loaders, hot reload | ⬜ planned |
 | **M6** | Audio (SDL3) + immediate-mode UI | ⬜ planned |
@@ -47,20 +47,15 @@ cmake --build build/native -j2        # -> libmualibs.a + libJolt{C,}.a
 # 2. the engine
 coralc build                          # -> build/muengine, regenerates .coral/modules.map
 
-# 3. the demo: 300-frame headless particle sandbox
+# 3. the engine (runs until platform/script quit)
 ./build/muengine
 ```
 
 - `coral.crlb` also defines a `run` task (`after = ["build"]`,
   `exec = "build/muengine"`) for driving it through the build file.
-- Expected demo output: a hash-loader line (`script loaded: scripts/main.mu
-  (10 uses resolved by hash)`), the hash-dispatch key, the
-  `Mu::timing::now` / `Mu::scene::frame` probes, then `mu: 300 frames,
-  49 entities, 48 balls, ... presents: 300`, `script: 10 uses resolved,
-  1 bindings, 300 updates`, `natives: 13 hash-keyed, types: 30
-  (2 aliases, 2 structs, 1 variants, 2 consts, 6 fns)`, and
-  `frame: build/frame.ppm (640x360)`. The run writes `build/frame.ppm`,
-  a binary PPM of the final frame - exit code is 0 when it is written.
+- The entry is a real bootstrap now: it wires scene, binding table,
+  script host, renderer interface, and loop. There is no demo scene,
+  source loader, type scanner, or PPM output in the engine.
 - **Prebuilt archives** for shipping/cross targets live in
   `packaged/<platform>/lib/` - inventory and rebuild notes:
   [`Mu_docs/prebuilt-libs.md`](Mu_docs/prebuilt-libs.md).
@@ -89,12 +84,12 @@ Mu_engine/
 
 | Layer | Dir | Status |
 |---|---|---|
-| entry / particle sandbox demo | `src/engine/` | live (software-rendered) |
+| entry / engine bootstrap | `src/engine/` | live |
 | core - `Loop`, logging, `FIXED_DT` | `src/core/` | live |
 | math - Vec3/Quat, chainable | `src/math/` | live |
 | **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
-| **script** - ScriptHost, hash-keyed `Mu::` natives, loader, types | `src/script/` | live (IR at M2) |
-| render - fn-ptr interface, software framebuffer + PPM | `src/render/` | live headless (bgfx at M3) |
+| **script** - ScriptHost lifecycle + FNV-1a function/type binding table | `src/script/` | live (IR at M2) |
+| render - fn-ptr interface + null backend | `src/render/` | interface live (bgfx at M3) |
 | platform - headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
 | alloc - mimalloc game allocator | `src/alloc/` | live |
 | vendor extern ports | `src/{sdl,bgfx,stb,cgltf,miniz,tinyexr,drlibs,fastnoise,mikktspace,physics}/` | ports ready, gated by milestones |
@@ -174,8 +169,9 @@ Scripts are `.mu` files under `scripts/`. Two ways to reach the engine -
    lines below are the **explicit prelude** (like Rust's): they don't
    unlock anything, they *record* which library symbols the script
    depends on and enable `{...}` grouping / `as` aliases (DESIGN §2/§14).
-   The host also resolves every referenced symbol at load against its
-   native registry and fails loudly **with the path** if missing:
+   The compiler resolves those paths to canonical symbols and hashes;
+   the host only sees `u64` binding ids. See
+   [`Mu_docs/BINDINGS.md`](Mu_docs/BINDINGS.md):
 
    ```mu
    use Mu::log::info;
@@ -215,7 +211,10 @@ leave behind, e.g. `// clip goes out of scope - freed`. Engine Coral
 follows the same rule (ENGINE.md §10): static storage where the shape
 is fixed, `gameAllocator()` elsewhere.
 
-### `Mu::` native library
+### `Mu::` engine API surface
+
+These are source-level names. ABI registration uses compiler-emitted symbol
+hashes, never these strings.
 
 | Symbol | Signature | Notes |
 |---|---|---|
@@ -243,26 +242,17 @@ is fixed, `gameAllocator()` elsewhere.
 
 ### Adding a native (the growth path)
 
-Everything is one-line incremental (see the header of
-`src/script/natives.crl`):
-
-1. write a plain `static` fn in `src/script/natives.crl`;
-2. one `natives->add("Mu::module::name", Native::XxxFn { .f = fn })` line
-   - existing signature arms cover most cases; a genuinely new signature
+1. write the plain function in the engine;
+2. register it with the compiler-emitted `u64` symbol constant:
+   `bindings.addFunction(SYMBOL_HASH, Native::XxxFn { .f = fn })`;
+   an existing signature arm covers most cases; a genuinely new boundary
    is one new arm in `variant Native`;
-3. `use Mu::module::name;` in the script.
+3. the compiler emits the same hash at the script call site.
 
-<!-- EXAMPLE (not implemented): adding Mu::input::isDown later
-    static bool _nativeIsDown(i32 key) { ... }
-    natives->add("Mu::input::isDown", Native::KeyPredFn { .f = _nativeIsDown }).unwrap();
-    // main.mu:  use Mu::input::isDown;
--->
-
-The loader resolves every `use`d symbol by hashing its path (FNV-1a) and
-probing the registry's hash table - no string comparison on lookup. `use`
-groups and `as` aliases are expanded by the loader; `scripts/types.mu`
-is scanned by the Mu type table the same way. M2 keeps this contract and
-adds WallVM IR execution (`IR.md`) inside `load`/`update`/`free`.
+No runtime path strings, source scanning, `use` expansion, or type-source
+table is involved. `ScriptHost.load`/`update`/`free` stay as the compiler/IR
+seam; M2 plugs WallVM IR execution (`IR.md`) in there. The full contract is
+in [`Mu_docs/BINDINGS.md`](Mu_docs/BINDINGS.md).
 
 ---
 

@@ -74,4 +74,15 @@ pub struct Loop
         }
         self.running = false;
     }
+
+    // Real engine lifetime: stop only when a platform/script quit is requested.
+    void runUntilQuit()
+    {
+        self.running = true;
+        while (self.running && !platformQuitRequested())
+        {
+            self.frame();
+        }
+        self.running = false;
+    }
 }

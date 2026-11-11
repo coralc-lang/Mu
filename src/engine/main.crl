@@ -1,273 +1,40 @@
-// Mu Engine demo: a headless, software-rendered particle sandbox.
-//
-// The engine owns the frame loop, scene, physics step, software renderer,
-// hash-keyed native registry, script loader, and Mu type table. The final
-// frame is written to build/frame.ppm so a headless run produces something
-// real to look at; M3 replaces the software presenter with bgfx.
+// Mu Engine entry: wire the layers once, then let Loop drive them.
+// No gameplay, demo, parser, or test harness lives here; systems are
+// initialized and the engine runs until a quit is requested.
 
 use core::core { Loop };
-use math::math { Vec3 };
-use render::render {
-    Renderer, Framebuffer, customRenderer, rgba, paint, circle, present, savePPM
-};
-use scene::scene { Scene, Entity, EntityId };
-use physics::sim { Simulation, Motion, simulation, addMotion };
-use script::native { Native, NativeEntry, NativeRegistry };
-use script::loader { ScriptHost };
+use render::render { Renderer, nullRenderer };
+use scene::scene { Scene, Entity };
+use script::abi { BindingEntry, BindingTable };
+use script::loader { ScriptHost, scriptSystem };
 use script::bindings { ScriptBinding, ScriptBindings };
-use script::types { MuTypeEntry, MuTypeKind, MuTypeTable, registerMuBuiltins };
-use script::natives { registerDefaultNatives };
 
-const i32 WIDTH = 640;
-const i32 HEIGHT = 360;
-const u32 FRAME_COUNT = 300;
-const u32 BALL_COUNT = 48;
-
-struct DemoState
-{
-    Framebuffer* fb;
-    Scene* scene;
-    Simulation* simulation;
-    u64* frame;
-    u32 ballCount;
-    u32 frameTotal;
-}
-
-static u32[230400] MuPixels;          // WIDTH * HEIGHT
-static Entity[512] MuStorage;
-static Motion[64] MuMotions;
-static NativeEntry[64] MuNativeTable;
-static MuTypeEntry[64] MuTypeEntries;
-static u8[4096] MuTypeArena;
+static Entity[4096] MuSceneStorage;
 static Scene MuScene;
-static Simulation MuSimulation;
-static Framebuffer MuFramebuffer;
 static Renderer MuRenderer;
 static Loop MuLoop;
-static NativeRegistry MuNatives;
+static BindingEntry[128] MuBindingEntries;
+static BindingTable MuBindings;
 static ScriptHost MuHost;
-static ScriptBinding[8] MuBindingSlots;
-static MuTypeTable MuTypes;
-static DemoState MuDemo;
-static Native* MuStepNative;
-
-u32 _ballColor(u32 index)
-{
-    u8 r = (u8)(70 + (index * 29) % 170);
-    u8 g = (u8)(110 + (index * 47) % 130);
-    u8 b = (u8)(150 + (index * 61) % 100);
-    return rgba(r, g, b, 255);
-}
-
-// Engine-side scene system: sky, sun, ground, balls, progress bar.
-void _drawDemo(rawptr ctx, rawptr scenePtr, rawptr ui)
-{
-    DemoState* demo = (DemoState*)ctx;
-    Framebuffer* fb = demo->fb;
-    Scene* scene = demo->scene;
-    i32 w = fb->width;
-    i32 h = fb->height;
-
-    // Dusk sky, one band at a time.
-    i32 bandHeight = h / 24 + 1;
-    for (i32 band = 0; band < 24; band++)
-    {
-        u32 t = (u32)(band * 255 / 23);
-        paint(fb, 0, band * (h / 24), w, bandHeight,
-            rgba((u8)(9 + t * 58 / 255),
-                 (u8)(12 + t * 42 / 255),
-                 (u8)(32 + t * 78 / 255), 255));
-    }
-
-    // Fixed star field - deterministic across runs.
-    for (u32 i = 0; i < 64; i++)
-    {
-        i32 sx = (i32)((i * 97 + 13) % (u32)w);
-        i32 sy = (i32)((i * 53 + 7) % 130);
-        i32 size = (i % 7 == 0) ? 2 : 1;
-        paint(fb, sx, sy, size, size, rgba(220, 232, 255, 255));
-    }
-
-    // Sun with a soft outer disc.
-    circle(fb, w * 3 / 4, 90, 32, rgba(238, 150, 70, 255));
-    circle(fb, w * 3 / 4, 90, 23, rgba(255, 226, 148, 255));
-
-    // Ground plane.
-    paint(fb, 0, h - 64, w, 64, rgba(20, 38, 36, 255));
-    paint(fb, 0, h - 64, w, 3, rgba(74, 165, 118, 255));
-
-    // Balls from the scene + simulation.
-    for (u32 i = 0; i < demo->ballCount; i++)
-    {
-        Motion* motion = &demo->simulation->motions[i];
-        if (!scene->alive(motion->entity)) continue;
-        Vec3 position = scene->entities[motion->entity].local.position;
-        i32 sx = w / 2 + (i32)(position.x * 48.0f);
-        i32 sy = h - 64 - (i32)(position.y * 48.0f);
-        i32 radius = (i32)(motion->radius * 48.0f);
-        if (radius < 2) radius = 2;
-
-        // contact shadow
-        circle(fb, sx, h - 62, radius, rgba(12, 24, 22, 255));
-        circle(fb, sx, sy, radius, _ballColor(i));
-        if (radius > 4)
-            circle(fb, sx - radius / 3, sy - radius / 3, radius / 3,
-                rgba(255, 255, 255, 120));
-    }
-
-    // Run progress strip.
-    u64 frame = demo->frame[0];
-    i32 progress = (i32)(((u64)(w - 32) * frame) / (u64)demo->frameTotal);
-    paint(fb, 16, h - 18, w - 32, 6, rgba(18, 22, 30, 220));
-    paint(fb, 16, h - 18, progress, 6, rgba(92, 224, 180, 255));
-
-    present(fb);
-}
-
-void _demoShutdown(rawptr ctx) { }
-
-void _printCounter(str label, Native* native)
-{
-    if (native == null) return;
-    switch (native[0])
-    {
-        CountFn { f } => { println("{}() -> {}", label, f()); },
-        else => { }
-    }
-}
-
-void _invokePaint(Native* native, i32 x, i32 y, i32 w, i32 h, u32 color)
-{
-    if (native == null) return;
-    switch (native[0])
-    {
-        PaintFn { f } => { f(x, y, w, h, color); },
-        else => { }
-    }
-}
-
-void _invokeStep(Native* native, f32 dt)
-{
-    if (native == null) return;
-    switch (native[0])
-    {
-        DeltaFn { f } => { f(dt); },
-        else => { }
-    }
-}
-
-// Script phase: tick the host, then advance physics (the native
-// Mu::physics::step does exactly this for script code).
-void _demoScript(rawptr ctx, f32 dt)
-{
-    ScriptHost* host = (ScriptHost*)ctx;
-    host->update(dt);
-    _invokeStep(MuStepNative, dt);
-}
+static ScriptBinding[64] MuBindingSlots;
+static ScriptBindings MuScripts;
 
 pub i32 main()
 {
-    MuScene = Scene::new(MuStorage, 512);
-    MuFramebuffer = Framebuffer::new(MuPixels, WIDTH, HEIGHT);
+    MuScene = Scene::new(MuSceneStorage, 4096);
 
-    MuSimulation = simulation(&MuScene, MuMotions, 64);
-    MuSimulation.floorY = 0.0f;
-    MuSimulation.minX = -6.0f;
-    MuSimulation.maxX = 6.0f;
-    MuSimulation.restitution = 0.86f;
+    MuBindings = BindingTable::new(MuBindingEntries, 128);
+    MuHost = ScriptHost::new(&MuBindings);
+    MuScripts = ScriptBindings::new(&MuScene, MuBindingSlots, 64);
 
-    EntityId root = MuScene.create().unwrap();
-    MuScene.entities[root].local.position = Vec3::new(0.0f, 0.0f, 0.0f);
-
-    // A fan of balls with deterministic initial velocities.
-    for (u32 i = 0; i < BALL_COUNT; i++)
-    {
-        EntityId id = MuScene.create().unwrap();
-        f32 x = -5.5f + (f32)i * (11.0f / 47.0f);
-        f32 y = 1.0f + (f32)(i % 7) * 0.45f;
-        MuScene.entities[id].local.position = Vec3::new(x, y, 0.0f);
-
-        f32 vx = (f32)((i * 37) % 11) * 0.12f - 0.6f;
-        f32 vy = 2.0f + (f32)(i % 5) * 0.6f;
-        f32 radius = 0.12f + (f32)(i % 4) * 0.03f;
-        addMotion(&MuSimulation, id, radius, Vec3::new(vx, vy, 0.0f)).unwrap();
-    }
-
-    // --- natives: hashed paths -> function pointers ---
-    MuNatives = NativeRegistry::new(MuNativeTable, 64);
-    registerDefaultNatives(&MuNatives, &MuScene, &MuLoop.frameCount,
-        &MuFramebuffer, &MuSimulation).unwrap();
-    MuHost = ScriptHost::new(&MuNatives);
-
-    ScriptBindings bindings = ScriptBindings::new(&MuScene, MuBindingSlots, 8);
-    bindings.bind(root, "scripts/main.mu").unwrap();
-
-    // The loader reads the file and resolves every `use Mu::...;` by hash.
-    Result<u32, str> loaded = MuHost.load("scripts/main.mu");
-    if (loaded.isErr())
-    {
-        println("[mu:error] {}", loaded.unwrapErr());
-        return 1;
-    }
-
-    // --- Mu type table: built-in containers + declarations in types.mu ---
-    MuTypes = MuTypeTable::new(MuTypeEntries, 64, MuTypeArena, 4096);
-    registerMuBuiltins(&MuTypes);
-    Result<u32, str> typesLoaded = MuTypes.load("scripts/types.mu");
-    if (typesLoaded.isErr())
-    {
-        println("[mu:error] {}", typesLoaded.unwrapErr());
-        return 1;
-    }
-
-    // Looks up by the same hash the registry inserted, without any string
-    // comparison, then calls through the typed arm.
-    Native* nowNative = MuNatives.lookup("Mu::timing::now");
-    Native* sceneFrameNative = MuNatives.lookup("Mu::scene::frame");
-    Native* paintNative = MuNatives.lookup("Mu::render::paint");
-    MuStepNative = MuNatives.lookup("Mu::physics::step");
-    println("hash dispatch: Mu::render::paint key={}",
-        MuNatives.hashOf("Mu::render::paint"));
-    _printCounter("Mu::timing::now", nowNative);
-    _printCounter("Mu::scene::frame", sceneFrameNative);
-
-    MuDemo.fb = &MuFramebuffer;
-    MuDemo.scene = &MuScene;
-    MuDemo.simulation = &MuSimulation;
-    MuDemo.ballCount = BALL_COUNT;
-    MuDemo.frameTotal = FRAME_COUNT;
-
-    MuRenderer = customRenderer((rawptr)&MuDemo, _drawDemo, _demoShutdown);
+    MuRenderer = nullRenderer();
     MuLoop = Loop::new(&MuScene, &MuRenderer);
     MuLoop.scriptCtx = (rawptr)&MuHost;
-    MuLoop.scriptUpdate = _demoScript;
-    MuDemo.frame = &MuLoop.frameCount;
+    MuLoop.scriptUpdate = scriptSystem;
 
-    MuLoop.run(FRAME_COUNT);
-
-    // Draw a badge through the registered native itself: this is the same
-    // path a Mu script uses for `paint(...)`.
-    _invokePaint(paintNative, 16, 16, 148, 6, rgba(96, 228, 184, 255));
-
-    bool saved = savePPM(&MuFramebuffer, "build/frame.ppm");
-
-    println("mu: {} frames, {} entities, {} balls, {} paints, {} presents",
-        MuLoop.frameCount, MuScene.count, MuSimulation.count,
-        MuFramebuffer.paintCalls, MuFramebuffer.presents);
-    println("script: {} uses resolved, {} bindings, {} updates",
-        MuHost.usesResolved, bindings.count, MuHost.updateCalls);
-    println("natives: {} hash-keyed, types: {} ({} aliases, {} structs, {} variants, {} consts, {} fns)",
-        MuNatives.count, MuTypes.count,
-        MuTypes.countOf(MuTypeKind::Alias),
-        MuTypes.countOf(MuTypeKind::Struct),
-        MuTypes.countOf(MuTypeKind::Variant),
-        MuTypes.countOf(MuTypeKind::Const),
-        MuTypes.countOf(MuTypeKind::Function));
-    if (saved) println("frame: build/frame.ppm ({}x{})", WIDTH, HEIGHT);
-    else println("[mu:error] could not write build/frame.ppm");
+    MuLoop.runUntilQuit();
 
     MuHost.free();
     MuRenderer.shutdown(MuRenderer.ctx);
-    if (!saved) return 1;
     return 0;
 }
