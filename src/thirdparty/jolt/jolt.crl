@@ -24,6 +24,8 @@ pub typedef ObjectLayer = u16;
 pub typedef BroadPhaseLayer = u8;
 pub typedef CBool = i32;
 
+pub const u32 BODY_ID_INVALID = 0xFFFFFFFF;
+
 pub const i32 MOTION_STATIC = 0;
 pub const i32 MOTION_KINEMATIC = 1;
 pub const i32 MOTION_DYNAMIC = 2;
@@ -81,6 +83,9 @@ pub extern u32 JoltC_PhysicsSystem_GetNumActiveBodies(const PhysicsSystem system
 pub extern BodyCreationSettings JoltC_BodyCreationSettings_Create3(const Shape shape, RVec3 position, Quat rotation, i32 motionType, ObjectLayer objectLayer);
 pub extern void JoltC_BodyCreationSettings_Destroy(BodyCreationSettings settings);
 pub extern void JoltC_BodyCreationSettings_SetLinearVelocity(BodyCreationSettings settings, const Vec3* value);
+pub extern void JoltC_BodyCreationSettings_SetFriction(BodyCreationSettings settings, f32 value);
+pub extern void JoltC_BodyCreationSettings_SetRestitution(BodyCreationSettings settings, f32 value);
+pub extern void JoltC_BodyCreationSettings_SetGravityFactor(BodyCreationSettings settings, f32 value);
 
 // --- body interface ---
 
@@ -93,6 +98,9 @@ pub extern void JoltC_BodyInterface_GetPositionAndRotation(const BodyInterface i
 pub extern Quat JoltC_BodyInterface_GetRotation(const BodyInterface iface, BodyID bodyID);
 pub extern Vec3 JoltC_BodyInterface_GetLinearVelocity(const BodyInterface iface, BodyID bodyID);
 pub extern void JoltC_BodyInterface_SetLinearVelocity(BodyInterface iface, BodyID bodyID, Vec3 velocity);
+pub extern void JoltC_BodyInterface_SetFriction(BodyInterface iface, BodyID bodyID, f32 friction);
+pub extern void JoltC_BodyInterface_SetRestitution(BodyInterface iface, BodyID bodyID, f32 restitution);
+pub extern void JoltC_BodyInterface_SetGravityFactor(BodyInterface iface, BodyID bodyID, f32 gravityFactor);
 pub extern void JoltC_BodyInterface_AddLinearVelocity(BodyInterface iface, BodyID bodyID, Vec3 velocity);
 pub extern void JoltC_BodyInterface_AddForce(BodyInterface iface, BodyID bodyID, Vec3 force);
 pub extern void JoltC_BodyInterface_AddForceAtPosition(BodyInterface iface, BodyID bodyID, Vec3 force, RVec3 point);

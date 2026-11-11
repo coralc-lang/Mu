@@ -188,21 +188,23 @@ No codes, no severity levels, no warning channel. Two styles:
 
 | message | trigger | site |
 |---|---|---|
+
 | `[mu] {msg}` | `core::logInfo` | `src/core/core.crl:16` |
 | `[mu:error] {msg}` | `core::logError` | `src/core/core.crl:21` |
-| `[mu:error] unresolved Mu:: library symbol: {name}` | `ScriptHost.require()` miss at load | `src/script/loader.crl:42` |
-| `[mu] script loaded (M1 stub — executes at M2): {path}` | load notice (scripts do not execute yet) | `src/script/loader.crl:67` |
-| `[mu:script] {msg}` | native `Mu::log::info` | `src/script/natives.crl:20` |
-| `[mu:script:error] {msg}` | native `Mu::log::error` | `src/script/natives.crl:25` |
-| `[mu:script] setParent rejected: {err}` | `Scene::setParent` returned `Err` | `src/script/natives.crl:64` |
+| `[mu:error] unresolved binding: {path}` | `ScriptHost.requireHash()` miss | `src/script/loader.crl:34` |
+| `[mu:error] unresolved function binding: {path}` | `ScriptHost.requireFunction()` miss | `src/script/loader.crl:45` |
+| `[mu:error] binding is not a function: {path}` | hash resolves to a type/layout entry | `src/script/loader.crl:54` |
 
 ### 2.2 Returned error strings
 
 | string | trigger | site |
 |---|---|---|
-| `native registry: duplicate name` | duplicate `Mu::…` registration | `script/native.crl:120` |
-| `native registry: table full` | registry capacity exhausted | `script/native.crl:111` |
-| `load: unresolved library symbol (path above)` | `require()` miss (pairs with printed #3) | `script/loader.crl:43` |
+| `binding: duplicate hash` | same compiler-emitted hash registered twice | `src/script/abi.crl:83` |
+| `binding: table full` | binding capacity exhausted | `src/script/abi.crl:77` |
+| `binding: no storage` | table created with zero capacity | `src/script/abi.crl:75` |
+| `binding: not found` | hash absent from table | `src/script/loader.crl:35` |
+| `binding: function not found` | function hash absent | `src/script/loader.crl:46` |
+| `binding: not a function` | hash resolves to a type entry | `src/script/loader.crl:55` |
 | `bind: no scene bound` | bind before a scene exists | `script/bindings.crl:31` |
 | `bind: entity is dead or invalid` | despawned/out-of-range id at bind | `script/bindings.crl:33` |
 | `bind: table full` | binding capacity exhausted | `script/bindings.crl:35` |
@@ -262,13 +264,13 @@ diagnostics” for the editor, which needs stable ids):
 
 | code | message | maps to |
 |---|---|---|
-| E1001 | unresolved library symbol `{path}` | printed #3 above |
-| E1002 | native registry duplicate `{path}` | `native registry: duplicate name` |
-| E1003 | native registry full | `native registry: table full` |
+| E1001 | unresolved binding `{path}` | printed #3 above |
+| E1002 | duplicate binding hash `{hash}` | `binding: duplicate hash` |
+| E1003 | binding table full | `binding: table full` |
 | E1004 | bind: no scene bound | existing string |
 | E1005 | bind: dead or invalid entity | existing string |
 | E1006 | bind: table full | existing string |
-| E1007 | extern signature mismatch `{path}` | unimplemented loader check (DESIGN §14) |
+| E1007 | extern signature mismatch `{path}` | compiler-owned signature hash mismatch |
 | E1008 | use of despawned handle | unimplemented generation check (DESIGN §14) |
 | E1999 | script panic: `{msg}` at `{file}:{line}` | unimplemented panic handler (DESIGN §8) |
 

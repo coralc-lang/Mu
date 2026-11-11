@@ -159,7 +159,7 @@ Mu/
       engine/        # entry module: lib.crl + main.crl (the `main()` entry)
       math/          # Vec3/Quat/RVec3 — methods, chainable
       scene/         # entities, transform hierarchy, ComponentStore
-      render/        # Renderer fn-ptr interface (+ software framebuffer/PPM)
+      render/        # Renderer fn-ptr interface (+ null backend)
       physics/       # JoltC v5.6.0 extern port
       sdl/           # SDL 3.4.18 extern port (window/input/audio only, ready before M3)
       bgfx/          # bgfx C99 extern port (graphics-API-agnostic backend, ready before M3/M4)
@@ -173,7 +173,7 @@ Mu/
       alloc/         # mimalloc game allocator (std::allocator surface)
       core/          # logging, FIXED_DT, the Loop
       platform/      # headless pump/quit (SDL3 lands at M3)
-      script/        # script host: ScriptHost + native registry (M1); IR execution M2
+      script/        # ScriptHost + FNV-1a binding table; IR execution at M2
     native/          # CMakeLists, jolt_smoke.c, mu_{stb,cgltf,drlibs,fnl}.c impl TUs
     third_party/     # jolt (5.6.0), JoltPhysicsC, SDL (3.4.18), stb, cgltf, miniz,
                      # tinyexr, dr_libs, FastNoiseLite, MikkTSpace — trimmed, .git-stripped
@@ -326,6 +326,7 @@ Core features adopted now (cheap to design early, painful to retrofit):
   Boundary types only (§5): `EntityId (u32)`, scalars, `Vec2/Vec3`, `str`.
 - **Types:** no runtime type table is required. Type hashes resolve through
   the same `BindingTable`; layout entries are optional safety metadata.
+
 ## 12. Signals — **Planned**
 
 - One engine-owned registry: signal name → subscriber list (engine

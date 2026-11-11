@@ -87,7 +87,7 @@ Mu_engine/
 | entry / engine bootstrap | `src/engine/` | live |
 | core - `Loop`, logging, `FIXED_DT` | `src/core/` | live |
 | math - Vec3/Quat, chainable | `src/math/` | live |
-| **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + type-table scaffold |
+| **scene (ECS)** - entities, hierarchy, components | `src/scene/` | live + component registry scaffold |
 | **script** - ScriptHost lifecycle + FNV-1a function/type binding table | `src/script/` | live (IR at M2) |
 | render - fn-ptr interface + null backend | `src/render/` | interface live (bgfx at M3) |
 | platform - headless pump/quit | `src/platform/` | live headless (SDL3 at M3) |
@@ -119,7 +119,7 @@ Composition-only (DESIGN §2 - no inheritance anywhere), keyed by stable
 - **`ComponentStore`** - one store per component type: fixed-stride slots
   indexed by entity id + a `present` flag (`add`/`remove`/`has`/`get`).
   Caller-provided static storage (ENGINE.md §10).
-- **`ComponentRegistry`** - the component **type table** (M1 scaffold):
+- **`ComponentRegistry`** - component-store registry (M1 scaffold):
   stores are *named* so everything downstream resolves by name:
 
 ```coral
