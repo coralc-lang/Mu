@@ -1,0 +1,216 @@
+use math::math { Vec3, Quat, RVec3 };
+use scene::scene { Entity, EntityId, NIL };
+use physics::world { PhysicsWorld };
+use physics::layers {
+    hasLayer, objectLayerFor, LayerFilters,
+    layerFilters, destroyLayerFilters 
+};
+use thirdparty::jolt {
+    CharacterVirtual, CharacterVirtualSettings, ExtendedUpdateSettings, Shape, JoltC_CapsuleShape_Create,
+    JoltC_Shape_Release, JoltC_CharacterVirtualSettings_SetDefault, JoltC_ExtendedUpdateSettings_SetDefault,
+    JoltC_CharacterVirtual_Create, JoltC_CharacterVirtual_Destroy, JoltC_CharacterVirtual_GetLinearVelocity,
+    JoltC_CharacterVirtual_SetLinearVelocity, JoltC_CharacterVirtual_GetPosition, JoltC_CharacterVirtual_SetPosition,
+    JoltC_CharacterVirtual_GetRotation, JoltC_CharacterVirtual_ExtendedUpdate_WithFilters,
+    JoltC_CharacterVirtual_IsSupported, JoltC_CharacterVirtual_GetGroundState, JoltC_CharacterVirtual_GetGroundNormal
+};
+
+pub struct CharacterConfig
+{
+    f32 radius;
+    f32 halfHeight;
+    f32 maxSlopeAngle;
+    f32 mass;
+    f32 maxStrength;
+    u32 layer;
+}
+
+pub CharacterConfig characterConfig()
+{
+    return CharacterConfig {
+        .radius = 0.35f,
+        .halfHeight = 0.55f,
+        .maxSlopeAngle = 0.8726646f,
+        .mass = 70.0f,
+        .maxStrength = 100.0f,
+        .layer = 0
+    };
+}
+
+pub struct Character
+{
+    CharacterVirtual handle;
+    EntityId entity;
+    u32 layer;
+    f32 radius;
+    f32 halfHeight;
+    Vec3 velocity;
+    bool grounded;
+}
+
+RVec3 _rvec(Vec3 p)
+{
+    return RVec3 { .x = p.x, .y = p.y, .z = p.z };
+}
+
+LayerFilters _characterFilters(PhysicsWorld* world, const Character* character)
+{
+    if (world == null || character == null) return LayerFilters { .broadPhase = null, .object = null };
+    if (!hasLayer(&world->layers, character->layer)) return LayerFilters { .broadPhase = null, .object = null };
+    return layerFilters(world->system, objectLayerFor(&world->layers, character->layer));
+}
+
+pub void characterSync(PhysicsWorld* world, Character* character)
+{
+    if (world == null || character == null || character->handle == null) return;
+    if (world->scene == null || !world->scene->alive(character->entity)) return;
+
+    RVec3 p = JoltC_CharacterVirtual_GetPosition(character->handle);
+    Quat q = JoltC_CharacterVirtual_GetRotation(character->handle);
+    Entity* entity = &world->scene->entities[character->entity];
+    entity->local.position = Vec3::new(p.x, p.y, p.z);
+    entity->local.rotation = Quat::new(q.x, q.y, q.z, q.w);
+}
+
+pub Result<Character, str> characterCreate(PhysicsWorld* world, EntityId entity, CharacterConfig config)
+{
+    if (world == null || !world->started)
+        return Result<Character, str>::Err { .error = "character: world not started" };
+    if (world->scene == null)
+        return Result<Character, str>::Err { .error = "character: no scene bound" };
+    if (!world->scene->alive(entity))
+        return Result<Character, str>::Err { .error = "character: entity is dead or invalid" };
+    if (world->scene->entities[entity].parent != NIL)
+        return Result<Character, str>::Err { .error = "character: entity must be a root" };
+    if (config.radius <= 0.0f || config.halfHeight <= 0.0f)
+        return Result<Character, str>::Err { .error = "character: invalid capsule size" };
+    if (!hasLayer(&world->layers, config.layer))
+        return Result<Character, str>::Err { .error = "character: layer out of range" };
+
+    Shape shape = JoltC_CapsuleShape_Create(config.halfHeight, config.radius);
+    if (shape == null)
+        return Result<Character, str>::Err { .error = "character: capsule creation failed" };
+
+    CharacterVirtualSettings settings;
+    JoltC_CharacterVirtualSettings_SetDefault(&settings);
+    settings.up = Vec3::new(0.0f, 1.0f, 0.0f);
+    settings.maxSlopeAngle = config.maxSlopeAngle;
+    settings.enhancedInternalEdgeRemoval = 1;
+    settings.shape = shape;
+    settings.supportingVolumeNormal = Vec3::new(0.0f, 1.0f, 0.0f);
+    settings.supportingVolumeConstant = -config.halfHeight;
+    settings.mass = config.mass;
+    settings.maxStrength = config.maxStrength;
+
+    Entity* source = &world->scene->entities[entity];
+    CharacterVirtual handle = JoltC_CharacterVirtual_Create(
+        &settings, _rvec(source->local.position), source->local.rotation,
+        (u64)entity, world->system);
+    JoltC_Shape_Release(shape);
+
+    if (handle == null)
+        return Result<Character, str>::Err { .error = "character: create failed" };
+
+    return Result<Character, str>::Ok {
+        .value = Character {
+            .handle = handle,
+            .entity = entity,
+            .layer = config.layer,
+            .radius = config.radius,
+            .halfHeight = config.halfHeight,
+            .velocity = Vec3::zero(),
+            .grounded = false
+        }
+    };
+}
+
+pub void characterMove(PhysicsWorld* world, Character* character, Vec3 horizontalVelocity, f32 dt)
+{
+    if (world == null || character == null || character->handle == null) return;
+    if (!world->started || dt <= 0.0f) return;
+
+    Vec3 current = JoltC_CharacterVirtual_GetLinearVelocity(character->handle);
+    f32 vertical = current.y;
+    if (character->grounded && vertical < 0.0f) vertical = 0.0f;
+    JoltC_CharacterVirtual_SetLinearVelocity(
+        character->handle,
+        Vec3::new(horizontalVelocity.x, vertical, horizontalVelocity.z));
+
+    LayerFilters filters = _characterFilters(world, character);
+    ExtendedUpdateSettings update;
+    JoltC_ExtendedUpdateSettings_SetDefault(&update);
+    JoltC_CharacterVirtual_ExtendedUpdate_WithFilters(
+        character->handle, dt, world->gravity, &update,
+        filters.broadPhase, filters.object, null, null, world->temp);
+    destroyLayerFilters(&filters);
+
+    character->grounded = JoltC_CharacterVirtual_IsSupported(character->handle) != 0;
+    character->velocity = JoltC_CharacterVirtual_GetLinearVelocity(character->handle);
+    characterSync(world, character);
+}
+
+pub bool characterJump(Character* character, f32 speed)
+{
+    if (character == null || character->handle == null) return false;
+    if (!character->grounded || speed <= 0.0f) return false;
+
+    Vec3 velocity = JoltC_CharacterVirtual_GetLinearVelocity(character->handle);
+    JoltC_CharacterVirtual_SetLinearVelocity(
+        character->handle, Vec3::new(velocity.x, speed, velocity.z));
+    character->velocity = Vec3::new(velocity.x, speed, velocity.z);
+    character->grounded = false;
+    return true;
+}
+
+pub void characterTeleport(PhysicsWorld* world, Character* character, Vec3 position)
+{
+    if (character == null || character->handle == null) return;
+    JoltC_CharacterVirtual_SetPosition(character->handle, _rvec(position));
+    characterSync(world, character);
+}
+
+pub Vec3 characterPosition(const Character* character)
+{
+    if (character == null || character->handle == null) return Vec3::zero();
+    RVec3 p = JoltC_CharacterVirtual_GetPosition(character->handle);
+    return Vec3::new(p.x, p.y, p.z);
+}
+
+pub Vec3 characterVelocity(const Character* character)
+{
+    if (character == null || character->handle == null) return Vec3::zero();
+    return JoltC_CharacterVirtual_GetLinearVelocity(character->handle);
+}
+
+pub Vec3 characterGroundNormal(const Character* character)
+{
+    if (character == null || character->handle == null) return Vec3::zero();
+    return JoltC_CharacterVirtual_GetGroundNormal(character->handle);
+}
+
+pub i32 characterGroundState(const Character* character)
+{
+    if (character == null || character->handle == null) return 0;
+    return JoltC_CharacterVirtual_GetGroundState(character->handle);
+}
+
+pub bool characterGrounded(const Character* character)
+{
+    return character != null && character->handle != null && character->grounded;
+}
+
+pub u32 characterLayer(const Character* character)
+{
+    if (character == null) return 0;
+    return character->layer;
+}
+
+pub void characterDestroy(Character* character)
+{
+    if (character == null) return;
+    if (character->handle != null)
+        JoltC_CharacterVirtual_Destroy(character->handle);
+    character->handle = null;
+    character->entity = NIL;
+    character->velocity = Vec3::zero();
+    character->grounded = false;
+}

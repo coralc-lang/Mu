@@ -10,7 +10,7 @@ build "MuEngine" {
     module_map = ".coral/modules.map";
     cache_dir  = ".coral/cache";
 
-    flags = ["--show-gcc"];
+    flags = ["--strict", "--warn-unused"];
 
     modules = [
         "alloc",

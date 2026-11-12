@@ -2,11 +2,16 @@ use thirdparty::jolt {
     ObjectLayer, BroadPhaseLayer,
     ObjectLayerPairFilter, BroadPhaseLayerInterface,
     ObjectVsBroadPhaseLayerFilter,
+    PhysicsSystem, BroadPhaseLayerFilter, ObjectLayerFilter,
     JoltC_ObjectLayerPairFilterMask_Create,
     JoltC_ObjectLayerPairFilterMask_GetObjectLayer,
     JoltC_BroadPhaseLayerInterfaceMask_Create,
     JoltC_BroadPhaseLayerInterfaceMask_ConfigureLayer,
-    JoltC_ObjectVsBroadPhaseLayerFilterMask_Create
+    JoltC_ObjectVsBroadPhaseLayerFilterMask_Create,
+    JoltC_PhysicsSystem_GetDefaultBroadPhaseLayerFilter,
+    JoltC_PhysicsSystem_GetDefaultLayerFilter,
+    JoltC_BroadPhaseLayerFilter_Destroy,
+    JoltC_ObjectLayerFilter_Destroy
 };
 
 pub const u32 MAX_LAYERS = 8;
@@ -99,4 +104,40 @@ pub ObjectVsBroadPhaseLayerFilter layerBroadPhaseFilter(const BroadPhaseLayerInt
 {
     if (broadPhase == null) return null;
     return JoltC_ObjectVsBroadPhaseLayerFilterMask_Create(broadPhase);
+}
+
+pub struct LayerFilters
+{
+    BroadPhaseLayerFilter broadPhase;
+    ObjectLayerFilter object;
+}
+
+pub void destroyLayerFilters(LayerFilters* filters)
+{
+    if (filters == null) return;
+    if (filters->object != null)
+        JoltC_ObjectLayerFilter_Destroy(filters->object);
+    if (filters->broadPhase != null)
+        JoltC_BroadPhaseLayerFilter_Destroy(filters->broadPhase);
+    filters->object = null;
+    filters->broadPhase = null;
+}
+
+pub LayerFilters layerFilters(PhysicsSystem system, ObjectLayer objectLayer)
+{
+    LayerFilters filters = LayerFilters { .broadPhase = null, .object = null };
+    if (system == null) return filters;
+
+    filters.broadPhase = JoltC_PhysicsSystem_GetDefaultBroadPhaseLayerFilter(
+        system, objectLayer);
+    filters.object = JoltC_PhysicsSystem_GetDefaultLayerFilter(
+        system, objectLayer);
+    if (filters.broadPhase == null || filters.object == null)
+        destroyLayerFilters(&filters);
+    return filters;
+}
+
+pub bool layerFiltersReady(const LayerFilters* filters)
+{
+    return filters != null && filters->broadPhase != null && filters->object != null;
 }

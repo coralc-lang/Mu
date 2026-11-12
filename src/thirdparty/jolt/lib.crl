@@ -24,6 +24,7 @@ pub typedef ObjectLayerFilter = rawptr;
 pub typedef BodyFilter = rawptr;
 pub typedef ShapeFilter = rawptr;
 pub typedef ShapeCastSettings = rawptr;
+pub typedef CharacterVirtual = rawptr;
 
 pub typedef BodyID = u32;
 pub typedef SubShapeID = u32;
@@ -61,6 +62,39 @@ pub struct ShapeCastResult {
     BodyID bodyID2;
     f32 fraction;
     CBool isBackFaceHit;
+}
+
+pub struct CharacterVirtualSettings {
+    Vec3 up;
+    f32 maxSlopeAngle;
+    CBool enhancedInternalEdgeRemoval;
+    Shape shape;
+    Vec3 supportingVolumeNormal;
+    f32 supportingVolumeConstant;
+    f32 mass;
+    f32 maxStrength;
+    Vec3 shapeOffset;
+    i32 backFaceMode;
+    f32 predictiveContactDistance;
+    u32 maxCollisionIterations;
+    u32 maxConstraintIterations;
+    f32 minTimeRemaining;
+    f32 collisionTolerance;
+    f32 characterPadding;
+    u32 maxNumHits;
+    f32 hitReductionCosMaxAngle;
+    f32 penetrationRecoverySpeed;
+    Shape innerBodyShape;
+    ObjectLayer innerBodyLayer;
+}
+
+pub struct ExtendedUpdateSettings {
+    Vec3 stickToFloorStepDown;
+    Vec3 walkStairsStepUp;
+    f32 walkStairsMinStepForward;
+    f32 walkStairsStepForwardTest;
+    f32 walkStairsCosAngleForwardContact;
+    Vec3 walkStairsStepDownExtra;
 }
 
 pub const u32 BODY_ID_INVALID = 0xFFFFFFFF;
@@ -149,6 +183,7 @@ pub extern void JoltC_BodyInterface_ActivateBody(BodyInterface iface, BodyID bod
 
 pub extern Shape JoltC_BoxShape_Create(Vec3 halfExtent, f32 convexRadius);
 pub extern Shape JoltC_SphereShape_Create(f32 radius);
+pub extern Shape JoltC_CapsuleShape_Create(f32 halfHeight, f32 radius);
 pub extern void JoltC_Shape_Release(const Shape shape);
 
 pub extern NarrowPhaseQuery JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock(const PhysicsSystem system);
@@ -168,3 +203,19 @@ pub extern ObjectLayerFilter JoltC_PhysicsSystem_GetDefaultLayerFilter(const Phy
 pub extern void JoltC_BroadPhaseLayerFilter_Destroy(BroadPhaseLayerFilter filter);
 pub extern void JoltC_ObjectLayerFilter_Destroy(ObjectLayerFilter filter);
 pub extern CBool JoltC_NarrowPhaseQuery_CastRay2(const NarrowPhaseQuery query, RVec3 origin, Vec3 direction, RayCastResult* outResult, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter);
+pub extern void JoltC_CharacterVirtualSettings_SetDefault(CharacterVirtualSettings* settings);
+pub extern void JoltC_ExtendedUpdateSettings_SetDefault(ExtendedUpdateSettings* settings);
+pub extern CharacterVirtual JoltC_CharacterVirtual_Create(const CharacterVirtualSettings* settings, RVec3 position, Quat rotation, u64 userData, const PhysicsSystem system);
+pub extern void JoltC_CharacterVirtual_Destroy(CharacterVirtual character);
+pub extern Vec3 JoltC_CharacterVirtual_GetLinearVelocity(const CharacterVirtual character);
+pub extern void JoltC_CharacterVirtual_SetLinearVelocity(CharacterVirtual character, Vec3 velocity);
+pub extern RVec3 JoltC_CharacterVirtual_GetPosition(const CharacterVirtual character);
+pub extern void JoltC_CharacterVirtual_SetPosition(CharacterVirtual character, RVec3 position);
+pub extern Quat JoltC_CharacterVirtual_GetRotation(const CharacterVirtual character);
+pub extern void JoltC_CharacterVirtual_SetRotation(CharacterVirtual character, Quat rotation);
+pub extern void JoltC_CharacterVirtual_Update_WithFilters(CharacterVirtual character, f32 deltaTime, Vec3 gravity, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter, const ShapeFilter shapeFilter, const TempAllocator allocator);
+pub extern void JoltC_CharacterVirtual_ExtendedUpdate_WithFilters(CharacterVirtual character, f32 deltaTime, Vec3 gravity, const ExtendedUpdateSettings* settings, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter, const ShapeFilter shapeFilter, const TempAllocator allocator);
+pub extern CBool JoltC_CharacterVirtual_IsSupported(const CharacterVirtual character);
+pub extern i32 JoltC_CharacterVirtual_GetGroundState(const CharacterVirtual character);
+pub extern RVec3 JoltC_CharacterVirtual_GetGroundPosition(const CharacterVirtual character);
+pub extern Vec3 JoltC_CharacterVirtual_GetGroundNormal(const CharacterVirtual character);
