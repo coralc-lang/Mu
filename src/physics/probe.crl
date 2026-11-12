@@ -1,0 +1,68 @@
+// Headless Jolt probe: creates a ground, a box and a sphere, steps the real
+// world, then checks that the dynamic bodies landed. Enabled with
+// MU_PHYSICS_PROBE=1 so normal engine startup stays gameplay-free.
+
+use math::math { Vec3 };
+use physics::body { addBox, addSphere };
+use physics::world { PhysicsWorld, step };
+use scene::scene { Scene, EntityId };
+use thirdparty::jolt {
+    JoltC_PhysicsSystem_GetNumBodies,
+    JoltC_PhysicsSystem_GetNumActiveBodies,
+    JoltC_ObjectLayerPairFilterTable_ShouldCollide,
+    BODY_RIGID
+};
+
+pub bool runProbe(PhysicsWorld* world, Scene* scene)
+{
+    if (world == null || scene == null) return false;
+
+    Option<EntityId> groundSlot = scene->create();
+    Option<EntityId> boxSlot = scene->create();
+    Option<EntityId> sphereSlot = scene->create();
+    if (groundSlot.isNone() || boxSlot.isNone() || sphereSlot.isNone())
+    {
+        println("[mu:error] physics probe: scene is full");
+        return false;
+    }
+
+    EntityId ground = groundSlot.unwrap();
+    EntityId box = boxSlot.unwrap();
+    EntityId sphere = sphereSlot.unwrap();
+
+    scene->entities[ground].local.position = Vec3::new(0.0f, -0.5f, 0.0f);
+    scene->entities[box].local.position = Vec3::new(0.0f, 6.0f, 0.0f);
+    scene->entities[sphere].local.position = Vec3::new(3.0f, 8.0f, 0.0f);
+
+    Result<u32, str> groundBody = addBox(world, ground, Vec3::new(20.0f, 0.5f, 20.0f), false);
+    Result<u32, str> boxBody = addBox(world, box, Vec3::new(0.5f, 0.5f, 0.5f), true);
+    Result<u32, str> sphereBody = addSphere(world, sphere, 0.5f, true);
+
+    if (groundBody.isErr() || boxBody.isErr() || sphereBody.isErr())
+    {
+        println("[mu:error] physics probe: body creation failed");
+        return false;
+    }
+
+    println("[mu] physics probe: created ground + box + sphere");
+
+    u32 bodies = JoltC_PhysicsSystem_GetNumBodies(world->system);
+    u32 active = JoltC_PhysicsSystem_GetNumActiveBodies(world->system, BODY_RIGID);
+    u32 collide = (u32)JoltC_ObjectLayerPairFilterTable_ShouldCollide(world->objectFilter, 0, 0);
+    println("[mu] physics probe: bodies={} active={} collide={}", bodies, active, collide);
+
+    u32 frames = 240;
+    for (u32 i = 0; i < frames; i++)
+        step(world, 1.0f / 60.0f);
+
+    f32 boxY = scene->entities[box].local.position.y;
+    f32 sphereY = scene->entities[sphere].local.position.y;
+    println("[mu] physics probe: box y={} sphere y={}", boxY, sphereY);
+
+    bool landed = boxY > 0.0f && boxY < 1.5f && sphereY > 0.0f && sphereY < 1.5f;
+    if (landed)
+        println("[mu] physics probe: PASS");
+    else
+        println("[mu:error] physics probe: FAIL");
+    return landed;
+}

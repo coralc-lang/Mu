@@ -18,6 +18,12 @@ pub typedef BroadPhaseLayerInterface = rawptr;
 pub typedef ObjectVsBroadPhaseLayerFilter = rawptr;
 pub typedef Shape = rawptr;
 pub typedef BodyCreationSettings = rawptr;
+pub typedef NarrowPhaseQuery = rawptr;
+pub typedef BroadPhaseLayerFilter = rawptr;
+pub typedef ObjectLayerFilter = rawptr;
+pub typedef BodyFilter = rawptr;
+pub typedef ShapeFilter = rawptr;
+pub typedef ShapeCastSettings = rawptr;
 
 pub typedef BodyID = u32;
 pub typedef SubShapeID = u32;

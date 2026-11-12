@@ -4,12 +4,15 @@
 
 use core::core { Loop, logInfo, logError };
 use math::math { Vec3 };
+use physics::probe { runProbe };
 use physics::world { BodyRecord, PhysicsWorld, physicsWorld, physicsSystem, start, stop };
+use platform::platform { platformRequestQuit };
 use render::render { Renderer, nullRenderer };
 use scene::scene { Scene, Entity };
 use script::abi { BindingEntry, BindingTable };
 use script::loader { ScriptHost, scriptSystem };
 use script::bindings { ScriptBinding, ScriptBindings };
+import std::env { get };
 
 static Entity[4096] MuSceneStorage;
 static Scene MuScene;
@@ -46,6 +49,13 @@ pub i32 main()
     MuLoop.scriptCtx = (rawptr)&MuHost;
     MuLoop.scriptUpdate = scriptSystem;
 
+    bool probeOk = true;
+    if (get("MU_PHYSICS_PROBE").isSome())
+    {
+        probeOk = runProbe(&MuPhysics, &MuScene);
+        platformRequestQuit();
+    }
+
     logInfo("engine running");
     MuLoop.runUntilQuit();
 
@@ -53,5 +63,5 @@ pub i32 main()
     MuHost.free();
     MuRenderer.shutdown(MuRenderer.ctx);
     logInfo("engine stopped");
-    return 0;
+    return probeOk ? 0 : 1;
 }

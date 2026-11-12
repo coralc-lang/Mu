@@ -8,11 +8,9 @@ use scene::scene { Scene, Entity, EntityId, NIL };
 use thirdparty::jolt {
     PhysicsSystem, BodyInterface, TempAllocator, JobSystem,
     ObjectLayerPairFilter, BroadPhaseLayerInterface,
-    ObjectVsBroadPhaseLayerFilter, Shape, BodyCreationSettings, BodyID,
-    BODY_ID_INVALID, MOTION_STATIC, MOTION_DYNAMIC, ACTIVATE,
-    JoltC_Init, JoltC_Shutdown,
-    JoltC_TempAllocator_Create, JoltC_TempAllocator_Destroy,
-    JoltC_JobSystemThreadPool_Create, JoltC_JobSystem_Destroy,
+    ObjectVsBroadPhaseLayerFilter, BodyID,
+    JoltC_Init, JoltC_Shutdown, JoltC_TempAllocator_Create,
+    JoltC_TempAllocator_Destroy, JoltC_JobSystemThreadPool_Create, JoltC_JobSystem_Destroy,
     JoltC_ObjectLayerPairFilterTable_Create,
     JoltC_ObjectLayerPairFilterTable_EnableCollision,
     JoltC_ObjectLayerPairFilter_Destroy,
@@ -25,17 +23,9 @@ use thirdparty::jolt {
     JoltC_PhysicsSystem_Init, JoltC_PhysicsSystem_Update,
     JoltC_PhysicsSystem_SetGravity,
     JoltC_PhysicsSystem_GetBodyInterface,
-    JoltC_BodyCreationSettings_Create3,
-    JoltC_BodyCreationSettings_Destroy,
-    JoltC_BodyCreationSettings_SetFriction,
-    JoltC_BodyCreationSettings_SetRestitution,
-    JoltC_BodyInterface_CreateAndAddBody,
     JoltC_BodyInterface_DestroyBody,
     JoltC_BodyInterface_GetPosition,
-    JoltC_BodyInterface_GetRotation,
-    JoltC_BodyInterface_SetLinearVelocity,
-    JoltC_BoxShape_Create, JoltC_SphereShape_Create,
-    JoltC_Shape_Release
+    JoltC_BodyInterface_GetRotation
 };
 
 pub const u32 DEFAULT_CAPACITY = 4096;
@@ -99,12 +89,9 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
     world->jobs = JoltC_JobSystemThreadPool_Create(2048, 8, 1);
     world->objectFilter = JoltC_ObjectLayerPairFilterTable_Create(1);
     world->broadPhase = JoltC_BroadPhaseLayerInterfaceTable_Create(1, 1);
-    world->broadPhaseFilter = JoltC_ObjectVsBroadPhaseLayerFilterTable_Create(
-        world->broadPhase, 1, world->objectFilter, 1);
 
     if (world->temp == null || world->jobs == null ||
-        world->objectFilter == null || world->broadPhase == null ||
-        world->broadPhaseFilter == null)
+        world->objectFilter == null || world->broadPhase == null)
     {
         stop(world);
         return false;
@@ -112,6 +99,14 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
 
     JoltC_ObjectLayerPairFilterTable_EnableCollision(world->objectFilter, 0, 0);
     JoltC_BroadPhaseLayerInterfaceTable_MapObjectToBroadPhaseLayer(world->broadPhase, 0, 0);
+
+    world->broadPhaseFilter = JoltC_ObjectVsBroadPhaseLayerFilterTable_Create(
+        world->broadPhase, 1, world->objectFilter, 1);
+    if (world->broadPhaseFilter == null)
+    {
+        stop(world);
+        return false;
+    }
 
     world->system = JoltC_PhysicsSystem_Create();
     if (world->system == null)
@@ -179,97 +174,6 @@ pub void stop(PhysicsWorld* world)
     world->count = 0;
     world->joltReady = false;
     world->started = false;
-}
-
-Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bool dynamic)
-{
-    if (world == null || !world->started)
-        return Result<u32, str>::Err { .error = "physics: world not started" };
-    if (world->scene == null)
-        return Result<u32, str>::Err { .error = "physics: no scene bound" };
-    if (!world->scene->alive(entity))
-        return Result<u32, str>::Err { .error = "physics: entity is dead or invalid" };
-    if (world->scene->entities[entity].parent != NIL)
-        return Result<u32, str>::Err { .error = "physics: body entity must be a root" };
-    if (world->count >= world->capacity)
-        return Result<u32, str>::Err { .error = "physics: body table full" };
-    if (shape == null)
-        return Result<u32, str>::Err { .error = "physics: shape creation failed" };
-
-    Entity* e = &world->scene->entities[entity];
-    Vec3 p = e->local.position;
-    Quat q = e->local.rotation;
-    RVec3 position = RVec3 { .x = p.x, .y = p.y, .z = p.z };
-    i32 motion = MOTION_STATIC;
-    if (dynamic) motion = MOTION_DYNAMIC;
-
-    BodyCreationSettings settings = JoltC_BodyCreationSettings_Create3(
-        shape, position, q, motion, 0);
-    if (settings == null)
-    {
-        JoltC_Shape_Release(shape);
-        return Result<u32, str>::Err { .error = "physics: body settings creation failed" };
-    }
-
-    JoltC_BodyCreationSettings_SetFriction(settings, 0.5f);
-    JoltC_BodyCreationSettings_SetRestitution(settings, 0.0f);
-    
-    BodyID body = JoltC_BodyInterface_CreateAndAddBody(world->bodies, settings, ACTIVATE);
-    
-    JoltC_BodyCreationSettings_Destroy(settings);
-    JoltC_Shape_Release(shape);
-
-    if (body == BODY_ID_INVALID)
-        return Result<u32, str>::Err { .error = "physics: body creation failed" };
-
-    BodyRecord* record = &world->records[world->count];
-    record->entity = entity;
-    record->body = body;
-    world->count = world->count + 1;
-    return Result<u32, str>::Ok { .value = body };
-}
-
-pub Result<u32, str> addBox(PhysicsWorld* world, EntityId entity, Vec3 halfExtent, bool dynamic)
-{
-    Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
-    return _addShape(world, entity, shape, dynamic);
-}
-
-pub Result<u32, str> addSphere(PhysicsWorld* world, EntityId entity, f32 radius, bool dynamic)
-{
-    Shape shape = JoltC_SphereShape_Create(radius);
-    return _addShape(world, entity, shape, dynamic);
-}
-
-i32 _find(PhysicsWorld* world, EntityId entity)
-{
-    if (world == null) return -1;
-    for (u32 i = 0; i < world->count; i++)
-    {
-        if (world->records[i].entity == entity) return (i32)i;
-    }
-    return -1;
-}
-
-pub bool destroyBody(PhysicsWorld* world, EntityId entity)
-{
-    i32 index = _find(world, entity);
-    if (index < 0) return false;
-
-    u32 i = (u32)index;
-    JoltC_BodyInterface_DestroyBody(world->bodies, world->records[i].body);
-    world->count = world->count - 1;
-    if (i < world->count)
-        world->records[i] = world->records[world->count];
-    return true;
-}
-
-pub bool setLinearVelocity(PhysicsWorld* world, EntityId entity, Vec3 velocity)
-{
-    i32 index = _find(world, entity);
-    if (index < 0) return false;
-    JoltC_BodyInterface_SetLinearVelocity(world->bodies, world->records[(u32)index].body, velocity);
-    return true;
 }
 
 // One fixed step, then copy Jolt transforms back into root entities. The

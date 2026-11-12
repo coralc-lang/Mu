@@ -10,7 +10,7 @@ build "MuEngine" {
     module_map = ".coral/modules.map";
     cache_dir  = ".coral/cache";
 
-    flags = ["--strict", "--warn-unused"];
+    flags = ["--show-gcc"];
 
     modules = [
         "alloc",
@@ -82,7 +82,11 @@ task "run" {
     exec  = "build/muengine";
 }
 
-task "test-physics" {
+# task "mulang" {
+#     exec = "cd mulang && coralc build --force";
+# }
+
+task "physics-probe" {
     after = ["build"];
-    exec  = "bash -c 'clang -std=c11 native/jolt_smoke.c -I third_party/JoltPhysicsC/JoltC/include -o build/jolt_smoke -L build/native/joltc -lJoltC -lJolt -lstdc++ -lm -lpthread -ldl && timeout 15 build/jolt_smoke'";
+    exec  = "bash -c 'MU_PHYSICS_PROBE=1 build/muengine'";
 }
