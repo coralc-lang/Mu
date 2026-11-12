@@ -5,7 +5,7 @@ build "MuEngine" {
     root       = "src/";
     entry      = "engine/main.crl";
     target     = "x86_64";
-    opt        = "debug";
+    opt       = "debug";
     output     = "build/muengine";
     module_map = ".coral/modules.map";
     cache_dir  = ".coral/cache";
@@ -33,6 +33,7 @@ build "MuEngine" {
             "packaged/linux-x86_64/lib/libbgfx.a",
             "packaged/linux-x86_64/lib/libbimg.a",
             "packaged/linux-x86_64/lib/libbx.a",
+            "stdc++",
             "m",
             "pthread",
             "dl",

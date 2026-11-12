@@ -2,7 +2,7 @@
 // No gameplay, demo, parser, or test harness lives here; systems are
 // initialized and the engine runs until a quit is requested.
 
-use core::core { Loop, logError };
+use core::core { Loop, logInfo, logError };
 use math::math { Vec3 };
 use physics::world { BodyRecord, PhysicsWorld, physicsWorld, physicsSystem, start, stop };
 use render::render { Renderer, nullRenderer };
@@ -25,6 +25,7 @@ static PhysicsWorld MuPhysics;
 
 pub i32 main()
 {
+    logInfo("engine starting");
     MuScene = Scene::new(MuSceneStorage, 4096);
 
     MuBindings = BindingTable::new(MuBindingEntries, 128);
@@ -34,18 +35,23 @@ pub i32 main()
     MuPhysics = physicsWorld(MuPhysicsBodies, 4096);
     if (!start(&MuPhysics, &MuScene, Vec3::new(0.0f, -9.81f, 0.0f)))
         logError("physics: Jolt start failed");
+    else
+        logInfo("physics: Jolt world started");
 
     MuRenderer = nullRenderer();
+    logInfo("renderer: null");
     MuLoop = Loop::new(&MuScene, &MuRenderer);
     MuLoop.physicsCtx = (rawptr)&MuPhysics;
     MuLoop.physicsUpdate = physicsSystem;
     MuLoop.scriptCtx = (rawptr)&MuHost;
     MuLoop.scriptUpdate = scriptSystem;
 
+    logInfo("engine running");
     MuLoop.runUntilQuit();
 
     stop(&MuPhysics);
     MuHost.free();
     MuRenderer.shutdown(MuRenderer.ctx);
+    logInfo("engine stopped");
     return 0;
 }

@@ -5,8 +5,7 @@
 
 use math::math { Vec3, Quat, RVec3 };
 use scene::scene { Scene, Entity, EntityId, NIL };
-use thirdparty::jolt { jolt };
-use jolt {
+use thirdparty::jolt {
     PhysicsSystem, BodyInterface, TempAllocator, JobSystem,
     ObjectLayerPairFilter, BroadPhaseLayerInterface,
     ObjectVsBroadPhaseLayerFilter, Shape, BodyCreationSettings, BodyID,
