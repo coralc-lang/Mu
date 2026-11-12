@@ -31,6 +31,38 @@ pub typedef ObjectLayer = u16;
 pub typedef BroadPhaseLayer = u8;
 pub typedef CBool = i32;
 
+pub struct Mat44 {
+    f32[16] m;
+}
+
+pub struct RayCastResult {
+    BodyID bodyID;
+    f32 fraction;
+    u32 subShapeID2;
+}
+
+pub struct CollideShapeResult {
+    Vec3 contactPointOn1;
+    Vec3 contactPointOn2;
+    Vec3 penetrationAxis;
+    f32 penetrationDepth;
+    u32 subShapeID1;
+    u32 subShapeID2;
+    BodyID bodyID2;
+}
+
+pub struct ShapeCastResult {
+    Vec3 contactPointOn1;
+    Vec3 contactPointOn2;
+    Vec3 penetrationAxis;
+    f32 penetrationDepth;
+    u32 subShapeID1;
+    u32 subShapeID2;
+    BodyID bodyID2;
+    f32 fraction;
+    CBool isBackFaceHit;
+}
+
 pub const u32 BODY_ID_INVALID = 0xFFFFFFFF;
 
 pub const i32 MOTION_STATIC = 0;
@@ -118,3 +150,21 @@ pub extern void JoltC_BodyInterface_ActivateBody(BodyInterface iface, BodyID bod
 pub extern Shape JoltC_BoxShape_Create(Vec3 halfExtent, f32 convexRadius);
 pub extern Shape JoltC_SphereShape_Create(f32 radius);
 pub extern void JoltC_Shape_Release(const Shape shape);
+
+pub extern NarrowPhaseQuery JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock(const PhysicsSystem system);
+pub extern CBool JoltC_NarrowPhaseQuery_CastRay(const NarrowPhaseQuery query, RVec3 origin, Vec3 direction, RayCastResult* outResult);
+pub extern void JoltC_NarrowPhaseQuery_CollideShape(const NarrowPhaseQuery query, const Shape shape, Vec3 scale, Mat44 centerOfMassTransform, RVec3 baseOffset, void(rawptr, const CollideShapeResult*) callback, rawptr userData, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter, const ShapeFilter shapeFilter);
+pub extern CBool JoltC_NarrowPhaseQuery_CastShapeClosest(const NarrowPhaseQuery query, const Shape shape, Vec3 scale, Mat44 centerOfMassTransform, Vec3 direction, const ShapeCastSettings settings, RVec3 baseOffset, ShapeCastResult* outResult, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter, const ShapeFilter shapeFilter);
+pub extern Mat44 JoltC_Mat4_RotationTranslation(Quat rotation, Vec3 translation);
+pub extern ObjectLayerPairFilter JoltC_ObjectLayerPairFilterMask_Create();
+pub extern ObjectLayer JoltC_ObjectLayerPairFilterMask_GetObjectLayer(u32 group, u32 mask);
+pub extern u32 JoltC_ObjectLayerPairFilterMask_GetGroup(ObjectLayer layer);
+pub extern u32 JoltC_ObjectLayerPairFilterMask_GetMask(ObjectLayer layer);
+pub extern BroadPhaseLayerInterface JoltC_BroadPhaseLayerInterfaceMask_Create(u32 numBroadPhaseLayers);
+pub extern void JoltC_BroadPhaseLayerInterfaceMask_ConfigureLayer(BroadPhaseLayerInterface iface, BroadPhaseLayer broadPhaseLayer, u32 groupsToInclude, u32 groupsToExclude);
+pub extern ObjectVsBroadPhaseLayerFilter JoltC_ObjectVsBroadPhaseLayerFilterMask_Create(const BroadPhaseLayerInterface bpInterface);
+pub extern BroadPhaseLayerFilter JoltC_PhysicsSystem_GetDefaultBroadPhaseLayerFilter(const PhysicsSystem system, ObjectLayer layer);
+pub extern ObjectLayerFilter JoltC_PhysicsSystem_GetDefaultLayerFilter(const PhysicsSystem system, ObjectLayer layer);
+pub extern void JoltC_BroadPhaseLayerFilter_Destroy(BroadPhaseLayerFilter filter);
+pub extern void JoltC_ObjectLayerFilter_Destroy(ObjectLayerFilter filter);
+pub extern CBool JoltC_NarrowPhaseQuery_CastRay2(const NarrowPhaseQuery query, RVec3 origin, Vec3 direction, RayCastResult* outResult, const BroadPhaseLayerFilter bpFilter, const ObjectLayerFilter olFilter, const BodyFilter bodyFilter);

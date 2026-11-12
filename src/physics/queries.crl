@@ -1,0 +1,333 @@
+use math::math { Vec3, Quat, RVec3 };
+use physics::layers { hasLayer, objectLayerFor };
+use physics::world { BodyRecord, PhysicsWorld };
+use scene::scene { EntityId, NIL };
+use thirdparty::jolt {
+    BodyID, CBool, NarrowPhaseQuery, Shape, ObjectLayer,
+    BroadPhaseLayerFilter, ObjectLayerFilter,
+    RayCastResult, CollideShapeResult, ShapeCastResult, Mat44,
+    JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock,
+    JoltC_PhysicsSystem_GetDefaultBroadPhaseLayerFilter,
+    JoltC_PhysicsSystem_GetDefaultLayerFilter,
+    JoltC_BroadPhaseLayerFilter_Destroy,
+    JoltC_ObjectLayerFilter_Destroy,
+    JoltC_NarrowPhaseQuery_CastRay2,
+    JoltC_NarrowPhaseQuery_CollideShape,
+    JoltC_NarrowPhaseQuery_CastShapeClosest,
+    JoltC_Mat4_RotationTranslation,
+    JoltC_BoxShape_Create, JoltC_SphereShape_Create,
+    JoltC_Shape_Release
+};
+
+pub struct RayHit
+{
+    EntityId entity;
+    BodyID body;
+    f32 fraction;
+    Vec3 point;
+}
+
+pub struct ShapeCastHit
+{
+    EntityId entity;
+    BodyID body;
+    f32 fraction;
+    Vec3 contactPoint;
+    Vec3 penetrationAxis;
+    f32 penetrationDepth;
+}
+
+pub struct OverlapHit
+{
+    EntityId entity;
+    BodyID body;
+    Vec3 contactPoint;
+    Vec3 penetrationAxis;
+    f32 penetrationDepth;
+}
+
+struct _OverlapContext
+{
+    const BodyRecord* records;
+    u32 recordCount;
+    OverlapHit* out;
+    u32 capacity;
+    u32 found;
+}
+
+struct _QueryFilters
+{
+    BroadPhaseLayerFilter broadPhase;
+    ObjectLayerFilter object;
+}
+
+void _destroyFilters(_QueryFilters* filters)
+{
+    if (filters == null) return;
+    if (filters->object != null)
+        JoltC_ObjectLayerFilter_Destroy(filters->object);
+    if (filters->broadPhase != null)
+        JoltC_BroadPhaseLayerFilter_Destroy(filters->broadPhase);
+    filters->object = null;
+    filters->broadPhase = null;
+}
+
+_QueryFilters _filters(PhysicsWorld* world, u32 layer)
+{
+    _QueryFilters filters = _QueryFilters { .broadPhase = null, .object = null };
+    if (world == null || !world->started) return filters;
+    if (!hasLayer(&world->layers, layer)) return filters;
+
+    ObjectLayer objectLayer = objectLayerFor(&world->layers, layer);
+    filters.broadPhase = JoltC_PhysicsSystem_GetDefaultBroadPhaseLayerFilter(
+        world->system, objectLayer);
+    filters.object = JoltC_PhysicsSystem_GetDefaultLayerFilter(
+        world->system, objectLayer);
+
+    if (filters.broadPhase == null || filters.object == null)
+        _destroyFilters(&filters);
+    return filters;
+}
+
+bool _filtersReady(const _QueryFilters* filters)
+{
+    return filters != null && filters->broadPhase != null && filters->object != null;
+}
+
+RVec3 _rvec(Vec3 p)
+{
+    return RVec3 { .x = p.x, .y = p.y, .z = p.z };
+}
+
+RVec3 _zeroRVec()
+{
+    return RVec3 { .x = 0.0f, .y = 0.0f, .z = 0.0f };
+}
+
+Mat44 _transform(Vec3 position, Quat rotation)
+{
+    return JoltC_Mat4_RotationTranslation(rotation, position);
+}
+
+EntityId _entityForBody(const BodyRecord* records, u32 count, BodyID body)
+{
+    for (u32 i = 0; i < count; i++)
+    {
+        if (records[i].body == body) return records[i].entity;
+    }
+    return NIL;
+}
+
+void _collectOverlap(rawptr userData, const CollideShapeResult* result)
+{
+    _OverlapContext* ctx = (_OverlapContext*)userData;
+    if (ctx == null || result == null) return;
+
+    if (ctx->found < ctx->capacity)
+    {
+        OverlapHit* hit = &ctx->out[ctx->found];
+        hit->entity = _entityForBody(ctx->records, ctx->recordCount, result->bodyID2);
+        hit->body = result->bodyID2;
+        hit->contactPoint = result->contactPointOn2;
+        hit->penetrationAxis = result->penetrationAxis;
+        hit->penetrationDepth = result->penetrationDepth;
+    }
+    ctx->found = ctx->found + 1;
+}
+
+Option<RayHit> _raycast(PhysicsWorld* world, Vec3 origin, Vec3 direction,
+    const BroadPhaseLayerFilter broadPhase, const ObjectLayerFilter object)
+{
+    if (world == null || !world->started) return Option<RayHit>::None;
+    if (direction.lengthSq() <= 0.0f) return Option<RayHit>::None;
+
+    NarrowPhaseQuery query = JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock(world->system);
+    if (query == null) return Option<RayHit>::None;
+
+    RayCastResult result;
+    if (JoltC_NarrowPhaseQuery_CastRay2(
+        query, _rvec(origin), direction, &result,
+        broadPhase, object, null) == 0)
+        return Option<RayHit>::None;
+
+    return Option<RayHit>::Some {
+        .value = RayHit {
+            .entity = _entityForBody(world->records, world->count, result.bodyID),
+            .body = result.bodyID,
+            .fraction = result.fraction,
+            .point = origin.add(direction.scale(result.fraction))
+        }
+    };
+}
+
+pub Option<RayHit> raycast(PhysicsWorld* world, Vec3 origin, Vec3 direction)
+{
+    return _raycast(world, origin, direction, null, null);
+}
+
+pub Option<RayHit> raycastOnLayer(PhysicsWorld* world, u32 layer, Vec3 origin, Vec3 direction)
+{
+    _QueryFilters filters = _filters(world, layer);
+    if (!_filtersReady(&filters)) return Option<RayHit>::None;
+
+    Option<RayHit> hit = _raycast(
+        world, origin, direction, filters.broadPhase, filters.object);
+    _destroyFilters(&filters);
+    return hit;
+}
+
+Option<ShapeCastHit> _shapeCast(PhysicsWorld* world, Shape shape, Vec3 origin, Quat rotation, Vec3 direction,
+    const BroadPhaseLayerFilter broadPhase, const ObjectLayerFilter object)
+{
+    if (world == null || !world->started || shape == null)
+        return Option<ShapeCastHit>::None;
+    if (direction.lengthSq() <= 0.0f) return Option<ShapeCastHit>::None;
+
+    NarrowPhaseQuery query = JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock(world->system);
+    if (query == null) return Option<ShapeCastHit>::None;
+
+    ShapeCastResult result;
+    Mat44 transform = _transform(origin, rotation);
+    CBool hit = JoltC_NarrowPhaseQuery_CastShapeClosest(
+        query, shape, Vec3::one(), transform, direction, null, _zeroRVec(), &result,
+        broadPhase, object, null, null);
+    if (hit == 0) return Option<ShapeCastHit>::None;
+
+    return Option<ShapeCastHit>::Some {
+        .value = ShapeCastHit {
+            .entity = _entityForBody(world->records, world->count, result.bodyID2),
+            .body = result.bodyID2,
+            .fraction = result.fraction,
+            .contactPoint = result.contactPointOn2,
+            .penetrationAxis = result.penetrationAxis,
+            .penetrationDepth = result.penetrationDepth
+        }
+    };
+}
+
+pub Option<ShapeCastHit> shapeCast(PhysicsWorld* world, Shape shape, Vec3 origin, Quat rotation, Vec3 direction)
+{
+    return _shapeCast(world, shape, origin, rotation, direction, null, null);
+}
+
+pub Option<ShapeCastHit> shapeCastOnLayer(PhysicsWorld* world, Shape shape, u32 layer,
+    Vec3 origin, Quat rotation, Vec3 direction)
+{
+    _QueryFilters filters = _filters(world, layer);
+    if (!_filtersReady(&filters)) return Option<ShapeCastHit>::None;
+
+    Option<ShapeCastHit> hit = _shapeCast(
+        world, shape, origin, rotation, direction, filters.broadPhase, filters.object);
+    _destroyFilters(&filters);
+    return hit;
+}
+
+pub Option<ShapeCastHit> boxCast(PhysicsWorld* world, Vec3 halfExtent, Vec3 origin, Quat rotation, Vec3 direction)
+{
+    Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
+    Option<ShapeCastHit> hit = shapeCast(world, shape, origin, rotation, direction);
+    JoltC_Shape_Release(shape);
+    return hit;
+}
+
+pub Option<ShapeCastHit> boxCastOnLayer(PhysicsWorld* world, Vec3 halfExtent, u32 layer,
+    Vec3 origin, Quat rotation, Vec3 direction)
+{
+    Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
+    Option<ShapeCastHit> hit = shapeCastOnLayer(world, shape, layer, origin, rotation, direction);
+    JoltC_Shape_Release(shape);
+    return hit;
+}
+
+pub Option<ShapeCastHit> sphereCast(PhysicsWorld* world, f32 radius, Vec3 origin, Quat rotation, Vec3 direction)
+{
+    Shape shape = JoltC_SphereShape_Create(radius);
+    Option<ShapeCastHit> hit = shapeCast(world, shape, origin, rotation, direction);
+    JoltC_Shape_Release(shape);
+    return hit;
+}
+
+pub Option<ShapeCastHit> sphereCastOnLayer(PhysicsWorld* world, f32 radius, u32 layer,
+    Vec3 origin, Quat rotation, Vec3 direction)
+{
+    Shape shape = JoltC_SphereShape_Create(radius);
+    Option<ShapeCastHit> hit = shapeCastOnLayer(world, shape, layer, origin, rotation, direction);
+    JoltC_Shape_Release(shape);
+    return hit;
+}
+
+u32 _overlapShape(PhysicsWorld* world, Shape shape, Vec3 position, Quat rotation,
+    OverlapHit* out, u32 capacity, const BroadPhaseLayerFilter broadPhase,
+    const ObjectLayerFilter object)
+{
+    if (world == null || !world->started || shape == null) return 0;
+    if (capacity > 0 && out == null) return 0;
+
+    NarrowPhaseQuery query = JoltC_PhysicsSystem_GetNarrowPhaseQueryNoLock(world->system);
+    if (query == null) return 0;
+
+    _OverlapContext ctx = _OverlapContext {
+        .records = world->records,
+        .recordCount = world->count,
+        .out = out,
+        .capacity = capacity,
+        .found = 0
+    };
+    Mat44 transform = _transform(position, rotation);
+    JoltC_NarrowPhaseQuery_CollideShape(
+        query, shape, Vec3::one(), transform, _zeroRVec(),
+        _collectOverlap, (rawptr)&ctx, broadPhase, object, null, null);
+    return ctx.found;
+}
+
+pub u32 overlapShape(PhysicsWorld* world, Shape shape, Vec3 position, Quat rotation, OverlapHit* out, u32 capacity)
+{
+    return _overlapShape(world, shape, position, rotation, out, capacity, null, null);
+}
+
+pub u32 overlapShapeOnLayer(PhysicsWorld* world, Shape shape, u32 layer,
+    Vec3 position, Quat rotation, OverlapHit* out, u32 capacity)
+{
+    _QueryFilters filters = _filters(world, layer);
+    if (!_filtersReady(&filters)) return 0;
+
+    u32 count = _overlapShape(
+        world, shape, position, rotation, out, capacity,
+        filters.broadPhase, filters.object);
+    _destroyFilters(&filters);
+    return count;
+}
+
+pub u32 overlapBox(PhysicsWorld* world, Vec3 halfExtent, Vec3 position, Quat rotation, OverlapHit* out, u32 capacity)
+{
+    Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
+    u32 count = overlapShape(world, shape, position, rotation, out, capacity);
+    JoltC_Shape_Release(shape);
+    return count;
+}
+
+pub u32 overlapBoxOnLayer(PhysicsWorld* world, Vec3 halfExtent, u32 layer,
+    Vec3 position, Quat rotation, OverlapHit* out, u32 capacity)
+{
+    Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
+    u32 count = overlapShapeOnLayer(world, shape, layer, position, rotation, out, capacity);
+    JoltC_Shape_Release(shape);
+    return count;
+}
+
+pub u32 overlapSphere(PhysicsWorld* world, f32 radius, Vec3 position, OverlapHit* out, u32 capacity)
+{
+    Shape shape = JoltC_SphereShape_Create(radius);
+    u32 count = overlapShape(world, shape, position, Quat::identity(), out, capacity);
+    JoltC_Shape_Release(shape);
+    return count;
+}
+
+pub u32 overlapSphereOnLayer(PhysicsWorld* world, f32 radius, u32 layer,
+    Vec3 position, OverlapHit* out, u32 capacity)
+{
+    Shape shape = JoltC_SphereShape_Create(radius);
+    u32 count = overlapShapeOnLayer(world, shape, layer, position, Quat::identity(), out, capacity);
+    JoltC_Shape_Release(shape);
+    return count;
+}

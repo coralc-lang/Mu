@@ -1,0 +1,102 @@
+use thirdparty::jolt {
+    ObjectLayer, BroadPhaseLayer,
+    ObjectLayerPairFilter, BroadPhaseLayerInterface,
+    ObjectVsBroadPhaseLayerFilter,
+    JoltC_ObjectLayerPairFilterMask_Create,
+    JoltC_ObjectLayerPairFilterMask_GetObjectLayer,
+    JoltC_BroadPhaseLayerInterfaceMask_Create,
+    JoltC_BroadPhaseLayerInterfaceMask_ConfigureLayer,
+    JoltC_ObjectVsBroadPhaseLayerFilterMask_Create
+};
+
+pub const u32 MAX_LAYERS = 8;
+pub const u8 ALL_LAYERS = 0xFF;
+
+pub struct CollisionLayers
+{
+    u32 count;
+    u8[MAX_LAYERS] masks;
+}
+
+pub CollisionLayers collisionLayers(u32 count)
+{
+    u32 n = count;
+    if (n < 1) n = 1;
+    if (n > MAX_LAYERS) n = MAX_LAYERS;
+
+    return CollisionLayers {
+        .count = n,
+        .masks = {
+            ALL_LAYERS, ALL_LAYERS, ALL_LAYERS, ALL_LAYERS,
+            ALL_LAYERS, ALL_LAYERS, ALL_LAYERS, ALL_LAYERS
+        }
+    };
+}
+
+pub u32 layerCount(const CollisionLayers* layers)
+{
+    if (layers == null) return 0;
+    return layers->count;
+}
+
+pub bool hasLayer(const CollisionLayers* layers, u32 layer)
+{
+    if (layers == null) return false;
+    return layer < layers->count;
+}
+
+pub u8 layerMask(const CollisionLayers* layers, u32 layer)
+{
+    if (!hasLayer(layers, layer)) return 0;
+    return layers->masks[layer];
+}
+
+pub bool setLayerMask(CollisionLayers* layers, u32 layer, u8 mask)
+{
+    if (!hasLayer(layers, layer)) return false;
+    layers->masks[layer] = mask;
+    return true;
+}
+
+pub bool layersShouldCollide(const CollisionLayers* layers, u32 layerA, u32 layerB)
+{
+    if (!hasLayer(layers, layerA) || !hasLayer(layers, layerB)) return false;
+    u32 bitA = (u32)1 << layerA;
+    u32 bitB = (u32)1 << layerB;
+    return (((u32)layers->masks[layerA] & bitB) != 0) &&
+           (((u32)layers->masks[layerB] & bitA) != 0);
+}
+
+pub ObjectLayer objectLayerFor(const CollisionLayers* layers, u32 layer)
+{
+    if (!hasLayer(layers, layer)) return 0;
+    return JoltC_ObjectLayerPairFilterMask_GetObjectLayer(
+        (u32)1 << layer, (u32)layers->masks[layer]);
+}
+
+pub ObjectLayerPairFilter layerObjectFilter()
+{
+    return JoltC_ObjectLayerPairFilterMask_Create();
+}
+
+pub BroadPhaseLayerInterface layerBroadPhase(const CollisionLayers* layers)
+{
+    u32 count = layerCount(layers);
+    if (count == 0) count = 1;
+
+    BroadPhaseLayerInterface broadPhase = JoltC_BroadPhaseLayerInterfaceMask_Create(count);
+    if (broadPhase == null) return null;
+
+    for (u32 i = 0; i < count; i++)
+    {
+        JoltC_BroadPhaseLayerInterfaceMask_ConfigureLayer(
+            broadPhase, (BroadPhaseLayer)i, (u32)1 << i, 0);
+    }
+    return broadPhase;
+}
+
+pub ObjectVsBroadPhaseLayerFilter layerBroadPhaseFilter(const BroadPhaseLayerInterface broadPhase)
+{
+    if (broadPhase == null) return null;
+    return JoltC_ObjectVsBroadPhaseLayerFilterMask_Create(broadPhase);
+}

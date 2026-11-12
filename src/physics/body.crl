@@ -1,8 +1,9 @@
 use math::math { Vec3, Quat, RVec3 };
+use physics::layers { hasLayer, objectLayerFor };
 use physics::world { BodyRecord, PhysicsWorld };
 use scene::scene { Entity, EntityId, NIL };
 use thirdparty::jolt {
-    Shape, BodyCreationSettings, BodyID,
+    Shape, BodyCreationSettings, BodyID, ObjectLayer,
     BODY_ID_INVALID, MOTION_STATIC, MOTION_DYNAMIC, ACTIVATE,
     JoltC_BodyCreationSettings_Create3,
     JoltC_BodyCreationSettings_Destroy,
@@ -15,7 +16,7 @@ use thirdparty::jolt {
     JoltC_Shape_Release
 };
 
-Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bool dynamic)
+Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bool dynamic, u32 layer)
 {
     if (world == null || !world->started)
         return Result<u32, str>::Err { .error = "physics: world not started" };
@@ -29,6 +30,11 @@ Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bo
         return Result<u32, str>::Err { .error = "physics: body table full" };
     if (shape == null)
         return Result<u32, str>::Err { .error = "physics: shape creation failed" };
+    if (!hasLayer(&world->layers, layer))
+    {
+        JoltC_Shape_Release(shape);
+        return Result<u32, str>::Err { .error = "physics: layer out of range" };
+    }
 
     Entity* e = &world->scene->entities[entity];
     Vec3 p = e->local.position;
@@ -37,8 +43,9 @@ Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bo
     i32 motion = MOTION_STATIC;
     if (dynamic) motion = MOTION_DYNAMIC;
 
+    ObjectLayer objectLayer = objectLayerFor(&world->layers, layer);
     BodyCreationSettings settings = JoltC_BodyCreationSettings_Create3(
-        shape, position, q, motion, 0);
+        shape, position, q, motion, objectLayer);
     if (settings == null)
     {
         JoltC_Shape_Release(shape);
@@ -59,20 +66,31 @@ Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bo
     BodyRecord* record = &world->records[world->count];
     record->entity = entity;
     record->body = body;
+    record->layer = layer;
     world->count = world->count + 1;
     return Result<u32, str>::Ok { .value = body };
 }
 
 pub Result<u32, str> addBox(PhysicsWorld* world, EntityId entity, Vec3 halfExtent, bool dynamic)
 {
+    return addBoxOnLayer(world, entity, halfExtent, dynamic, 0);
+}
+
+pub Result<u32, str> addBoxOnLayer(PhysicsWorld* world, EntityId entity, Vec3 halfExtent, bool dynamic, u32 layer)
+{
     Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
-    return _addShape(world, entity, shape, dynamic);
+    return _addShape(world, entity, shape, dynamic, layer);
 }
 
 pub Result<u32, str> addSphere(PhysicsWorld* world, EntityId entity, f32 radius, bool dynamic)
 {
+    return addSphereOnLayer(world, entity, radius, dynamic, 0);
+}
+
+pub Result<u32, str> addSphereOnLayer(PhysicsWorld* world, EntityId entity, f32 radius, bool dynamic, u32 layer)
+{
     Shape shape = JoltC_SphereShape_Create(radius);
-    return _addShape(world, entity, shape, dynamic);
+    return _addShape(world, entity, shape, dynamic, layer);
 }
 
 i32 _find(PhysicsWorld* world, EntityId entity)

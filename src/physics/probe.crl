@@ -2,14 +2,18 @@
 // world, then checks that the dynamic bodies landed. Enabled with
 // MU_PHYSICS_PROBE=1 so normal engine startup stays gameplay-free.
 
-use math::math { Vec3 };
-use physics::body { addBox, addSphere };
+use math::math { Vec3, Quat };
+use physics::body { addBox, addBoxOnLayer, addSphereOnLayer };
+use physics::layers { layersShouldCollide, setLayerMask };
+use physics::queries {
+    OverlapHit, RayHit, ShapeCastHit,
+    boxCast, overlapBox, overlapSphere, overlapSphereOnLayer, raycast, sphereCast
+};
 use physics::world { PhysicsWorld, step };
 use scene::scene { Scene, EntityId };
 use thirdparty::jolt {
     JoltC_PhysicsSystem_GetNumBodies,
     JoltC_PhysicsSystem_GetNumActiveBodies,
-    JoltC_ObjectLayerPairFilterTable_ShouldCollide,
     BODY_RIGID
 };
 
@@ -20,7 +24,8 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     Option<EntityId> groundSlot = scene->create();
     Option<EntityId> boxSlot = scene->create();
     Option<EntityId> sphereSlot = scene->create();
-    if (groundSlot.isNone() || boxSlot.isNone() || sphereSlot.isNone())
+    Option<EntityId> ghostSlot = scene->create();
+    if (groundSlot.isNone() || boxSlot.isNone() || sphereSlot.isNone() || ghostSlot.isNone())
     {
         println("[mu:error] physics probe: scene is full");
         return false;
@@ -29,26 +34,31 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     EntityId ground = groundSlot.unwrap();
     EntityId box = boxSlot.unwrap();
     EntityId sphere = sphereSlot.unwrap();
+    EntityId ghost = ghostSlot.unwrap();
 
     scene->entities[ground].local.position = Vec3::new(0.0f, -0.5f, 0.0f);
     scene->entities[box].local.position = Vec3::new(0.0f, 6.0f, 0.0f);
     scene->entities[sphere].local.position = Vec3::new(3.0f, 8.0f, 0.0f);
+    scene->entities[ghost].local.position = Vec3::new(6.0f, 6.0f, 0.0f);
+
+    setLayerMask(&world->layers, 2, 0x04);
 
     Result<u32, str> groundBody = addBox(world, ground, Vec3::new(20.0f, 0.5f, 20.0f), false);
-    Result<u32, str> boxBody = addBox(world, box, Vec3::new(0.5f, 0.5f, 0.5f), true);
-    Result<u32, str> sphereBody = addSphere(world, sphere, 0.5f, true);
+    Result<u32, str> boxBody = addBoxOnLayer(world, box, Vec3::new(0.5f, 0.5f, 0.5f), true, 1);
+    Result<u32, str> sphereBody = addSphereOnLayer(world, sphere, 0.5f, true, 1);
+    Result<u32, str> ghostBody = addSphereOnLayer(world, ghost, 0.5f, true, 2);
 
-    if (groundBody.isErr() || boxBody.isErr() || sphereBody.isErr())
+    if (groundBody.isErr() || boxBody.isErr() || sphereBody.isErr() || ghostBody.isErr())
     {
         println("[mu:error] physics probe: body creation failed");
         return false;
     }
 
-    println("[mu] physics probe: created ground + box + sphere");
+    println("[mu] physics probe: created ground + box + sphere + ghost");
 
     u32 bodies = JoltC_PhysicsSystem_GetNumBodies(world->system);
     u32 active = JoltC_PhysicsSystem_GetNumActiveBodies(world->system, BODY_RIGID);
-    u32 collide = (u32)JoltC_ObjectLayerPairFilterTable_ShouldCollide(world->objectFilter, 0, 0);
+    u32 collide = (u32)layersShouldCollide(&world->layers, 0, 0);
     println("[mu] physics probe: bodies={} active={} collide={}", bodies, active, collide);
 
     u32 frames = 240;
@@ -57,12 +67,75 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
 
     f32 boxY = scene->entities[box].local.position.y;
     f32 sphereY = scene->entities[sphere].local.position.y;
-    println("[mu] physics probe: box y={} sphere y={}", boxY, sphereY);
+    f32 ghostY = scene->entities[ghost].local.position.y;
+    println("[mu] physics probe: box y={} sphere y={} ghost y={}", boxY, sphereY, ghostY);
 
     bool landed = boxY > 0.0f && boxY < 1.5f && sphereY > 0.0f && sphereY < 1.5f;
-    if (landed)
+    bool layersOk = ghostY < 0.0f &&
+        layersShouldCollide(&world->layers, 0, 1) &&
+        !layersShouldCollide(&world->layers, 1, 2) &&
+        layersShouldCollide(&world->layers, 2, 2);
+
+    bool queriesOk = true;
+    Option<RayHit> ray = raycast(world, Vec3::new(0.0f, 5.0f, 0.0f), Vec3::new(0.0f, -10.0f, 0.0f));
+    if (ray.isNone() || ray.unwrap().entity != box) queriesOk = false;
+
+    Option<RayHit> miss = raycast(world, Vec3::new(0.0f, 5.0f, 0.0f), Vec3::new(0.0f, 10.0f, 0.0f));
+    if (miss.isSome()) queriesOk = false;
+
+    Option<ShapeCastHit> cast = boxCast(
+        world, Vec3::new(0.1f, 0.1f, 0.1f),
+        Vec3::new(0.0f, 5.0f, 0.0f), Quat::identity(),
+        Vec3::new(0.0f, -10.0f, 0.0f));
+    if (cast.isNone() || cast.unwrap().entity != box) queriesOk = false;
+
+    Option<ShapeCastHit> castSphere = sphereCast(
+        world, 0.1f, Vec3::new(3.0f, 5.0f, 0.0f), Quat::identity(),
+        Vec3::new(0.0f, -10.0f, 0.0f));
+    if (castSphere.isNone() || castSphere.unwrap().entity != sphere) queriesOk = false;
+
+    OverlapHit[8] overlaps;
+    u32 overlapCount = overlapSphere(world, 0.3f, Vec3::new(0.0f, 0.48f, 0.0f), overlaps, 8);
+    bool overlapBoxFound = false;
+    for (u32 i = 0; i < overlapCount && i < 8; i++)
+    {
+        if (overlaps[i].entity == box) overlapBoxFound = true;
+    }
+    if (!overlapBoxFound) queriesOk = false;
+
+    u32 emptyCount = overlapBox(
+        world, Vec3::new(0.5f, 0.5f, 0.5f),
+        Vec3::new(0.0f, 10.0f, 0.0f), Quat::identity(), overlaps, 8);
+    if (emptyCount != 0) queriesOk = false;
+
+    Vec3 ghostPosition = scene->entities[ghost].local.position;
+    u32 hiddenCount = overlapSphereOnLayer(
+        world, 0.75f, 1, ghostPosition, overlaps, 8);
+    if (hiddenCount != 0) queriesOk = false;
+
+    u32 ghostCount = overlapSphereOnLayer(
+        world, 0.75f, 2, ghostPosition, overlaps, 8);
+    bool ghostFound = false;
+    for (u32 i = 0; i < ghostCount && i < 8; i++)
+    {
+        if (overlaps[i].entity == ghost) ghostFound = true;
+    }
+    if (!ghostFound) queriesOk = false;
+
+    if (layersOk)
+        println("[mu] physics probe: layers PASS");
+    else
+        println("[mu:error] physics probe: layers FAIL");
+
+    if (queriesOk)
+        println("[mu] physics probe: queries PASS");
+    else
+        println("[mu:error] physics probe: queries FAIL");
+
+    bool ok = landed && layersOk && queriesOk;
+    if (ok)
         println("[mu] physics probe: PASS");
     else
         println("[mu:error] physics probe: FAIL");
-    return landed;
+    return ok;
 }
