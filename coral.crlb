@@ -82,10 +82,6 @@ task "run" {
     exec  = "build/muengine";
 }
 
-# task "mulang" {
-#     exec = "cd mulang && coralc build --force";
-# }
-
 task "physics-probe" {
     after = ["build"];
     exec  = "bash -c 'MU_PHYSICS_PROBE=1 build/muengine'";

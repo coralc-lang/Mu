@@ -3,7 +3,7 @@ use scene::scene { Entity, EntityId, NIL };
 use physics::world { PhysicsWorld };
 use physics::layers {
     hasLayer, objectLayerFor, LayerFilters,
-    layerFilters, destroyLayerFilters 
+    layerFilters, layerFiltersReady, destroyLayerFilters
 };
 use thirdparty::jolt {
     CharacterVirtual, CharacterVirtualSettings, ExtendedUpdateSettings, Shape, JoltC_CapsuleShape_Create,
@@ -130,7 +130,12 @@ pub void characterMove(PhysicsWorld* world, Character* character, Vec3 horizonta
 
     Vec3 current = JoltC_CharacterVirtual_GetLinearVelocity(character->handle);
     f32 vertical = current.y;
-    if (character->grounded && vertical < 0.0f) vertical = 0.0f;
+    if (character->grounded) {
+        if (vertical < 0.0f) vertical = 0.0f;
+    }
+    else {
+        vertical = vertical + world->gravity.y * dt;
+    }
     JoltC_CharacterVirtual_SetLinearVelocity(
         character->handle,
         Vec3::new(horizontalVelocity.x, vertical, horizontalVelocity.z));

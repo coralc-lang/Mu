@@ -4,6 +4,10 @@
 
 use math::math { Vec3, Quat };
 use physics::body { addBox, addBoxOnLayer, addSphereOnLayer };
+use physics::character {
+    Character, characterConfig, characterCreate, characterDestroy,
+    characterGrounded, characterJump, characterMove, characterPosition
+};
 use physics::layers { layersShouldCollide, setLayerMask };
 use physics::queries {
     OverlapHit, RayHit, ShapeCastHit,
@@ -25,7 +29,9 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     Option<EntityId> boxSlot = scene->create();
     Option<EntityId> sphereSlot = scene->create();
     Option<EntityId> ghostSlot = scene->create();
-    if (groundSlot.isNone() || boxSlot.isNone() || sphereSlot.isNone() || ghostSlot.isNone())
+    Option<EntityId> characterSlot = scene->create();
+    if (groundSlot.isNone() || boxSlot.isNone() || sphereSlot.isNone() ||
+        ghostSlot.isNone() || characterSlot.isNone())
     {
         println("[mu:error] physics probe: scene is full");
         return false;
@@ -35,11 +41,13 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     EntityId box = boxSlot.unwrap();
     EntityId sphere = sphereSlot.unwrap();
     EntityId ghost = ghostSlot.unwrap();
+    EntityId characterEntity = characterSlot.unwrap();
 
     scene->entities[ground].local.position = Vec3::new(0.0f, -0.5f, 0.0f);
     scene->entities[box].local.position = Vec3::new(0.0f, 6.0f, 0.0f);
     scene->entities[sphere].local.position = Vec3::new(3.0f, 8.0f, 0.0f);
     scene->entities[ghost].local.position = Vec3::new(6.0f, 6.0f, 0.0f);
+    scene->entities[characterEntity].local.position = Vec3::new(9.0f, 2.0f, 0.0f);
 
     setLayerMask(&world->layers, 2, 0x04);
 
@@ -122,6 +130,40 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     }
     if (!ghostFound) queriesOk = false;
 
+    bool characterOk = true;
+    Result<Character, str> characterResult = characterCreate(
+        world, characterEntity, characterConfig());
+    if (characterResult.isErr())
+    {
+        println("[mu:error] physics probe: character create failed");
+        characterOk = false;
+    }
+    else
+    {
+        Character character = characterResult.unwrap();
+        for (u32 i = 0; i < 120; i++)
+            characterMove(world, &character, Vec3::new(2.0f, 0.0f, 0.0f), 1.0f / 60.0f);
+
+        Vec3 walkPosition = characterPosition(&character);
+        bool walked = walkPosition.x > 9.5f;
+        bool stood = characterGrounded(&character) &&
+            walkPosition.y > 0.7f && walkPosition.y < 1.2f;
+
+        bool jumped = characterJump(&character, 4.5f);
+        characterMove(world, &character, Vec3::zero(), 1.0f / 60.0f);
+        f32 jumpY = characterPosition(&character).y;
+        bool rose = jumpY > walkPosition.y + 0.03f;
+
+        for (u32 i = 0; i < 120; i++)
+            characterMove(world, &character, Vec3::zero(), 1.0f / 60.0f);
+        bool landedAgain = characterGrounded(&character);
+
+        characterOk = walked && stood && jumped && rose && landedAgain;
+        println("[mu] physics probe: character x={} y={} jump y={}",
+            walkPosition.x, walkPosition.y, jumpY);
+        characterDestroy(&character);
+    }
+
     if (layersOk)
         println("[mu] physics probe: layers PASS");
     else
@@ -132,7 +174,12 @@ pub bool runProbe(PhysicsWorld* world, Scene* scene)
     else
         println("[mu:error] physics probe: queries FAIL");
 
-    bool ok = landed && layersOk && queriesOk;
+    if (characterOk)
+        println("[mu] physics probe: character PASS");
+    else
+        println("[mu:error] physics probe: character FAIL");
+
+    bool ok = landed && layersOk && queriesOk && characterOk;
     if (ok)
         println("[mu] physics probe: PASS");
     else

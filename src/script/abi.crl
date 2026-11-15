@@ -48,11 +48,12 @@ pub struct BindingTable
 
     static BindingTable new(BindingEntry* entries, u32 capacity)
     {
-        BindingTable table = BindingTable {
+        BindingTable table = {
             .entries = entries,
             .capacity = capacity,
             .count = 0
         };
+        
         for (u32 i = 0; i < capacity; i++)
         {
             table.entries[i].hash = 0;
