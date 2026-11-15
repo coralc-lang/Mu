@@ -78,7 +78,11 @@ void _keyEvent(InputState* input, SDL_Event* event)
             if (!input->down[scancode]) input->pressed[scancode] = true;
             input->down[scancode] = true;
         }
-        if (scancode == KEY_ESCAPE) input->quit = true;
+        if (scancode == KEY_ESCAPE && !input->quit)
+        {
+            println("[mu] input: escape pressed");
+            input->quit = true;
+        }
     }
     else
     {
@@ -131,10 +135,12 @@ pub void inputPump(InputState* input)
         if (event.type == SDL_EVENT_QUIT ||
             event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
         {
+            if (!input->quit) println("[mu] input: quit event");
             input->quit = true;
         }
         else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
         {
+            println("[mu] input: focus lost; clearing keyboard state");
             _clearKeyboard(input);
         }
         else if (event.type == SDL_EVENT_KEY_DOWN ||

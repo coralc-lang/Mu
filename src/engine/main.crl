@@ -35,19 +35,28 @@ static PhysicsWorld MuPhysics;
 pub i32 main()
 {
     logInfo("engine starting");
+    logInfo("engine: initializing subsystems");
     MuScene = Scene::new(MuSceneStorage, 4096);
+    println("[mu] scene: capacity={} entities={}", MuScene.capacity, MuScene.count);
 
     MuBindings = BindingTable::new(MuBindingEntries, 128);
     MuHost = ScriptHost::new(&MuBindings);
     MuScripts = ScriptBindings::new(&MuScene, MuBindingSlots, 64);
+    println("[mu] script: bindings={} bindingCapacity={} slots={}",
+        MuScripts.count, MuBindings.capacity, MuScripts.capacity);
 
     MuPhysics = physicsWorld(MuPhysicsBodies, 4096);
     if (!start(&MuPhysics, &MuScene, Vec3::new(0.0f, -9.81f, 0.0f)))
         logError("physics: Jolt start failed");
     else
+    {
         logInfo("physics: Jolt world started");
+        println("[mu] physics: body capacity={} active={}",
+            MuPhysics.capacity, MuPhysics.count);
+    }
 
     bool probe = get("MU_PHYSICS_PROBE").isSome();
+    if (probe) logInfo("engine: probe mode");
     MuRenderer = nullRenderer();
     if (probe)
     {
@@ -90,11 +99,16 @@ pub i32 main()
         platformRequestQuit();
     }
 
+    println("[mu] loop: dt={} hz={}", MuLoop.dt, 60);
     logInfo("engine running");
     MuLoop.runUntilQuit();
 
+    println("[mu] engine: run summary frames={} entities={} bodies={}",
+        MuLoop.frameCount, MuScene.count, MuPhysics.count);
+    logInfo("engine: shutting down");
     stop(&MuPhysics);
     MuHost.free();
+    println("[mu] engine: script host released");
     MuRenderer.shutdown(MuRenderer.ctx);
     platformShutdown();
     logInfo("engine stopped");

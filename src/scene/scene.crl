@@ -47,6 +47,7 @@ pub struct Scene
 
     static Scene new(Entity* storage, u32 capacity)
     {
+        println("[mu] scene: created capacity={}", capacity);
         return Scene { .entities = storage, .capacity = capacity, .count = 0 };
     }
 
@@ -173,6 +174,7 @@ pub struct ComponentStore
             u8* p = (u8*)store.data + i * stride;
             for (u32 b = 0; b < stride; b++) p[b] = 0;
         }
+        println("[mu] scene: component store capacity={} stride={}", capacity, stride);
         return store;
     }
 
@@ -233,6 +235,7 @@ pub struct ComponentRegistry
 
     static ComponentRegistry new(ComponentType* types, u32 capacity)
     {
+        println("[mu] scene: component registry capacity={}", capacity);
         return ComponentRegistry { .types = types, .capacity = capacity, .count = 0 };
     }
 

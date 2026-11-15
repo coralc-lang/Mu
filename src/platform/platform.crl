@@ -20,6 +20,7 @@ pub bool platformInit()
 
 pub void platformShutdown()
 {
+    if (MuWindow.ready) println("[mu] platform: shutdown");
     platformWindowDestroy(&MuWindow);
 }
 
@@ -27,11 +28,14 @@ pub void platformPump()
 {
     if (!MuWindow.ready) return;
     inputPump(&MuInput);
+    if (MuInput.quit && !MuQuitRequested)
+        println("[mu] platform: quit detected");
     if (MuInput.quit) MuQuitRequested = true;
 }
 
 pub void platformRequestQuit()
 {
+    if (!MuQuitRequested) println("[mu] platform: quit requested");
     MuQuitRequested = true;
 }
 

@@ -8,6 +8,7 @@
 // adds SDL3 to `link`.
 
 use types { SDL_Window, SDL_PropertiesID };
+import core::cchar { cchar };
 
 pub typedef SDL_InitFlags = u32;
 pub typedef SDL_WindowFlags = u64;

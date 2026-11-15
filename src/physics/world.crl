@@ -86,6 +86,7 @@ pub Result<u32, str> configureLayers(PhysicsWorld* world, u32 count)
         return Result<u32, str>::Err { .error = "physics: layer count out of range" };
 
     world->layers = collisionLayers(count);
+    println("[mu] physics: layers configured count={}", count);
     return Result<u32, str>::Ok { .value = count };
 }
 
@@ -94,11 +95,23 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
 {
     if (world == null || scene == null) return false;
     if (world->started) return true;
-    if (world->records == null || world->capacity == 0) return false;
+    if (world->records == null || world->capacity == 0)
+    {
+        println("[mu:error] physics: no body storage");
+        return false;
+    }
+
+    println("[mu] physics: starting capacity={} layers={} gravity=({}, {}, {})",
+        world->capacity, world->layers.count, gravity.x, gravity.y, gravity.z);
 
     world->scene = scene;
-    if (JoltC_Init() == 0) return false;
+    if (JoltC_Init() == 0)
+    {
+        println("[mu:error] physics: JoltC init failed");
+        return false;
+    }
     world->joltReady = true;
+    println("[mu] physics: JoltC initialized");
 
     world->temp = JoltC_TempAllocator_Create(16u * 1024u * 1024u);
     world->jobs = JoltC_JobSystemThreadPool_Create(2048, 8, 1);
@@ -108,13 +121,16 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
     if (world->temp == null || world->jobs == null ||
         world->objectFilter == null || world->broadPhase == null)
     {
+        println("[mu:error] physics: allocator or layer setup failed");
         stop(world);
         return false;
     }
+    println("[mu] physics: temp=16MiB jobs=2048 threads=8");
 
     world->broadPhaseFilter = layerBroadPhaseFilter(world->broadPhase);
     if (world->broadPhaseFilter == null)
     {
+        println("[mu:error] physics: broad-phase filter creation failed");
         stop(world);
         return false;
     }
@@ -122,6 +138,7 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
     world->system = JoltC_PhysicsSystem_Create();
     if (world->system == null)
     {
+        println("[mu:error] physics: system creation failed");
         stop(world);
         return false;
     }
@@ -135,21 +152,30 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
     
     JoltC_PhysicsSystem_SetGravity(world->system, gravity);
     world->gravity = gravity;
+    println("[mu] physics: world initialized bodies={} layers={}",
+        world->capacity, world->layers.count);
 
     world->bodies = JoltC_PhysicsSystem_GetBodyInterface(world->system);
     if (world->bodies == null)
     {
+        println("[mu:error] physics: body interface unavailable");
         stop(world);
         return false;
     }
 
     world->started = true;
+    println("[mu] physics: started");
     return true;
 }
 
 pub void stop(PhysicsWorld* world)
 {
     if (world == null) return;
+
+    bool hadJolt = world->joltReady;
+    if (world->system != null || hadJolt)
+        println("[mu] physics: stopping bodies={} capacity={}",
+            world->count, world->capacity);
 
     if (world->system != null)
     {
@@ -173,6 +199,7 @@ pub void stop(PhysicsWorld* world)
         JoltC_TempAllocator_Destroy(world->temp);
     if (world->joltReady)
         JoltC_Shutdown();
+    if (hadJolt) println("[mu] physics: stopped");
 
     world->scene = null;
     world->system = null;

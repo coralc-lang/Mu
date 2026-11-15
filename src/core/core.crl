@@ -6,8 +6,10 @@
 use scene::scene { Scene };
 use render::render { Renderer };
 use platform::platform { platformPump, platformQuitRequested };
+import std::time { nowMonotonic, timespecToF64 };
 
 pub const f32 FIXED_DT = 1.0f / 60.0f;
+const f64 STATS_INTERVAL_SECONDS = 1.0;
 
 pub void logInfo(str msg)
 {
@@ -39,11 +41,14 @@ pub struct Loop
     void(rawptr, f32) physicsUpdate; // §6 slot: physics.step(dt)
     rawptr ui;            // null until M6, passed through to the renderer
     u64 frameCount;
+    u64 statsFrame;
+    f64 statsTime;
     bool running;
     f32 dt;
 
     static Loop new(Scene* scene, Renderer* renderer)
     {
+        f64 start = timespecToF64(nowMonotonic());
         return Loop {
             .scene = scene,
             .renderer = renderer,
@@ -53,9 +58,24 @@ pub struct Loop
             .physicsUpdate = _nullPhysicsUpdate,
             .ui = null,
             .frameCount = 0,
+            .statsFrame = 0,
+            .statsTime = start,
             .running = false,
             .dt = FIXED_DT
         };
+    }
+
+    void _logStats()
+    {
+        f64 now = timespecToF64(nowMonotonic());
+        f64 elapsed = now - self.statsTime;
+        if (elapsed < STATS_INTERVAL_SECONDS) return;
+        u64 frames = self.frameCount - self.statsFrame;
+        f64 fps = (f64)frames / elapsed;
+        println("[mu] frame stats: frames={} total={} elapsed={} fps={}",
+            frames, self.frameCount, elapsed, fps);
+        self.statsFrame = self.frameCount;
+        self.statsTime = now;
     }
 
     // One frame, in ENGINE.md §6 order. Missing layers are stubbed until
@@ -70,6 +90,7 @@ pub struct Loop
         // ui.frame()                   M6
         self.renderer->draw(self.renderer->ctx, (rawptr)self.scene, self.ui);
         self.frameCount++;
+        self._logStats();
     }
 
     void run(u64 frames)

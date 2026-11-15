@@ -1,14 +1,12 @@
-use thirdparty::sdl::types { SDL_Window  };
-use thirdparty::sdl {
-    window {
-        SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
-        SDL_GetWindowSizeInPixels, SDL_GetWindowProperties, SDL_GetPointerProperty,
-        SDL_GetNumberProperty, SDL_INIT_VIDEO, SDL_INIT_EVENTS,
-        SDL_PROP_WINDOW_WIN32_HWND_POINTER, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER,
-        SDL_PROP_WINDOW_X11_DISPLAY_POINTER, SDL_PROP_WINDOW_X11_WINDOW_NUMBER,
-        SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER,
-        SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER
-    }
+use sdl::types { SDL_Window, SDL_PropertiesID };
+use sdl::window {
+    SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
+    SDL_GetWindowSizeInPixels, SDL_GetWindowProperties, SDL_GetPointerProperty,
+    SDL_GetNumberProperty, SDL_INIT_VIDEO, SDL_INIT_EVENTS,
+    SDL_PROP_WINDOW_WIN32_HWND_POINTER, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER,
+    SDL_PROP_WINDOW_X11_DISPLAY_POINTER, SDL_PROP_WINDOW_X11_WINDOW_NUMBER,
+    SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER,
+    SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER
 };
 
 pub const i32 PLATFORM_DEFAULT_WIDTH = 1280;
@@ -95,6 +93,12 @@ void _resolveNativeWindow(PlatformWindow* window)
     }
 }
 
+pub str platformWindowNativeTypeName(i32 nativeType)
+{
+    if (nativeType == PLATFORM_NATIVE_WAYLAND) return "wayland";
+    return "default";
+}
+
 pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 height)
 {
     PlatformWindow window = {
@@ -107,12 +111,15 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
         .ready = false
     };
 
+    println("[mu] platform: initializing SDL video/events");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0)
     {
         println("[mu:error] platform: SDL_Init failed: {}", SDL_GetError());
         return window;
     }
+    println("[mu] platform: SDL initialized");
 
+    println("[mu] platform: creating window {}x{}", width, height);
     window.handle = SDL_CreateWindow(title, width, height, 0);
     if (window.handle == null)
     {
@@ -126,6 +133,7 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
     SDL_GetWindowSizeInPixels(window.handle, &pixelWidth, &pixelHeight);
     window.width = pixelWidth;
     window.height = pixelHeight;
+    println("[mu] platform: window pixels={}x{}", pixelWidth, pixelHeight);
 
     _resolveNativeWindow(&window);
     if (window.nativeWindow == null)
@@ -137,7 +145,11 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
         return window;
     }
 
+    println("[mu] platform: native={} window={:p} display={:p}",
+        platformWindowNativeTypeName(window.nativeType),
+        window.nativeWindow, window.nativeDisplay);
     window.ready = true;
+    println("[mu] platform: window ready");
     return window;
 }
 
@@ -146,11 +158,13 @@ pub void platformWindowDestroy(PlatformWindow* window)
     if (window == null) return;
     if (window->handle != null)
     {
+        println("[mu] platform: destroying window");
         SDL_DestroyWindow(window->handle);
         window->handle = null;
     }
     window->ready = false;
     SDL_Quit();
+    println("[mu] platform: SDL shut down");
 }
 
 pub bool platformWindowReady(PlatformWindow* window)
