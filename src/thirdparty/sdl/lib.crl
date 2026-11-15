@@ -2,3 +2,4 @@ pub mod types = use types;
 pub mod window = use window;
 pub mod events = use events;
 pub mod audio = use audio;
+pub mod render = use render;

@@ -7,10 +7,12 @@ use math::math { Vec3 };
 use physics::probe { runProbe };
 use physics::world { BodyRecord, PhysicsWorld, physicsWorld, physicsSystem, start, stop };
 use platform::platform {
-    platformInit, platformShutdown, platformRequestQuit, platformNativeWindow,
-    platformNativeDisplay, platformNativeType, platformWidth, platformHeight
+    platformInit, platformShutdown, platformRequestQuit, platformSdlWindow,
+    platformNativeWindow, platformNativeDisplay, platformNativeType,
+    platformWidth, platformHeight
 };
 use render::render { Renderer, nullRenderer };
+use render::sdl { sdlStart, sdlRenderer };
 use render::bgfx {
     bgfxStart, bgfxRenderer, bgfxRendererType, bgfxRendererName
 };
@@ -56,6 +58,7 @@ pub i32 main()
     }
 
     bool probe = get("MU_PHYSICS_PROBE").isSome();
+    bool useBgfx = get("MU_BGFX").isSome();
     if (probe) logInfo("engine: probe mode");
     MuRenderer = nullRenderer();
     if (probe)
@@ -64,21 +67,38 @@ pub i32 main()
     }
     else if (platformInit())
     {
-        if (bgfxStart(
-            platformWidth(), platformHeight(),
-            platformNativeWindow(), platformNativeDisplay(), platformNativeType()))
+        bool rendererReady = false;
+        if (useBgfx)
         {
-            MuRenderer = bgfxRenderer();
-            i32 rendererType = bgfxRendererType();
-            println("[mu] renderer: bgfx ({}) type {}",
-                bgfxRendererName(rendererType), rendererType);
+            if (bgfxStart(
+                platformWidth(), platformHeight(),
+                platformNativeWindow(), platformNativeDisplay(), platformNativeType()))
+            {
+                MuRenderer = bgfxRenderer();
+                i32 rendererType = bgfxRendererType();
+                println("[mu] renderer: bgfx ({}) type {}",
+                    bgfxRendererName(rendererType), rendererType);
+                rendererReady = true;
+            }
+            else
+            {
+                logError("renderer: bgfx init failed");
+            }
         }
         else
         {
-            logError("renderer: bgfx init failed");
-            platformShutdown();
-            logInfo("renderer: null");
+            if (sdlStart(platformSdlWindow()))
+            {
+                MuRenderer = sdlRenderer();
+                println("[mu] renderer: SDL3 window presentation");
+                rendererReady = true;
+            }
+            else
+            {
+                logError("renderer: SDL renderer init failed");
+            }
         }
+        if (!rendererReady) logInfo("renderer: null");
     }
     else
     {

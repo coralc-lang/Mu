@@ -1,3 +1,5 @@
+#! run `coralc build --force`
+
 schema = 2;
 strict = true;
 
@@ -8,12 +10,12 @@ build "MuEngine" {
     root       = "src/";
     entry      = "engine/main.crl";
     target     = "x86_64";
-    opt       = "debug";
+    opt        = "debug";
     output     = "build/muengine";
     module_map = ".coral/modules.map";
     cache_dir  = ".coral/cache";
 
-    flags = ["--strict", "--warn-unused"];
+    flags = ["--strict", "--warn-unused", "freestanding"];
 
     modules = [
         "alloc",
@@ -61,18 +63,18 @@ build "MuEngine" {
     }
 }
 
-deps {
-    "jolt"  = { path = "third_party/jolt"; };
-    "joltc" = { path = "third_party/JoltPhysicsC"; };
-    "sdl"   = { path = "third_party/SDL"; };
-    "stb"   = { path = "third_party/stb"; };
-    "cgltf" = { path = "third_party/cgltf"; };
-    "miniz"   = { path = "third_party/miniz"; };
-    "tinyexr" = { path = "third_party/tinyexr"; };
-    "drlibs"  = { path = "third_party/dr_libs"; };
-    "fastnoise" = { path = "third_party/FastNoiseLite"; };
-    "mikktspace" = { path = "third_party/MikkTSpace"; };
-}
+# deps {
+#     "jolt"  = { path = "third_party/jolt"; };
+#     "joltc" = { path = "third_party/JoltPhysicsC"; };
+#     "sdl"   = { path = "third_party/SDL"; };
+#     "stb"   = { path = "third_party/stb"; };
+#     "cgltf" = { path = "third_party/cgltf"; };
+#     "miniz"   = { path = "third_party/miniz"; };
+#     "tinyexr" = { path = "third_party/tinyexr"; };
+#     "drlibs"  = { path = "third_party/dr_libs"; };
+#     "fastnoise" = { path = "third_party/FastNoiseLite"; };
+#    "mikktspace" = { path = "third_party/MikkTSpace"; };
+# }
 
 task "run" {
     after = ["build"];

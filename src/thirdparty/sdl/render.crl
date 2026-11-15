@@ -1,0 +1,25 @@
+// SDL3 renderer - the first real presentation path (M3 window bring-up).
+// This is intentionally separate from bgfx: SDL owns the Wayland/X11
+// surface, so its renderer is the one that can always attach a buffer and
+// map the window. bgfx stays available for the full 3D backend later.
+
+use types { SDL_Window };
+
+pub typedef SDL_Renderer = rawptr;
+
+pub struct SDL_FRect
+{
+    f32 x;
+    f32 y;
+    f32 w;
+    f32 h;
+}
+
+pub extern SDL_Renderer* SDL_CreateRenderer(SDL_Window* window, const cchar* name);
+pub extern void SDL_DestroyRenderer(SDL_Renderer* renderer);
+pub extern u8 SDL_SetRenderVSync(SDL_Renderer* renderer, i32 vsync);
+pub extern u8 SDL_SetRenderDrawColor(SDL_Renderer* renderer, u8 r, u8 g, u8 b, u8 a);
+pub extern u8 SDL_RenderClear(SDL_Renderer* renderer);
+pub extern u8 SDL_RenderFillRect(SDL_Renderer* renderer, const SDL_FRect* rect);
+pub extern u8 SDL_RenderPresent(SDL_Renderer* renderer);
+pub extern void SDL_Delay(u32 ms);

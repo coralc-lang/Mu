@@ -1,2 +1,3 @@
 pub mod render = use render;
+pub mod sdl = use sdl;
 pub mod bgfx = use bgfx;

@@ -1,0 +1,92 @@
+// SDL3 presentation backend. The window stays visible because SDL owns
+// the native surface and SDL_RenderPresent attaches a real buffer every
+// frame (Wayland will not map a window that never receives one).
+//
+// This is the M3 bring-up renderer: clear + a moving quad so the window is
+// demonstrably alive. The bgfx 3D path plugs into the same Renderer seam.
+
+use render::render { Renderer, customRenderer };
+use sdl::types { SDL_Window };
+use sdl::window { SDL_GetError };
+use sdl::render {
+    SDL_Renderer, SDL_FRect, SDL_CreateRenderer, SDL_DestroyRenderer,
+    SDL_SetRenderVSync, SDL_SetRenderDrawColor, SDL_RenderClear,
+    SDL_RenderFillRect, SDL_RenderPresent
+};
+
+pub struct SdlRenderer
+{
+    SDL_Renderer* handle;
+    u64 frames;
+}
+
+static SdlRenderer MuSdl;
+static bool MuSdlReady = false;
+
+pub bool sdlStart(rawptr window)
+{
+    if (MuSdlReady) return true;
+    if (window == null)
+    {
+        println("[mu:error] renderer: no SDL window to render into");
+        return false;
+    }
+
+    MuSdl.handle = SDL_CreateRenderer((SDL_Window*)window, null);
+    if (MuSdl.handle == null)
+    {
+        println("[mu:error] renderer: SDL_CreateRenderer failed: {}", SDL_GetError());
+        return false;
+    }
+
+    SDL_SetRenderVSync(MuSdl.handle, 1);
+    MuSdl.frames = 0;
+    MuSdlReady = true;
+    println("[mu] renderer: SDL renderer ready");
+    return true;
+}
+
+void _sdlDraw(rawptr ctx, rawptr scene, rawptr ui)
+{
+    SdlRenderer* state = (SdlRenderer*)ctx;
+    if (state == null || state->handle == null) return;
+
+    state->frames = state->frames + 1;
+
+    // Animated clear: obvious proof the frame loop is presenting.
+    u64 phase = state->frames % 240;
+    u8 pulse = 0;
+    if (phase < 120) pulse = (u8)phase;
+    else pulse = (u8)(239 - phase);
+    SDL_SetRenderDrawColor(state->handle, 20, 24, 44, 255);
+    SDL_RenderClear(state->handle);
+
+    // Moving quad, ping-pongs left to right at the bottom.
+    f32 t = (f32)(state->frames % 360) / 360.0f;
+    f32 x = 40.0f + t * 1040.0f;
+    SDL_FRect bar = SDL_FRect {
+        .x = x,
+        .y = 560.0f,
+        .w = 160.0f,
+        .h = 80.0f
+    };
+    SDL_SetRenderDrawColor(state->handle, pulse + 120, 200, 255, 255);
+    SDL_RenderFillRect(state->handle, &bar);
+
+    SDL_RenderPresent(state->handle);
+}
+
+void _sdlShutdown(rawptr ctx)
+{
+    SdlRenderer* state = (SdlRenderer*)ctx;
+    if (state == null || state->handle == null) return;
+    println("[mu] renderer: SDL shutdown");
+    SDL_DestroyRenderer(state->handle);
+    state->handle = null;
+    MuSdlReady = false;
+}
+
+pub Renderer sdlRenderer()
+{
+    return customRenderer((rawptr)&MuSdl, _sdlDraw, _sdlShutdown);
+}

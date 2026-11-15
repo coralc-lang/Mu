@@ -2,7 +2,7 @@ use sdl::types { SDL_Window, SDL_PropertiesID };
 use sdl::window {
     SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
     SDL_GetWindowSizeInPixels, SDL_GetWindowProperties, SDL_GetPointerProperty,
-    SDL_GetNumberProperty, SDL_INIT_VIDEO, SDL_INIT_EVENTS,
+    SDL_GetNumberProperty, SDL_INIT_VIDEO, SDL_INIT_EVENTS, SDL_WINDOW_RESIZABLE,
     SDL_PROP_WINDOW_WIN32_HWND_POINTER, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER,
     SDL_PROP_WINDOW_X11_DISPLAY_POINTER, SDL_PROP_WINDOW_X11_WINDOW_NUMBER,
     SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER,
@@ -120,7 +120,7 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
     println("[mu] platform: SDL initialized");
 
     println("[mu] platform: creating window {}x{}", width, height);
-    window.handle = SDL_CreateWindow(title, width, height, 0);
+    window.handle = SDL_CreateWindow(title, width, height, SDL_WINDOW_RESIZABLE);
     if (window.handle == null)
     {
         println("[mu:error] platform: SDL_CreateWindow failed: {}", SDL_GetError());

@@ -54,6 +54,11 @@ pub bool platformReady()
     return MuWindow.ready;
 }
 
+pub rawptr platformSdlWindow()
+{
+    return (rawptr)MuWindow.handle;
+}
+
 pub rawptr platformNativeWindow()
 {
     return platformWindowNativeHandle(&MuWindow);
