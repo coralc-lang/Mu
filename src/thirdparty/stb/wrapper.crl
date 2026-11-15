@@ -1,6 +1,6 @@
 // Engine wrappers (ENGINE.md §3 error convention) over the raw stb externs.
 
-use stb::image { stbi_load, stbi_failure_reason, stbi_image_free };
+use image { stbi_load, stbi_failure_reason, stbi_image_free };
 
 // Decoded image buffer. @drop owns it (DESIGN §6): pixels free when the
 // Image goes out of scope, so don't call stbi_image_free yourself.

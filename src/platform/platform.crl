@@ -1,12 +1,33 @@
-// platform layer (ENGINE.md §3) - headless until M3: SDL3 window, event
-// pump, and input events land there. Quit is a cross-layer request (script
-// natives / window close will call it later).
+use platform::window {
+    PlatformWindow, platformWindowCreate, platformWindowDestroy,
+    platformWindowNativeHandle, platformWindowNativeDisplay,
+    platformWindowNativeType, platformWindowWidth, platformWindowHeight,
+    PLATFORM_DEFAULT_WIDTH, PLATFORM_DEFAULT_HEIGHT
+};
+
+use platform::input { InputState, inputPump };
 
 static bool MuQuitRequested = false;
+static PlatformWindow MuWindow;
+static InputState MuInput;
+
+pub bool platformInit()
+{
+    if (MuWindow.ready) return true;
+    MuWindow = platformWindowCreate(C"Mu", PLATFORM_DEFAULT_WIDTH, PLATFORM_DEFAULT_HEIGHT);
+    return MuWindow.ready;
+}
+
+pub void platformShutdown()
+{
+    platformWindowDestroy(&MuWindow);
+}
 
 pub void platformPump()
 {
-    // M3: SDL3 event pump → input
+    if (!MuWindow.ready) return;
+    inputPump(&MuInput);
+    if (MuInput.quit) MuQuitRequested = true;
 }
 
 pub void platformRequestQuit()
@@ -17,4 +38,39 @@ pub void platformRequestQuit()
 pub bool platformQuitRequested()
 {
     return MuQuitRequested;
+}
+
+pub InputState* platformInput()
+{
+    return &MuInput;
+}
+
+pub bool platformReady()
+{
+    return MuWindow.ready;
+}
+
+pub rawptr platformNativeWindow()
+{
+    return platformWindowNativeHandle(&MuWindow);
+}
+
+pub rawptr platformNativeDisplay()
+{
+    return platformWindowNativeDisplay(&MuWindow);
+}
+
+pub i32 platformNativeType()
+{
+    return platformWindowNativeType(&MuWindow);
+}
+
+pub i32 platformWidth()
+{
+    return platformWindowWidth(&MuWindow);
+}
+
+pub i32 platformHeight()
+{
+    return platformWindowHeight(&MuWindow);
 }

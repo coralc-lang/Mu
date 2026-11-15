@@ -219,9 +219,11 @@ pub const u16 BGFX_CLEAR_COLOR   = 0x0001;
 pub const u16 BGFX_CLEAR_DEPTH   = 0x0002;
 pub const u16 BGFX_CLEAR_STENCIL = 0x0004;
 
-// Reset flags: only NONE is needed to bring a window up; the VSYNC/MSAA/flip
-// bits are defined in bgfx.h and should be transcribed there when M4 tunes them.
+// Reset flags: only NONE and VSYNC are needed to bring a window up; the
+// MSAA/flip bits are defined in bgfx.h and should be transcribed there when M4
+// tunes them.
 pub const u32 BGFX_RESET_NONE = 0;
+pub const u32 BGFX_RESET_VSYNC = 0x00000080;
 
 // --- handles (by-value u16; 0xFFFF == invalid) ---
 
@@ -287,10 +289,12 @@ pub struct bgfx_init_limits_t
 pub struct bgfx_init_t
 {
     bgfx_renderer_type_t type;
+    bgfx_renderer_type_t backendType;
     u16 vendorId;
     u16 deviceId;
     u64 capabilities;
     u8 debug;
+    u32 diagnostics;
     u8 profile;
     u8 fallback;
     u8 videoDecode;

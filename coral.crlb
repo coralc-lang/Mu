@@ -1,6 +1,9 @@
 schema = 2;
 strict = true;
 
+alias sdl = "thirdparty/sdl";
+alias bgfx = "thirdparty/bgfx";
+
 build "MuEngine" {
     root       = "src/";
     entry      = "engine/main.crl";
@@ -22,7 +25,20 @@ build "MuEngine" {
         "render",
         "scene",
         "script",
-        "thirdparty"
+        "thirdparty",
+        "thirdparty/sdl",
+        "thirdparty/bgfx",
+        "thirdparty/jolt"
+        # "thirdparty/cgltf",
+        # "thirdparty/drlibs",
+        # "thirdparty/fastnoise",
+        # "thirdparty/ktx",
+        # "thirdparty/mikktspace",
+        # "thirdparty/miniz",
+        # "thirdparty/stb",
+        # "thirdparty/tinyexr",
+        # "thirdparty/tracy",
+        # "thirdparty/zstd",
     ];
 
     link {
@@ -33,10 +49,14 @@ build "MuEngine" {
             "packaged/linux-x86_64/lib/libbgfx.a",
             "packaged/linux-x86_64/lib/libbimg.a",
             "packaged/linux-x86_64/lib/libbx.a",
+            "packaged/linux-x86_64/lib/libSDL3.so",
             "stdc++",
             "m",
             "pthread",
             "dl",
+        ];
+        flags = [
+            "-Wl,-rpath,$ORIGIN/../packaged/linux-x86_64/lib",
         ];
     }
 }
@@ -52,29 +72,6 @@ deps {
     "drlibs"  = { path = "third_party/dr_libs"; };
     "fastnoise" = { path = "third_party/FastNoiseLite"; };
     "mikktspace" = { path = "third_party/MikkTSpace"; };
-}
-
-phase "jolt" {
-    on = [
-        "third_party/jolt/Jolt/**/*.cpp",
-        "third_party/jolt/Jolt/**/*.h",
-        "third_party/JoltPhysicsC/JoltC/**/*.c",
-        "third_party/JoltPhysicsC/JoltC/**/*.cpp",
-        "third_party/JoltPhysicsC/JoltC/**/*.h",
-        "third_party/SDL/include/**/*.h",
-        "third_party/stb/*.[ch]",
-        "third_party/cgltf/*.h",
-        "third_party/miniz/*.[ch]",
-        "third_party/tinyexr/*.[ch]",
-        "third_party/tinyexr/*.hh",
-        "third_party/tinyexr/*.cc",
-        "third_party/dr_libs/*.h",
-        "third_party/FastNoiseLite/C/*.h",
-        "third_party/MikkTSpace/*.[ch]",
-        "native/**",
-    ];
-    run = "bash -c 'cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ >/dev/null && cmake --build build/native -j1 >/dev/null'";
-    output = "build/native/joltc/libJoltC.a";
 }
 
 task "run" {

@@ -9,5 +9,4 @@ pub mod miniz = use miniz;
 pub mod sdl = use sdl;
 pub mod stb = use stb;
 pub mod tinyexr = use tinyexr;
-pub mod tracy = use tracy;
 pub mod zstd = use zstd;

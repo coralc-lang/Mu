@@ -7,7 +7,7 @@
 // nonzero as true. Enums are 32-bit. Not linked until the M3 build phase
 // adds SDL3 to `link`.
 
-use sdl::types { SDL_Window, SDL_PropertiesID };
+use types { SDL_Window, SDL_PropertiesID };
 
 pub typedef SDL_InitFlags = u32;
 pub typedef SDL_WindowFlags = u64;
@@ -53,15 +53,16 @@ pub extern u8 SDL_SetWindowFullscreen(SDL_Window* window, u8 fullscreen);
 // SDL_GetWindowProperties returns an ID; pull the platform pointer out with
 // SDL_GetPointerProperty and hand it to bgfx as SwapChain.nwh.
 
-pub const cchar* SDL_PROP_WINDOW_WIN32_HWND_POINTER          = c"SDL.window.win32.hwnd";
-pub const cchar* SDL_PROP_WINDOW_COCOA_WINDOW_POINTER        = c"SDL.window.cocoa.window";
-pub const cchar* SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER     = c"SDL.window.wayland.display";
-pub const cchar* SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER     = c"SDL.window.wayland.surface";
-pub const cchar* SDL_PROP_WINDOW_X11_DISPLAY_POINTER         = c"SDL.window.x11.display";
-pub const cchar* SDL_PROP_WINDOW_X11_WINDOW_NUMBER           = c"SDL.window.x11.window";
-pub const cchar* SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER      = c"SDL.window.android.window";
-pub const cchar* SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER        = c"SDL.window.uikit.window";
-pub const cchar* SDL_PROP_WINDOW_UWP_WINDOW_POINTER          = c"SDL.window.uwp.window";
+pub const cchar* SDL_PROP_WINDOW_WIN32_HWND_POINTER          = C"SDL.window.win32.hwnd";
+pub const cchar* SDL_PROP_WINDOW_COCOA_WINDOW_POINTER        = C"SDL.window.cocoa.window";
+pub const cchar* SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER     = C"SDL.window.wayland.display";
+pub const cchar* SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER     = C"SDL.window.wayland.surface";
+pub const cchar* SDL_PROP_WINDOW_X11_DISPLAY_POINTER         = C"SDL.window.x11.display";
+pub const cchar* SDL_PROP_WINDOW_X11_WINDOW_NUMBER           = C"SDL.window.x11.window";
+pub const cchar* SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER      = C"SDL.window.android.window";
+pub const cchar* SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER        = C"SDL.window.uikit.window";
+pub const cchar* SDL_PROP_WINDOW_UWP_WINDOW_POINTER          = C"SDL.window.uwp.window";
 
 pub extern SDL_PropertiesID SDL_GetWindowProperties(SDL_Window* window);
 pub extern rawptr SDL_GetPointerProperty(SDL_PropertiesID props, const cchar* name, rawptr default_value);
+pub extern i64 SDL_GetNumberProperty(SDL_PropertiesID props, const cchar* name, i64 default_value);

@@ -1,0 +1,189 @@
+use thirdparty::sdl::types { SDL_Window  };
+use thirdparty::sdl {
+    window {
+        SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
+        SDL_GetWindowSizeInPixels, SDL_GetWindowProperties, SDL_GetPointerProperty,
+        SDL_GetNumberProperty, SDL_INIT_VIDEO, SDL_INIT_EVENTS,
+        SDL_PROP_WINDOW_WIN32_HWND_POINTER, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER,
+        SDL_PROP_WINDOW_X11_DISPLAY_POINTER, SDL_PROP_WINDOW_X11_WINDOW_NUMBER,
+        SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER,
+        SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER
+    }
+};
+
+pub const i32 PLATFORM_DEFAULT_WIDTH = 1280;
+pub const i32 PLATFORM_DEFAULT_HEIGHT = 720;
+pub const i32 PLATFORM_NATIVE_DEFAULT = 0;
+pub const i32 PLATFORM_NATIVE_WAYLAND = 1;
+
+pub struct PlatformWindow
+{
+    SDL_Window* handle;
+    i32 width;
+    i32 height;
+    rawptr nativeWindow;
+    rawptr nativeDisplay;
+    i32 nativeType;
+    bool ready;
+}
+
+void _resolveNativeWindow(PlatformWindow* window)
+{
+    SDL_PropertiesID props = SDL_GetWindowProperties(window->handle);
+
+    rawptr native = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, null
+    );
+    
+    if (native != null)
+    {
+        window->nativeWindow = native;
+        window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        return;
+    }
+
+    native = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, null
+    );
+    
+    if (native != null)
+    {
+        window->nativeWindow = native;
+        window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        return;
+    }
+
+    native = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, null);
+    if (native != null)
+    {
+        i64 x11Window = SDL_GetNumberProperty(
+            props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+        window->nativeWindow = (rawptr)(usize)x11Window;
+        window->nativeDisplay = native;
+        window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        return;
+    }
+
+    rawptr waylandDisplay = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, null);
+    rawptr waylandSurface = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, null);
+    if (waylandSurface != null)
+    {
+        window->nativeWindow = waylandSurface;
+        window->nativeDisplay = waylandDisplay;
+        window->nativeType = PLATFORM_NATIVE_WAYLAND;
+        return;
+    }
+
+    native = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, null);
+    if (native != null)
+    {
+        window->nativeWindow = native;
+        window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        return;
+    }
+
+    native = SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, null);
+    if (native != null)
+    {
+        window->nativeWindow = native;
+        window->nativeType = PLATFORM_NATIVE_DEFAULT;
+    }
+}
+
+pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 height)
+{
+    PlatformWindow window = {
+        .handle = null,
+        .width = width,
+        .height = height,
+        .nativeWindow = null,
+        .nativeDisplay = null,
+        .nativeType = PLATFORM_NATIVE_DEFAULT,
+        .ready = false
+    };
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0)
+    {
+        println("[mu:error] platform: SDL_Init failed: {}", SDL_GetError());
+        return window;
+    }
+
+    window.handle = SDL_CreateWindow(title, width, height, 0);
+    if (window.handle == null)
+    {
+        println("[mu:error] platform: SDL_CreateWindow failed: {}", SDL_GetError());
+        SDL_Quit();
+        return window;
+    }
+
+    i32 pixelWidth = width;
+    i32 pixelHeight = height;
+    SDL_GetWindowSizeInPixels(window.handle, &pixelWidth, &pixelHeight);
+    window.width = pixelWidth;
+    window.height = pixelHeight;
+
+    _resolveNativeWindow(&window);
+    if (window.nativeWindow == null)
+    {
+        println("[mu:error] platform: no native window handle");
+        SDL_DestroyWindow(window.handle);
+        window.handle = null;
+        SDL_Quit();
+        return window;
+    }
+
+    window.ready = true;
+    return window;
+}
+
+pub void platformWindowDestroy(PlatformWindow* window)
+{
+    if (window == null) return;
+    if (window->handle != null)
+    {
+        SDL_DestroyWindow(window->handle);
+        window->handle = null;
+    }
+    window->ready = false;
+    SDL_Quit();
+}
+
+pub bool platformWindowReady(PlatformWindow* window)
+{
+    return window != null && window->ready;
+}
+
+pub rawptr platformWindowNativeHandle(PlatformWindow* window)
+{
+    if (window == null) return null;
+    return window->nativeWindow;
+}
+
+pub rawptr platformWindowNativeDisplay(PlatformWindow* window)
+{
+    if (window == null) return null;
+    return window->nativeDisplay;
+}
+
+pub i32 platformWindowNativeType(PlatformWindow* window)
+{
+    if (window == null) return PLATFORM_NATIVE_DEFAULT;
+    return window->nativeType;
+}
+
+pub i32 platformWindowWidth(PlatformWindow* window)
+{
+    if (window == null) return 0;
+    return window->width;
+}
+
+pub i32 platformWindowHeight(PlatformWindow* window)
+{
+    if (window == null) return 0;
+    return window->height;
+}

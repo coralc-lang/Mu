@@ -6,8 +6,14 @@ use core::core { Loop, logInfo, logError };
 use math::math { Vec3 };
 use physics::probe { runProbe };
 use physics::world { BodyRecord, PhysicsWorld, physicsWorld, physicsSystem, start, stop };
-use platform::platform { platformRequestQuit };
+use platform::platform {
+    platformInit, platformShutdown, platformRequestQuit, platformNativeWindow,
+    platformNativeDisplay, platformNativeType, platformWidth, platformHeight
+};
 use render::render { Renderer, nullRenderer };
+use render::bgfx {
+    bgfxStart, bgfxRenderer, bgfxRendererType, bgfxRendererName
+};
 use scene::scene { Scene, Entity };
 use script::abi { BindingEntry, BindingTable };
 use script::loader { ScriptHost, scriptSystem };
@@ -41,8 +47,36 @@ pub i32 main()
     else
         logInfo("physics: Jolt world started");
 
+    bool probe = get("MU_PHYSICS_PROBE").isSome();
     MuRenderer = nullRenderer();
-    logInfo("renderer: null");
+    if (probe)
+    {
+        logInfo("renderer: null");
+    }
+    else if (platformInit())
+    {
+        if (bgfxStart(
+            platformWidth(), platformHeight(),
+            platformNativeWindow(), platformNativeDisplay(), platformNativeType()))
+        {
+            MuRenderer = bgfxRenderer();
+            i32 rendererType = bgfxRendererType();
+            println("[mu] renderer: bgfx ({}) type {}",
+                bgfxRendererName(rendererType), rendererType);
+        }
+        else
+        {
+            logError("renderer: bgfx init failed");
+            platformShutdown();
+            logInfo("renderer: null");
+        }
+    }
+    else
+    {
+        logInfo("platform: no window; running headless");
+        logInfo("renderer: null");
+    }
+
     MuLoop = Loop::new(&MuScene, &MuRenderer);
     MuLoop.physicsCtx = (rawptr)&MuPhysics;
     MuLoop.physicsUpdate = physicsSystem;
@@ -50,7 +84,7 @@ pub i32 main()
     MuLoop.scriptUpdate = scriptSystem;
 
     bool probeOk = true;
-    if (get("MU_PHYSICS_PROBE").isSome())
+    if (probe)
     {
         probeOk = runProbe(&MuPhysics, &MuScene);
         platformRequestQuit();
@@ -62,6 +96,7 @@ pub i32 main()
     stop(&MuPhysics);
     MuHost.free();
     MuRenderer.shutdown(MuRenderer.ctx);
+    platformShutdown();
     logInfo("engine stopped");
     return probeOk ? 0 : 1;
 }

@@ -1,0 +1,195 @@
+use sdl::events {
+    SDL_Event, SDL_KeyboardEvent, SDL_MouseMotionEvent, SDL_MouseButtonEvent,
+    SDL_MouseWheelEvent, SDL_PollEvent, SDL_EVENT_QUIT,
+    SDL_EVENT_WINDOW_CLOSE_REQUESTED, SDL_EVENT_WINDOW_FOCUS_LOST,
+    SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP, SDL_EVENT_MOUSE_MOTION,
+    SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP, SDL_EVENT_MOUSE_WHEEL
+};
+
+pub const i32 INPUT_KEY_COUNT = 512;
+
+pub const i32 KEY_A = 4;
+pub const i32 KEY_D = 7;
+pub const i32 KEY_S = 22;
+pub const i32 KEY_W = 26;
+pub const i32 KEY_RETURN = 40;
+pub const i32 KEY_ESCAPE = 41;
+pub const i32 KEY_SPACE = 44;
+pub const i32 KEY_RIGHT = 79;
+pub const i32 KEY_LEFT = 80;
+pub const i32 KEY_DOWN = 81;
+pub const i32 KEY_UP = 82;
+pub const i32 KEY_LCTRL = 224;
+pub const i32 KEY_LSHIFT = 225;
+pub const i32 KEY_LALT = 226;
+
+pub struct InputState
+{
+    bool quit;
+    bool[INPUT_KEY_COUNT] down;
+    bool[INPUT_KEY_COUNT] pressed;
+    bool[INPUT_KEY_COUNT] released;
+    i32 mouseX;
+    i32 mouseY;
+    i32 mouseDeltaX;
+    i32 mouseDeltaY;
+    u32 mouseButtons;
+    u32 mousePressed;
+    u32 mouseReleased;
+    f32 wheelX;
+    f32 wheelY;
+}
+
+void _clearKeyboard(InputState* input)
+{
+    for (i32 i = 0; i < INPUT_KEY_COUNT; i++)
+    {
+        input->down[i] = false;
+        input->pressed[i] = false;
+        input->released[i] = false;
+    }
+}
+
+void _beginFrame(InputState* input)
+{
+    for (i32 i = 0; i < INPUT_KEY_COUNT; i++)
+    {
+        input->pressed[i] = false;
+        input->released[i] = false;
+    }
+    input->mouseDeltaX = 0;
+    input->mouseDeltaY = 0;
+    input->mousePressed = 0;
+    input->mouseReleased = 0;
+    input->wheelX = 0.0f;
+    input->wheelY = 0.0f;
+}
+
+void _keyEvent(InputState* input, SDL_Event* event)
+{
+    SDL_KeyboardEvent* key = (SDL_KeyboardEvent*)event;
+    i32 scancode = key->scancode;
+    if (scancode < 0 || scancode >= INPUT_KEY_COUNT) return;
+
+    if (event->type == SDL_EVENT_KEY_DOWN)
+    {
+        if (key->repeat == 0)
+        {
+            if (!input->down[scancode]) input->pressed[scancode] = true;
+            input->down[scancode] = true;
+        }
+        if (scancode == KEY_ESCAPE) input->quit = true;
+    }
+    else
+    {
+        if (input->down[scancode]) input->released[scancode] = true;
+        input->down[scancode] = false;
+    }
+}
+
+void _mouseMotion(InputState* input, SDL_Event* event)
+{
+    SDL_MouseMotionEvent* motion = (SDL_MouseMotionEvent*)event;
+    input->mouseX = (i32)motion->x;
+    input->mouseY = (i32)motion->y;
+    input->mouseDeltaX = input->mouseDeltaX + (i32)motion->xrel;
+    input->mouseDeltaY = input->mouseDeltaY + (i32)motion->yrel;
+}
+
+void _mouseButton(InputState* input, SDL_Event* event)
+{
+    SDL_MouseButtonEvent* button = (SDL_MouseButtonEvent*)event;
+    if (button->button < 1 || button->button > 32) return;
+    u32 mask = (u32)1 << (u32)(button->button - 1);
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+        if ((input->mouseButtons & mask) == 0) input->mousePressed = input->mousePressed | mask;
+        input->mouseButtons = input->mouseButtons | mask;
+    }
+    else
+    {
+        if ((input->mouseButtons & mask) != 0) input->mouseReleased = input->mouseReleased | mask;
+        input->mouseButtons = input->mouseButtons & ~mask;
+    }
+}
+
+void _mouseWheel(InputState* input, SDL_Event* event)
+{
+    SDL_MouseWheelEvent* wheel = (SDL_MouseWheelEvent*)event;
+    input->wheelX = input->wheelX + wheel->x;
+    input->wheelY = input->wheelY + wheel->y;
+}
+
+pub void inputPump(InputState* input)
+{
+    if (input == null) return;
+    _beginFrame(input);
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event) != 0)
+    {
+        if (event.type == SDL_EVENT_QUIT ||
+            event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
+        {
+            input->quit = true;
+        }
+        else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
+        {
+            _clearKeyboard(input);
+        }
+        else if (event.type == SDL_EVENT_KEY_DOWN ||
+                 event.type == SDL_EVENT_KEY_UP)
+        {
+            _keyEvent(input, &event);
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            _mouseMotion(input, &event);
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                 event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            _mouseButton(input, &event);
+        }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            _mouseWheel(input, &event);
+        }
+    }
+}
+
+pub bool inputKeyDown(InputState* input, i32 scancode)
+{
+    if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
+    return input->down[scancode];
+}
+
+pub bool inputKeyPressed(InputState* input, i32 scancode)
+{
+    if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
+    return input->pressed[scancode];
+}
+
+pub bool inputKeyReleased(InputState* input, i32 scancode)
+{
+    if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
+    return input->released[scancode];
+}
+
+pub bool inputMouseDown(InputState* input, i32 button)
+{
+    if (input == null || button < 1 || button > 32) return false;
+    return (input->mouseButtons & ((u32)1 << (u32)(button - 1))) != 0;
+}
+
+pub bool inputMousePressed(InputState* input, i32 button)
+{
+    if (input == null || button < 1 || button > 32) return false;
+    return (input->mousePressed & ((u32)1 << (u32)(button - 1))) != 0;
+}
+
+pub bool inputMouseReleased(InputState* input, i32 button)
+{
+    if (input == null || button < 1 || button > 32) return false;
+    return (input->mouseReleased & ((u32)1 << (u32)(button - 1))) != 0;
+}
