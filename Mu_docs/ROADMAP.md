@@ -11,8 +11,8 @@ Last updated: 2026-11-16
 - bgfx is the committed renderer. SDL3 is window/input/audio only.
 - Scripting is intentionally shifted back, after assets.
 - Linux is the current build host; Windows, macOS, and Web are first-class goals.
-- M0/M1 are complete. A visible window currently exists through the temporary
-  SDL3 presenter; the bgfx presentation path still needs to be fixed.
+- M0/M1 are complete. bgfx presents on Wayland and X11; the SDL3 presenter
+  remains available as a fallback.
 
 ## Roadmap
 
@@ -22,11 +22,15 @@ Last updated: 2026-11-16
 - [ ] **IN PROGRESS** M3 renderer: bgfx platform-data matrix for Wayland/X11, Win32, Cocoa, Android, UIKit; renderer type + fallback selection
   - Done: bgfx is the default renderer; `MU_SDL_RENDERER` forces SDL fallback.
   - Verified: Wayland presents (`wl_surface.attach`/`commit`) and maps; X11 maps.
+  - Verified Linux: bgfx Vulkan on Wayland and X11 both present at ~60 fps.
   - Done: resize/reset handling via `Renderer.resize`, platform size polling, and
     `bgfx_reset` with an updated swap chain.
   - Pending: Win32, Cocoa, Android, UIKit.
 - [ ] Build: per-platform coral.crlb targets, link blocks, packaged archive selection; remove Linux-only hardcoded paths
-- [ ] Core loop: fixed-timestep accumulator, dt clamp, vsync/frame pacing, deterministic headless stepping
+- [x] Core loop: fixed-timestep accumulator, dt clamp, vsync/frame pacing, deterministic headless stepping
+  - Done: accumulator in `Loop.frame`, 0.25 s frame-time clamp, and `Loop.run` stepping exact `FIXED_DT` frames.
+  - Verified: bgfx Vulkan and `MU_SDL_RENDERER=1` both report ~60 fps on Wayland; the earlier ~30 fps rhythm has not reproduced.
+- [ ] Core loop: remove the `_nullPhysicsUpdate` placeholder and require a real physics slot; `Loop::new` should not silently run with no simulation
 - [ ] Core diagnostics: bgfx debug callback, SDL error reporting, startup/frame telemetry
 
 ### Math and scene
@@ -140,6 +144,7 @@ created a headless Vulkan device.
 Next:
 
 1. Test the platform-data matrix on Windows, macOS, Android, and UIKit.
-2. Investigate the 30 fps frame rhythm (60 Hz output, both backends) while
-   building the fixed-timestep accumulator.
+2. Recheck the 30 fps rhythm only if it returns; current Wayland builds report
+   ~60 fps with both bgfx Vulkan and the SDL fallback.
 3. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
+4. Replace the `_nullPhysicsUpdate` placeholder with a mandatory physics slot.

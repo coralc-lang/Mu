@@ -11,8 +11,15 @@ use platform::platform {
 import std::time { nowMonotonic, timespecToF64 };
 
 /// Simulation step used by the fixed-timestep loop.
+
+
+
+
+
+
 pub const f32 FIXED_DT = 1.0f / 60.0f;
 const f64 STATS_INTERVAL_SECONDS = 1.0;
+const f64 MAX_FRAME_TIME = 0.25;
 
 /// Writes a normal engine log line with the `[mu]` prefix.
 pub void logInfo(str msg)
@@ -42,13 +49,15 @@ pub struct Loop
     Scene* scene;
     Renderer* renderer;
     rawptr scriptCtx;                // ScriptHost* - wired by engine/main (M1)
-    void(rawptr, f32) scriptUpdate;  // §6 slot: script.update(dt)
+    void(rawptr, f32) scriptUpdate;  // script.update(dt); null host until wired
     rawptr physicsCtx;               // PhysicsWorld* - wired by engine/main
-    void(rawptr, f32) physicsUpdate; // §6 slot: physics.step(dt)
+    void(rawptr, f32) physicsUpdate; // physics.step(dt); null world until wired
     rawptr ui;            // null until M6, passed through to the renderer
     u64 frameCount;
     u64 statsFrame;
     f64 statsTime;
+    f64 lastTime;
+    f64 accumulator;
     bool running;
     f32 dt;
 
@@ -68,6 +77,8 @@ pub struct Loop
             .frameCount = 0,
             .statsFrame = 0,
             .statsTime = start,
+            .lastTime = start,
+            .accumulator = 0.0,
             .running = false,
             .dt = FIXED_DT
         };
@@ -86,35 +97,66 @@ pub struct Loop
         self.statsTime = now;
     }
 
-    /// Runs one frame in ENGINE.md §6 order. Missing layers stay stubbed
-    /// until their milestone, but the call sites already match the final order.
-    void frame()
+    void _beginFrame()
     {
-        // dt = clock.tick()            fixed/deterministic until M3
         platformPump();
         i32 resizeWidth = 0;
         i32 resizeHeight = 0;
         if (platformConsumeResize(&resizeWidth, &resizeHeight))
             self.renderer->resize(
                 self.renderer->ctx, resizeWidth, resizeHeight);
-        self.physicsUpdate(self.physicsCtx, self.dt); // fixed-step Jolt update + scene sync
-        self.scene->update(self.dt);
-        self.scriptUpdate(self.scriptCtx, self.dt);   // M1: ScriptHost slot (M2 runs IR)
-        // ui.frame()                   M6
+    }
+
+    void _simulate(f32 dt)
+    {
+        self.physicsUpdate(self.physicsCtx, dt);
+        self.scene->update(dt);
+        self.scriptUpdate(self.scriptCtx, dt);
+    }
+
+    void _present()
+    {
         self.renderer->draw(self.renderer->ctx, (rawptr)self.scene, self.ui);
         self.frameCount++;
         self._logStats();
+    }
+
+    /// Runs one frame in the fixed engine order. Missing layers stay stubbed
+    /// until their milestone, but the call sites already match the final order.
+    void frame()
+    {
+        self._beginFrame();
+
+        f64 now = timespecToF64(nowMonotonic());
+        f64 elapsed = now - self.lastTime;
+        self.lastTime = now;
+        if (elapsed < 0.0) elapsed = 0.0;
+        if (elapsed > MAX_FRAME_TIME) elapsed = MAX_FRAME_TIME;
+        self.accumulator = self.accumulator + elapsed;
+
+        f64 step = (f64)self.dt;
+        while (self.accumulator >= step)
+        {
+            self._simulate(self.dt);
+            self.accumulator = self.accumulator - step;
+        }
+
+        self._present();
     }
 
     /// Runs a fixed number of frames. Primarily used by tests and probes.
     void run(u64 frames)
     {
         self.running = true;
+        self.accumulator = 0.0;
+        self.lastTime = timespecToF64(nowMonotonic());
         u64 i = 0;
         while (self.running && i < frames)
         {
             if (platformQuitRequested()) break;
-            self.frame();
+            self._beginFrame();
+            self._simulate(self.dt);
+            self._present();
             i++;
         }
         self.running = false;

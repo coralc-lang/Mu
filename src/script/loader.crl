@@ -66,7 +66,7 @@ pub struct ScriptHost
         return Result<u32, str>::Ok { .value = 0 };
     }
 
-    // §6 slot: engine/main ticks this between scene.update and draw.
+    // engine/main ticks this between scene.update and draw.
     void update(f32 dt)
     {
         if (!self.loaded) return;
