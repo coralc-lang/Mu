@@ -1,9 +1,10 @@
 use bgfx::types {
-    bgfx_init_t, bgfx_renderer_type_t, BGFX_RENDERER_TYPE_COUNT,
-    BGFX_RESET_VSYNC, BGFX_CLEAR_COLOR, BGFX_CLEAR_DEPTH
+    bgfx_init_t, bgfx_swap_chain_t, bgfx_renderer_type_t,
+    BGFX_RENDERER_TYPE_COUNT, BGFX_RESET_VSYNC, BGFX_CLEAR_COLOR,
+    BGFX_CLEAR_DEPTH
 };
 use bgfx::init {
-    bgfx_init_ctor, bgfx_init, bgfx_shutdown, bgfx_frame,
+    bgfx_init_ctor, bgfx_init, bgfx_reset, bgfx_shutdown, bgfx_frame,
     bgfx_get_renderer_type, bgfx_get_renderer_name
 };
 use bgfx::views {
@@ -12,6 +13,7 @@ use bgfx::views {
 use render::render { Renderer, customRenderer };
 
 static bool MuBgfxReady = false;
+static bgfx_swap_chain_t MuBgfxSwapChain;
 
 pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisplay, i32 nativeType)
 {
@@ -35,6 +37,8 @@ pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisp
     init.swapChain.width = (u32)width;
     init.swapChain.height = (u32)height;
     init.reset = BGFX_RESET_VSYNC;
+
+    MuBgfxSwapChain = init.swapChain;
 
     if (bgfx_init(&init) == 0)
     {
@@ -68,6 +72,17 @@ void _bgfxDraw(rawptr ctx, rawptr scene, rawptr ui)
     bgfx_frame(0);
 }
 
+void _bgfxResize(rawptr ctx, i32 width, i32 height)
+{
+    if (!MuBgfxReady || width <= 0 || height <= 0) return;
+
+    MuBgfxSwapChain.width = (u32)width;
+    MuBgfxSwapChain.height = (u32)height;
+    bgfx_set_view_rect(0, 0, 0, (u16)width, (u16)height);
+    bgfx_reset(BGFX_RESET_VSYNC, (rawptr)&MuBgfxSwapChain);
+    println("[mu] renderer: bgfx resize={}x{}", width, height);
+}
+
 void _bgfxRendererShutdown(rawptr ctx)
 {
     bgfxShutdown();
@@ -75,7 +90,7 @@ void _bgfxRendererShutdown(rawptr ctx)
 
 pub Renderer bgfxRenderer()
 {
-    return customRenderer(null, _bgfxDraw, _bgfxRendererShutdown);
+    return customRenderer(null, _bgfxDraw, _bgfxResize, _bgfxRendererShutdown);
 }
 
 pub bgfx_renderer_type_t bgfxRendererType()

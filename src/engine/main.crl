@@ -58,7 +58,7 @@ pub i32 main()
     }
 
     bool probe = get("MU_PHYSICS_PROBE").isSome();
-    bool useBgfx = get("MU_BGFX").isSome();
+    bool forceSdl = get("MU_SDL_RENDERER").isSome();
     if (probe) logInfo("engine: probe mode");
     MuRenderer = nullRenderer();
     if (probe)
@@ -68,7 +68,7 @@ pub i32 main()
     else if (platformInit())
     {
         bool rendererReady = false;
-        if (useBgfx)
+        if (!forceSdl)
         {
             if (bgfxStart(
                 platformWidth(), platformHeight(),
@@ -82,10 +82,10 @@ pub i32 main()
             }
             else
             {
-                logError("renderer: bgfx init failed");
+                logError("renderer: bgfx init failed; trying SDL fallback");
             }
         }
-        else
+        if (!rendererReady)
         {
             if (sdlStart(platformSdlWindow()))
             {

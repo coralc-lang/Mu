@@ -76,6 +76,11 @@ void _sdlDraw(rawptr ctx, rawptr scene, rawptr ui)
     SDL_RenderPresent(state->handle);
 }
 
+void _sdlResize(rawptr ctx, i32 width, i32 height)
+{
+    // SDL_Renderer follows the window's output size automatically.
+}
+
 void _sdlShutdown(rawptr ctx)
 {
     SdlRenderer* state = (SdlRenderer*)ctx;
@@ -88,5 +93,5 @@ void _sdlShutdown(rawptr ctx)
 
 pub Renderer sdlRenderer()
 {
-    return customRenderer((rawptr)&MuSdl, _sdlDraw, _sdlShutdown);
+    return customRenderer((rawptr)&MuSdl, _sdlDraw, _sdlResize, _sdlShutdown);
 }

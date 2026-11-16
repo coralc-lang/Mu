@@ -2,10 +2,15 @@ pub struct Renderer
 {
     rawptr ctx;
     void(rawptr, rawptr, rawptr) draw;
+    void(rawptr, i32, i32) resize;
     void(rawptr) shutdown;
 }
 
 void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
+{
+}
+
+void _nullResize(rawptr ctx, i32 width, i32 height)
 {
 }
 
@@ -18,16 +23,19 @@ pub Renderer nullRenderer()
     return Renderer {
         .ctx = null,
         .draw = _nullDraw,
+        .resize = _nullResize,
         .shutdown = _nullShutdown
     };
 }
 
 pub Renderer customRenderer(
-    rawptr ctx, void(rawptr, rawptr, rawptr) draw, void(rawptr) shutdown)
+    rawptr ctx, void(rawptr, rawptr, rawptr) draw,
+    void(rawptr, i32, i32) resize, void(rawptr) shutdown)
 {
     return Renderer {
         .ctx = ctx,
         .draw = draw,
+        .resize = resize,
         .shutdown = shutdown
     };
 }

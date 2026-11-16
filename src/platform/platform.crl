@@ -1,13 +1,17 @@
 use platform::window {
     PlatformWindow, platformWindowCreate, platformWindowDestroy,
-    platformWindowNativeHandle, platformWindowNativeDisplay,
-    platformWindowNativeType, platformWindowWidth, platformWindowHeight,
+    platformWindowRefreshSize, platformWindowNativeHandle,
+    platformWindowNativeDisplay, platformWindowNativeType,
+    platformWindowWidth, platformWindowHeight,
     PLATFORM_DEFAULT_WIDTH, PLATFORM_DEFAULT_HEIGHT
 };
 
 use platform::input { InputState, inputPump };
 
 static bool MuQuitRequested = false;
+static bool MuResizePending = false;
+static i32 MuResizeWidth = 0;
+static i32 MuResizeHeight = 0;
 static PlatformWindow MuWindow;
 static InputState MuInput;
 
@@ -28,9 +32,26 @@ pub void platformPump()
 {
     if (!MuWindow.ready) return;
     inputPump(&MuInput);
+    if (platformWindowRefreshSize(&MuWindow))
+    {
+        MuResizeWidth = MuWindow.width;
+        MuResizeHeight = MuWindow.height;
+        MuResizePending = true;
+        println("[mu] platform: window resized {}x{}",
+            MuResizeWidth, MuResizeHeight);
+    }
     if (MuInput.quit && !MuQuitRequested)
         println("[mu] platform: quit detected");
     if (MuInput.quit) MuQuitRequested = true;
+}
+
+pub bool platformConsumeResize(i32* width, i32* height)
+{
+    if (!MuResizePending) return false;
+    MuResizePending = false;
+    if (width != null) *width = MuResizeWidth;
+    if (height != null) *height = MuResizeHeight;
+    return true;
 }
 
 pub void platformRequestQuit()

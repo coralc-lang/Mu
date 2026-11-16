@@ -5,7 +5,9 @@
 
 use scene::scene { Scene };
 use render::render { Renderer };
-use platform::platform { platformPump, platformQuitRequested };
+use platform::platform {
+    platformPump, platformQuitRequested, platformConsumeResize
+};
 import std::time { nowMonotonic, timespecToF64 };
 
 pub const f32 FIXED_DT = 1.0f / 60.0f;
@@ -84,6 +86,11 @@ pub struct Loop
     {
         // dt = clock.tick()            fixed/deterministic until M3
         platformPump();
+        i32 resizeWidth = 0;
+        i32 resizeHeight = 0;
+        if (platformConsumeResize(&resizeWidth, &resizeHeight))
+            self.renderer->resize(
+                self.renderer->ctx, resizeWidth, resizeHeight);
         self.physicsUpdate(self.physicsCtx, self.dt); // fixed-step Jolt update + scene sync
         self.scene->update(self.dt);
         self.scriptUpdate(self.scriptCtx, self.dt);   // M1: ScriptHost slot (M2 runs IR)

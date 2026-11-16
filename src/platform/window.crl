@@ -172,6 +172,21 @@ pub bool platformWindowReady(PlatformWindow* window)
     return window != null && window->ready;
 }
 
+pub bool platformWindowRefreshSize(PlatformWindow* window)
+{
+    if (window == null || window->handle == null) return false;
+
+    i32 width = window->width;
+    i32 height = window->height;
+    if (SDL_GetWindowSizeInPixels(window->handle, &width, &height) == 0)
+        return false;
+    if (width == window->width && height == window->height) return false;
+
+    window->width = width;
+    window->height = height;
+    return true;
+}
+
 pub rawptr platformWindowNativeHandle(PlatformWindow* window)
 {
     if (window == null) return null;

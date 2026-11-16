@@ -18,8 +18,13 @@ Last updated: 2026-11-16
 
 ### M3 - Window and bgfx
 
-- [ ] **IN PROGRESS** M3 renderer: fix bgfx swapchain/presentation so the window maps and animates every frame
-- [ ] M3 renderer: bgfx platform-data matrix for Wayland/X11, Win32, Cocoa, Android, UIKit; renderer type + fallback selection
+- [x] M3 renderer: fix bgfx swapchain/presentation so the window maps and animates every frame
+- [ ] **IN PROGRESS** M3 renderer: bgfx platform-data matrix for Wayland/X11, Win32, Cocoa, Android, UIKit; renderer type + fallback selection
+  - Done: bgfx is the default renderer; `MU_SDL_RENDERER` forces SDL fallback.
+  - Verified: Wayland presents (`wl_surface.attach`/`commit`) and maps; X11 maps.
+  - Done: resize/reset handling via `Renderer.resize`, platform size polling, and
+    `bgfx_reset` with an updated swap chain.
+  - Pending: Win32, Cocoa, Android, UIKit.
 - [ ] Build: per-platform coral.crlb targets, link blocks, packaged archive selection; remove Linux-only hardcoded paths
 - [ ] Core loop: fixed-timestep accumulator, dt clamp, vsync/frame pacing, deterministic headless stepping
 - [ ] Core diagnostics: bgfx debug callback, SDL error reporting, startup/frame telemetry
@@ -126,12 +131,15 @@ Last updated: 2026-11-16
 
 ## Immediate Next Step
 
-Fix bgfx presentation on Wayland:
+bgfx presentation root cause was a struct-layout mismatch: the packaged
+`libbgfx.a` uses an older `bgfx_init_t` layout than upstream master.
+`platformData` is at offset 24 and `swapChain` at 48. The previous binding put
+them at 40/64, so `nwh` landed in `width`, bgfx saw a null window handle, and
+created a headless Vulkan device.
 
-1. Confirm the packaged `libbgfx.a` matches the C99 header layouts in
-   `src/thirdparty/bgfx/types.crl`.
-2. Verify `bgfx_init_t.swapChain` / `platformData` values reach the Vulkan
-   Wayland surface path.
-3. Confirm `wl_surface.attach` and `wl_surface.commit` appear under
-   `WAYLAND_DEBUG=1` and that the Hyprland window maps.
-4. Keep the SDL3 presenter as a temporary fallback until bgfx presents.
+Next:
+
+1. Test the platform-data matrix on Windows, macOS, Android, and UIKit.
+2. Investigate the 30 fps frame rhythm (60 Hz output, both backends) while
+   building the fixed-timestep accumulator.
+3. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
