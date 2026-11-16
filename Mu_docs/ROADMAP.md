@@ -49,9 +49,17 @@ Last updated: 2026-11-16
 
 ### Math and scene
 
-- [ ] Math: complete Vec2/Vec3/Vec4/Quat (axis-angle, slerp, matrix conversion, inverse)
-- [ ] Math: Mat4, perspective, ortho, lookAt, TRS, normal matrix, frustum planes
-- [ ] Scene: engine component types (Camera, MeshRenderer, Light, RigidBody, Collider, Character) registered in ComponentRegistry
+- [x] Math: complete Vec2/Vec3/Vec4/Quat (axis-angle, slerp, matrix conversion, inverse)
+  - Done: vector neg/xyz helpers; Quat axis-angle, inverse, normalize, dot, slerp,
+    Mat3 conversion, and Mat3 inverse/transpose.
+  - Verified with a temporary probe: rotation, inverse, shortest-path slerp,
+    axis-angle round trip, and matrix round trip.
+- [x] Math: Mat4, perspective, ortho, lookAt, TRS, normal matrix, frustum planes
+  - Done: column-major Mat4 with mul/transform/project/transpose, perspective and
+    perspectiveGL, ortho and orthoGL, lookAt, trs, normalMatrix, and Frustum planes.
+- [x] Scene: engine component types (Camera, MeshRenderer, Light, RigidBody, Collider, Character) registered in ComponentRegistry
+  - Done: `scene/components.crl` defines the six component types, per-type stores,
+    type constants, and `componentsInit` registration.
 - [ ] Render extraction: scene entities resolve to render handles/draw list; ECS stays renderer-agnostic
 
 ### Renderer and materials
@@ -157,8 +165,8 @@ created a headless Vulkan device.
 
 Next:
 
-1. Finish the platform-data matrix on Windows, macOS, Android, and UIKit.
-2. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
-3. Move to math completion: Vec2/Vec3/Vec4/Quat additions, then Mat4.
+1. Verify the platform-data matrix on Windows, macOS, Android, and UIKit.
+2. Render extraction: resolve scene entities to render handles/draw list.
+3. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
 4. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
    focus/visibility and present timing.
