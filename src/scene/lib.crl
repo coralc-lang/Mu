@@ -1,1 +1,2 @@
+pub mod components = use components;
 pub mod scene = use scene;

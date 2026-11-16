@@ -19,7 +19,7 @@ Last updated: 2026-11-16
 ### M3 - Window and bgfx
 
 - [x] M3 renderer: fix bgfx swapchain/presentation so the window maps and animates every frame
-- [ ] **IN PROGRESS** M3 renderer: bgfx platform-data matrix for Wayland/X11, Win32, Cocoa, Android, UIKit; renderer type + fallback selection
+- [x] M3 renderer: Linux platform-data matrix (Wayland/X11), renderer type + fallback selection
   - Done: bgfx is the default renderer; `MU_SDL_RENDERER` forces SDL fallback.
   - Done: `MU_BGFX_RENDERER` selects auto/noop/vulkan/opengl/gles/d3d11/d3d12/metal/webgpu;
     `MU_BGFX_FALLBACK=0|false|off` makes the request strict.
@@ -32,7 +32,7 @@ Last updated: 2026-11-16
     during an unfocused run, pointing at compositor/window-focus pacing rather than the backend.
   - Done: resize/reset handling via `Renderer.resize`, platform size polling, and
     `bgfx_reset` with an updated swap chain.
-  - Pending: Win32, Cocoa, Android, UIKit.
+- [ ] M3 renderer: verify platform-data matrix on Win32, Cocoa, Android, UIKit
 - [ ] Build: per-platform coral.crlb targets, link blocks, packaged archive selection; remove Linux-only hardcoded paths
 - [x] Core loop: fixed-timestep accumulator, dt clamp, vsync/frame pacing, deterministic headless stepping
   - Done: accumulator in `Loop.frame`, 0.25 s frame-time clamp, and `Loop.run` stepping exact `FIXED_DT` frames.

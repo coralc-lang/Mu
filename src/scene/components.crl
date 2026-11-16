@@ -1,0 +1,131 @@
+use scene::scene { ComponentRegistry, ComponentStore, ComponentType };
+use math::math { Vec3 };
+
+pub const i32 LIGHT_DIRECTIONAL = 0;
+pub const i32 LIGHT_POINT = 1;
+
+pub const i32 BODY_STATIC = 0;
+pub const i32 BODY_DYNAMIC = 1;
+pub const i32 BODY_KINEMATIC = 2;
+
+pub const i32 COLLIDER_BOX = 0;
+pub const i32 COLLIDER_SPHERE = 1;
+pub const i32 COLLIDER_CAPSULE = 2;
+
+pub struct Camera
+{
+    f32 fovYRadians;
+    f32 aspect;
+    f32 near;
+    f32 far;
+}
+
+pub struct MeshRenderer
+{
+    u32 mesh;
+    u32 material;
+}
+
+pub struct Light
+{
+    i32 kind;
+    Vec3 color;
+    f32 intensity;
+}
+
+pub struct RigidBody
+{
+    i32 motionType;
+    f32 mass;
+    Vec3 linearVelocity;
+}
+
+pub struct Collider
+{
+    i32 shape;
+    Vec3 halfExtent;
+    f32 radius;
+}
+
+pub struct Character
+{
+    f32 radius;
+    f32 height;
+    f32 speed;
+}
+
+const u32 COMPONENT_CAPACITY = 4096;
+
+static Camera[4096] MuCameras;
+static u8[4096] MuCameraPresent;
+static MeshRenderer[4096] MuMeshes;
+static u8[4096] MuMeshPresent;
+static Light[4096] MuLights;
+static u8[4096] MuLightPresent;
+static RigidBody[4096] MuBodies;
+static u8[4096] MuBodyPresent;
+static Collider[4096] MuColliders;
+static u8[4096] MuColliderPresent;
+static Character[4096] MuCharacters;
+static u8[4096] MuCharacterPresent;
+
+static ComponentType[16] MuComponentTypes;
+static ComponentRegistry MuRegistry;
+static ComponentStore MuCameraStore;
+static ComponentStore MuMeshStore;
+static ComponentStore MuLightStore;
+static ComponentStore MuBodyStore;
+static ComponentStore MuColliderStore;
+static ComponentStore MuCharacterStore;
+static bool MuComponentsReady = false;
+
+bool _addComponent(ComponentRegistry* registry, str name, ComponentStore* store)
+{
+    Result<u32, str> result = registry->add(name, store);
+    if (result.isOk()) return true;
+    println("[mu:error] scene: component registration failed for {}", name);
+    return false;
+}
+
+/// Registers the engine component stores once; safe to call repeatedly.
+pub void componentsInit()
+{
+    if (MuComponentsReady) return;
+
+    MuRegistry = ComponentRegistry::new(MuComponentTypes, 16);
+    MuCameraStore = ComponentStore::new(
+        MuCameras, MuCameraPresent, COMPONENT_CAPACITY, (u32)@sizeof(Camera));
+    MuMeshStore = ComponentStore::new(
+        MuMeshes, MuMeshPresent, COMPONENT_CAPACITY, (u32)@sizeof(MeshRenderer));
+    MuLightStore = ComponentStore::new(
+        MuLights, MuLightPresent, COMPONENT_CAPACITY, (u32)@sizeof(Light));
+    MuBodyStore = ComponentStore::new(
+        MuBodies, MuBodyPresent, COMPONENT_CAPACITY, (u32)@sizeof(RigidBody));
+    MuColliderStore = ComponentStore::new(
+        MuColliders, MuColliderPresent, COMPONENT_CAPACITY, (u32)@sizeof(Collider));
+    MuCharacterStore = ComponentStore::new(
+        MuCharacters, MuCharacterPresent, COMPONENT_CAPACITY, (u32)@sizeof(Character));
+
+    _addComponent(&MuRegistry, "Camera", &MuCameraStore);
+    _addComponent(&MuRegistry, "MeshRenderer", &MuMeshStore);
+    _addComponent(&MuRegistry, "Light", &MuLightStore);
+    _addComponent(&MuRegistry, "RigidBody", &MuBodyStore);
+    _addComponent(&MuRegistry, "Collider", &MuColliderStore);
+    _addComponent(&MuRegistry, "Character", &MuCharacterStore);
+
+    MuComponentsReady = true;
+    println("[mu] scene: engine components={}", MuRegistry.count);
+}
+
+/// The registry holding the engine component stores.
+pub ComponentRegistry* componentsRegistry()
+{
+    return &MuRegistry;
+}
+
+pub ComponentStore* cameraStore() { return &MuCameraStore; }
+pub ComponentStore* meshRendererStore() { return &MuMeshStore; }
+pub ComponentStore* lightStore() { return &MuLightStore; }
+pub ComponentStore* rigidBodyStore() { return &MuBodyStore; }
+pub ComponentStore* colliderStore() { return &MuColliderStore; }
+pub ComponentStore* characterStore() { return &MuCharacterStore; }

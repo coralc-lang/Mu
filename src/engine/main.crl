@@ -19,6 +19,7 @@ use render::bgfx {
 };
 use bgfx::types { BGFX_RENDERER_TYPE_COUNT };
 use scene::scene { Scene, Entity };
+use scene::components { componentsInit };
 use script::abi { BindingEntry, BindingTable };
 use script::loader { ScriptHost, scriptSystem };
 use script::bindings { ScriptBinding, ScriptBindings };
@@ -45,6 +46,7 @@ pub i32 main()
     logInfo("engine: initializing subsystems");
     MuScene = Scene::new(MuSceneStorage, 4096);
     println("[mu] scene: capacity={} entities={}", MuScene.capacity, MuScene.count);
+    componentsInit();
 
     MuBindings = BindingTable::new(MuBindingEntries, 128);
     MuHost = ScriptHost::new(&MuBindings);
