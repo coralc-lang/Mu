@@ -85,3 +85,8 @@ task "physics-probe" {
     after = ["build"];
     exec  = "bash -c 'MU_PHYSICS_PROBE=1 build/muengine'";
 }
+
+task "render-probe" {
+    after = ["build"];
+    exec  = "bash -c 'MU_RENDER_PROBE=1 build/muengine'";
+}

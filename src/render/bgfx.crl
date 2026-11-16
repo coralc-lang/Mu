@@ -168,6 +168,12 @@ pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow,
     return true;
 }
 
+/// Returns true if bgfx has been successfully initialized and not shut down.
+pub bool bgfxIsReady()
+{
+    return MuBgfxReady;
+}
+
 /// Releases the bgfx device. Safe to call when init never succeeded.
 pub void bgfxShutdown()
 {

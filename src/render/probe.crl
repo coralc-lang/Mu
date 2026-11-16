@@ -1,0 +1,173 @@
+/* Render resource test probe: validates handle allocation, generation
+   bumping, dangling-handle safety, slot recycling, and safe release. */
+
+use render::resources {
+    MeshRecord, MaterialRecord, TextureRecord, ShaderRecord, ProgramRecord,
+    RenderResources, MeshHandle, MaterialHandle, TextureHandle, ShaderHandle,
+    ProgramHandle, INVALID_MESH, INVALID_MATERIAL, INVALID_TEXTURE,
+    INVALID_SHADER, INVALID_PROGRAM, SHADER_STAGE_VERTEX, SHADER_STAGE_FRAGMENT,
+    renderResourcesInit, defaultRenderResources, renderResourcesShutdown
+};
+use bgfx::types { BGFX_INVALID_HANDLE };
+
+static MeshRecord[8] ProbeMeshes;
+static MaterialRecord[8] ProbeMaterials;
+static TextureRecord[8] ProbeTextures;
+static ShaderRecord[8] ProbeShaders;
+static ProgramRecord[8] ProbePrograms;
+
+pub bool runRenderResourceProbe()
+{
+    println("[mu] render probe: starting resource tests");
+
+    RenderResources res = RenderResources::new(
+        ProbeMeshes, 8,
+        ProbeMaterials, 8,
+        ProbeTextures, 8,
+        ProbeShaders, 8,
+        ProbePrograms, 8
+    );
+
+    // 1. Invalid handle queries
+    if (res.isValidMesh(INVALID_MESH) || res.isValidTexture(INVALID_TEXTURE) ||
+        res.isValidShader(INVALID_SHADER) || res.isValidProgram(INVALID_PROGRAM) ||
+        res.isValidMaterial(INVALID_MATERIAL))
+    {
+        println("[mu:error] render probe: INVALID_* reported as valid");
+        return false;
+    }
+
+    // 2. Mesh allocation and slot reuse
+    MeshHandle m0 = res.createMesh(10, 20, 100, 300, true);
+    if (!res.isValidMesh(m0))
+    {
+        println("[mu:error] render probe: m0 should be valid");
+        return false;
+    }
+    MeshRecord* rec0 = res.getMesh(m0);
+    if (rec0 == null || rec0->vbh != 10 || rec0->ibh != 20 || rec0->vertexCount != 100 || rec0->indexCount != 300)
+    {
+        println("[mu:error] render probe: m0 metadata mismatch");
+        return false;
+    }
+
+    MeshHandle m1 = res.createMesh(11, BGFX_INVALID_HANDLE, 50, 0, false);
+    if (!res.isValidMesh(m1) || m0 == m1)
+    {
+        println("[mu:error] render probe: m1 creation failed or handle collision");
+        return false;
+    }
+
+    // 3. Mesh destruction & dangling handle check
+    if (!res.destroyMesh(m0))
+    {
+        println("[mu:error] render probe: destroyMesh(m0) failed");
+        return false;
+    }
+    if (res.isValidMesh(m0))
+    {
+        println("[mu:error] render probe: m0 must be invalid after destroy");
+        return false;
+    }
+    if (res.destroyMesh(m0))
+    {
+        println("[mu:error] render probe: double-destroy of m0 succeeded");
+        return false;
+    }
+
+    // 4. Slot recycling: next allocated mesh should reuse slot 0 with bumped generation
+    MeshHandle m2 = res.createMesh(12, 22, 80, 240, true);
+    if (!res.isValidMesh(m2))
+    {
+        println("[mu:error] render probe: m2 creation failed");
+        return false;
+    }
+    if (m2 == m0)
+    {
+        println("[mu:error] render probe: m2 must have different generation than m0");
+        return false;
+    }
+    if (res.isValidMesh(m0))
+    {
+        println("[mu:error] render probe: m0 is still dangling and must be invalid");
+        return false;
+    }
+
+    // 5. Shader and Program handles
+    ShaderHandle vs = res.createShader(101, SHADER_STAGE_VERTEX);
+    ShaderHandle fs = res.createShader(102, SHADER_STAGE_FRAGMENT);
+    if (!res.isValidShader(vs) || !res.isValidShader(fs))
+    {
+        println("[mu:error] render probe: shader creation failed");
+        return false;
+    }
+
+    ProgramHandle prog = res.createProgram(201, vs, fs);
+    if (!res.isValidProgram(prog))
+    {
+        println("[mu:error] render probe: program creation failed");
+        return false;
+    }
+    ProgramRecord* pRec = res.getProgram(prog);
+    if (pRec == null || pRec->vsh != vs || pRec->fsh != fs)
+    {
+        println("[mu:error] render probe: program shader wiring mismatch");
+        return false;
+    }
+
+    // 6. Texture and Material handles
+    TextureHandle tex = res.createTexture(301, 256, 256, 1, 0);
+    if (!res.isValidTexture(tex))
+    {
+        println("[mu:error] render probe: texture creation failed");
+        return false;
+    }
+
+    MaterialHandle mat = res.createMaterial(prog);
+    if (!res.isValidMaterial(mat))
+    {
+        println("[mu:error] render probe: material creation failed");
+        return false;
+    }
+    MaterialRecord* matRec = res.getMaterial(mat);
+    if (matRec == null || matRec->program != prog)
+    {
+        println("[mu:error] render probe: material program mismatch");
+        return false;
+    }
+    matRec->baseColorTexture = tex;
+
+    // 7. Test releaseAll
+    res.releaseAll();
+    if (res.isValidMesh(m1) || res.isValidMesh(m2) || res.isValidShader(vs) ||
+        res.isValidShader(fs) || res.isValidProgram(prog) || res.isValidTexture(tex) ||
+        res.isValidMaterial(mat))
+    {
+        println("[mu:error] render probe: releaseAll left resources alive");
+        return false;
+    }
+
+    // 8. Test engine default resources init / shutdown
+    renderResourcesInit();
+    RenderResources* defRes = defaultRenderResources();
+    if (defRes == null)
+    {
+        println("[mu:error] render probe: defaultRenderResources is null");
+        return false;
+    }
+    MeshHandle defMesh = defRes->createMesh(1, 2, 3, 4, true);
+    if (!defRes->isValidMesh(defMesh))
+    {
+        println("[mu:error] render probe: default resource mesh creation failed");
+        return false;
+    }
+    renderResourcesShutdown();
+    if (defRes->isValidMesh(defMesh))
+    {
+        println("[mu:error] render probe: default resource mesh still valid after shutdown");
+        return false;
+    }
+
+    println("[mu] render probe: PASS");
+    return true;
+}

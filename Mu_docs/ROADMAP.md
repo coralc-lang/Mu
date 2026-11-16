@@ -70,7 +70,14 @@ Last updated: 2026-11-16
 
 ### Renderer and materials
 
-- [ ] Render resources: mesh/material/texture/shader handles with explicit ownership and release
+- [x] Render resources: mesh/material/texture/shader handles with explicit ownership and release
+  - Done: `render/resources.crl` provides a single source of truth for `MeshHandle`, `MaterialHandle`,
+    `TextureHandle`, `ShaderHandle`, and `ProgramHandle` with upper-16-bit generation tracking.
+  - Done: caller-provided and default static table storage with slot reuse and dangling-handle protection.
+  - Done: resource release routes to bgfx destroy calls when bgfx is ready, and safely no-ops headless/null.
+  - Done: `extract.crl` references handles from `render::resources`; default tables wired into engine lifecycle.
+  - Verified with `MU_RENDER_PROBE=1`: handle allocation, generation bumping, dangling checks,
+    slot recycling, and clean release.
 - [ ] Render pipeline: vertex layouts, vertex/index buffers, transient buffers
 - [ ] Render pipeline: shader/program path (GLSL -> bgfx shaderc, embedded or cooked shaders)
 - [ ] Materials: base color, metallic/roughness, normal maps, alpha modes, culling, depth state
@@ -171,7 +178,9 @@ created a headless Vulkan device.
 
 Next:
 
-1. Render resources: mesh/material/texture/shader handles with explicit ownership.
-2. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
-3. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
+1. Render pipeline: vertex layouts, vertex/index buffers, transient buffers.
+2. Render pipeline: shader/program path (GLSL -> bgfx shaderc, embedded or cooked shaders).
+3. Materials: base color, metallic/roughness, normal maps, alpha modes, culling, depth state.
+4. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
+5. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
    focus/visibility and present timing.

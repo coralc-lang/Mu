@@ -5,14 +5,9 @@
 use math::math { Mat4 };
 use scene::scene { Scene, EntityId, ComponentStore, Transform };
 use scene::components { MeshRenderer, meshRendererStore };
-
-/// Opaque mesh id resolved by the render resource layer.
-pub typedef MeshHandle = u32;
-/// Opaque material id resolved by the render resource layer.
-pub typedef MaterialHandle = u32;
-
-pub const MeshHandle INVALID_MESH = 0xFFFFFFFF;
-pub const MaterialHandle INVALID_MATERIAL = 0xFFFFFFFF;
+use render::resources {
+    MeshHandle, MaterialHandle, INVALID_MESH, INVALID_MATERIAL
+};
 
 /// One renderable entity after extraction.
 pub struct DrawItem

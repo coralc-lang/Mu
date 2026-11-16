@@ -12,6 +12,8 @@ use platform::platform {
     platformBackendName, platformWidth, platformHeight
 };
 use render::render { Renderer, nullRenderer };
+use render::resources { renderResourcesInit, renderResourcesShutdown };
+use render::probe { runRenderResourceProbe };
 use render::sdl { sdlStart, sdlRenderer };
 use render::bgfx {
     bgfxStart, bgfxRenderer, bgfxRendererType, bgfxRendererName,
@@ -47,6 +49,14 @@ pub i32 main()
     MuScene = Scene::new(MuSceneStorage, 4096);
     println("[mu] scene: capacity={} entities={}", MuScene.capacity, MuScene.count);
     componentsInit();
+    renderResourcesInit();
+
+    if (get("MU_RENDER_PROBE").isSome())
+    {
+        bool probeOk = runRenderResourceProbe();
+        renderResourcesShutdown();
+        return probeOk ? 0 : 1;
+    }
 
     MuBindings = BindingTable::new(MuBindingEntries, 128);
     MuHost = ScriptHost::new(&MuBindings);
@@ -154,6 +164,7 @@ pub i32 main()
     stop(&MuPhysics);
     MuHost.free();
     println("[mu] engine: script host released");
+    renderResourcesShutdown();
     MuRenderer.shutdown(MuRenderer.ctx);
     platformShutdown();
     logInfo("engine stopped");
