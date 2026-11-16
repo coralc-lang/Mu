@@ -11,7 +11,7 @@ pub struct Renderer
     void(rawptr) shutdown;
 }
 
-void _nullDraw(rawptr ctx, rawptr scene, rawptr ui)
+void _nullDraw(rawptr ctx, rawptr drawList, rawptr ui)
 {
 }
 

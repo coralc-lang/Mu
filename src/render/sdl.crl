@@ -48,7 +48,7 @@ pub bool sdlStart(rawptr window)
     return true;
 }
 
-void _sdlDraw(rawptr ctx, rawptr scene, rawptr ui)
+void _sdlDraw(rawptr ctx, rawptr drawList, rawptr ui)
 {
     SdlRenderer* state = (SdlRenderer*)ctx;
     if (state == null || state->handle == null) return;

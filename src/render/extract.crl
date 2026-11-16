@@ -1,0 +1,98 @@
+/* Render extraction: turns scene entities into a backend-neutral draw list.
+   Scene and component code never reference renderer types; this file is the
+   seam that reads ECS state and emits mesh/material handles plus transforms. */
+
+use math::math { Mat4 };
+use scene::scene { Scene, EntityId, ComponentStore, Transform };
+use scene::components { MeshRenderer, meshRendererStore };
+
+/// Opaque mesh id resolved by the render resource layer.
+pub typedef MeshHandle = u32;
+/// Opaque material id resolved by the render resource layer.
+pub typedef MaterialHandle = u32;
+
+pub const MeshHandle INVALID_MESH = 0xFFFFFFFF;
+pub const MaterialHandle INVALID_MATERIAL = 0xFFFFFFFF;
+
+/// One renderable entity after extraction.
+pub struct DrawItem
+{
+    EntityId entity;
+    MeshHandle mesh;
+    MaterialHandle material;
+    Mat4 transform;
+}
+
+/// Caller-owned draw list storage, rebuilt from the scene every frame.
+pub struct DrawList
+{
+    DrawItem* items;
+    u32 capacity;
+    u32 count;
+
+    static DrawList new(DrawItem* storage, u32 capacity)
+    {
+        return DrawList { .items = storage, .capacity = capacity, .count = 0 };
+    }
+
+    void clear()
+    {
+        self.count = 0;
+    }
+
+    bool push(DrawItem item)
+    {
+        if (self.items == null) return false;
+        if (self.count >= self.capacity) return false;
+        self.items[self.count] = item;
+        self.count = self.count + 1;
+        return true;
+    }
+
+    u32 len()
+    {
+        return self.count;
+    }
+
+    DrawItem* at(u32 index)
+    {
+        if (index >= self.count) return null;
+        return &self.items[index];
+    }
+}
+
+/// Rebuilds a draw list from live entities with a MeshRenderer component.
+/// Returns the number emitted; stops early when the list is full.
+pub u32 extractDrawList(Scene* scene, ComponentStore* meshes, DrawList* list)
+{
+    if (list == null) return 0;
+    list->clear();
+    if (scene == null || meshes == null) return 0;
+    if (meshes->data == null || meshes->present == null) return 0;
+
+    u32 entities = scene->entityCount();
+    for (u32 id = 0; id < entities; id++)
+    {
+        if (!scene->alive(id)) continue;
+        Option<rawptr> found = meshes->get(id);
+        if (found.isNone()) continue;
+
+        Transform world;
+        if (!scene->worldTransform(id, &world)) continue;
+        MeshRenderer* source = (MeshRenderer*)found.unwrap();
+        DrawItem item = DrawItem {
+            .entity = id,
+            .mesh = (MeshHandle)source->mesh,
+            .material = (MaterialHandle)source->material,
+            .transform = Mat4::trs(world.position, world.rotation, world.scale)
+        };
+        if (!list->push(item)) break;
+    }
+    return list->count;
+}
+
+/// Extracts using the engine's registered MeshRenderer store.
+pub u32 extractScene(Scene* scene, DrawList* list)
+{
+    return extractDrawList(scene, meshRendererStore(), list);
+}

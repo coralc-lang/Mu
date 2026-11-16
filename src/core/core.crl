@@ -4,6 +4,7 @@
 
 use scene::scene { Scene };
 use render::render { Renderer };
+use render::extract { DrawItem, DrawList, extractScene };
 use platform::platform {
     platformPump, platformQuitRequested, platformConsumeResize
 };
@@ -31,11 +32,14 @@ void _nullScriptUpdate(rawptr ctx, f32 dt)
     // no script host wired (M1 default) - engine/main swaps in scriptSystem
 }
 
+static DrawItem[4096] MuDrawItems;
+
 /// Drives one scene and renderer pair in a fixed order every frame.
 pub struct Loop
 {
     Scene* scene;
     Renderer* renderer;
+    DrawList drawList;
     rawptr scriptCtx;                // ScriptHost* - wired by engine/main (M1)
     void(rawptr, f32) scriptUpdate;  // script.update(dt); null host until wired
     rawptr physicsCtx;               // PhysicsWorld* - supplied by the caller
@@ -60,6 +64,7 @@ pub struct Loop
         return Loop {
             .scene = scene,
             .renderer = renderer,
+            .drawList = DrawList::new(MuDrawItems, 4096),
             .scriptCtx = null,
             .scriptUpdate = _nullScriptUpdate,
             .physicsCtx = physicsCtx,
@@ -113,7 +118,9 @@ pub struct Loop
 
     void _present()
     {
-        self.renderer->draw(self.renderer->ctx, (rawptr)self.scene, self.ui);
+        extractScene(self.scene, &self.drawList);
+        self.renderer->draw(
+            self.renderer->ctx, (rawptr)&self.drawList, self.ui);
         self.frameCount++;
         self._logStats();
     }

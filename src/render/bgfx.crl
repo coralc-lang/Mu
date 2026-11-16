@@ -177,7 +177,7 @@ pub void bgfxShutdown()
     MuBgfxReady = false;
 }
 
-void _bgfxDraw(rawptr ctx, rawptr scene, rawptr ui)
+void _bgfxDraw(rawptr ctx, rawptr drawList, rawptr ui)
 {
     bgfx_touch(0);
     bgfx_frame(0);

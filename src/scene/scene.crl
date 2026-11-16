@@ -120,6 +120,22 @@ pub struct Scene
         return self.entities[id].alive;
     }
 
+    /// Number of entity ids allocated so far, including dead entities.
+    u32 entityCount()
+    {
+        return self.count;
+    }
+
+    /// Copies the last composed world transform for a live entity.
+    bool worldTransform(EntityId id, Transform* out)
+    {
+        if (out == null) return false;
+        if (id >= self.count) return false;
+        if (!self.entities[id].alive) return false;
+        *out = self.entities[id].world;
+        return true;
+    }
+
     // parent = NIL roots the child. Rejects cycles (parent is a descendant).
     // Ok carries the child id; Err carries why the reparent was rejected -
     // the caller may log it (ENGINE.md §3 error convention).

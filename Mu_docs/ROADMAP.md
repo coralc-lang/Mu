@@ -60,7 +60,13 @@ Last updated: 2026-11-16
 - [x] Scene: engine component types (Camera, MeshRenderer, Light, RigidBody, Collider, Character) registered in ComponentRegistry
   - Done: `scene/components.crl` defines the six component types, per-type stores,
     type constants, and `componentsInit` registration.
-- [ ] Render extraction: scene entities resolve to render handles/draw list; ECS stays renderer-agnostic
+- [x] Render extraction: scene entities resolve to render handles/draw list; ECS stays renderer-agnostic
+  - Done: `render/extract.crl` turns live MeshRenderer entities into typed mesh/material
+    handles plus world transforms in a caller-owned DrawList.
+  - Done: the loop rebuilds the draw list before every present and passes it through
+    `Renderer.draw`; scene and component code remain renderer-agnostic.
+  - Verified with a temporary probe: live/dead filtering, missing-component filtering,
+    handle and transform extraction, and draw-list capacity clamping.
 
 ### Renderer and materials
 
@@ -165,8 +171,7 @@ created a headless Vulkan device.
 
 Next:
 
-1. Verify the platform-data matrix on Windows, macOS, Android, and UIKit.
-2. Render extraction: resolve scene entities to render handles/draw list.
-3. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
-4. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
+1. Render resources: mesh/material/texture/shader handles with explicit ownership.
+2. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
+3. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
    focus/visibility and present timing.
