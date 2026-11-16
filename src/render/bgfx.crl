@@ -1,3 +1,7 @@
+/* bgfx backend. Device creation, the main view, and swap-chain reset live
+   here. The ABI is tied to the packaged libbgfx.a, whose init struct is older
+   than upstream master; see thirdparty/bgfx/types.crl before touching fields. */
+
 use bgfx::types {
     bgfx_init_t, bgfx_swap_chain_t, bgfx_renderer_type_t,
     BGFX_RENDERER_TYPE_COUNT, BGFX_RESET_VSYNC, BGFX_CLEAR_COLOR,
@@ -15,6 +19,8 @@ use render::render { Renderer, customRenderer };
 static bool MuBgfxReady = false;
 static bgfx_swap_chain_t MuBgfxSwapChain;
 
+/// Creates the bgfx device and its first swap chain. `nativeType` is bgfx's
+/// platform handle enum (0 default, 1 Wayland); width/height are pixels.
 pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisplay, i32 nativeType)
 {
     if (MuBgfxReady) return true;
@@ -38,6 +44,8 @@ pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisp
     init.swapChain.height = (u32)height;
     init.reset = BGFX_RESET_VSYNC;
 
+    // Keep a copy: bgfx_reset needs the same native handles and formats when
+    // the window changes size.
     MuBgfxSwapChain = init.swapChain;
 
     if (bgfx_init(&init) == 0)
@@ -58,6 +66,7 @@ pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisp
     return true;
 }
 
+/// Releases the bgfx device. Safe to call when init never succeeded.
 pub void bgfxShutdown()
 {
     if (!MuBgfxReady) return;
@@ -88,16 +97,19 @@ void _bgfxRendererShutdown(rawptr ctx)
     bgfxShutdown();
 }
 
+/// Returns the bgfx backend behind the engine's Renderer interface.
 pub Renderer bgfxRenderer()
 {
     return customRenderer(null, _bgfxDraw, _bgfxResize, _bgfxRendererShutdown);
 }
 
+/// The concrete backend bgfx picked (Vulkan, D3D11, Metal, ...).
 pub bgfx_renderer_type_t bgfxRendererType()
 {
     return bgfx_get_renderer_type();
 }
 
+/// Human-readable backend name for logs.
 pub const cchar* bgfxRendererName(bgfx_renderer_type_t type)
 {
     return bgfx_get_renderer_name(type);

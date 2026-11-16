@@ -1,3 +1,7 @@
+/* Keyboard/mouse state built from SDL events. Edge flags (pressed/released)
+   are cleared at the start of every pump, so gameplay code sees one-frame
+   transitions instead of having to diff states itself. */
+
 use sdl::events {
     SDL_Event, SDL_KeyboardEvent, SDL_MouseMotionEvent, SDL_MouseButtonEvent,
     SDL_MouseWheelEvent, SDL_PollEvent, SDL_EVENT_QUIT,
@@ -6,7 +10,10 @@ use sdl::events {
     SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP, SDL_EVENT_MOUSE_WHEEL
 };
 
+/// SDL scancodes fit in this many slots; indexes outside are ignored.
 pub const i32 INPUT_KEY_COUNT = 512;
+
+// Common scancodes. SDL orders these by physical key position, not ASCII.
 
 pub const i32 KEY_A = 4;
 pub const i32 KEY_D = 7;
@@ -23,6 +30,7 @@ pub const i32 KEY_LCTRL = 224;
 pub const i32 KEY_LSHIFT = 225;
 pub const i32 KEY_LALT = 226;
 
+/// Snapshot of keyboard/mouse state for the current frame.
 pub struct InputState
 {
     bool quit;
@@ -124,6 +132,7 @@ void _mouseWheel(InputState* input, SDL_Event* event)
     input->wheelY = input->wheelY + wheel->y;
 }
 
+/// Clears one-frame edges, then drains every pending SDL event into `input`.
 pub void inputPump(InputState* input)
 {
     if (input == null) return;
@@ -164,36 +173,42 @@ pub void inputPump(InputState* input)
     }
 }
 
+/// True while a key is held.
 pub bool inputKeyDown(InputState* input, i32 scancode)
 {
     if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
     return input->down[scancode];
 }
 
+/// True only on the frame the key went down.
 pub bool inputKeyPressed(InputState* input, i32 scancode)
 {
     if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
     return input->pressed[scancode];
 }
 
+/// True only on the frame the key came up.
 pub bool inputKeyReleased(InputState* input, i32 scancode)
 {
     if (input == null || scancode < 0 || scancode >= INPUT_KEY_COUNT) return false;
     return input->released[scancode];
 }
 
+/// True while a mouse button is held. `button` is 1-based.
 pub bool inputMouseDown(InputState* input, i32 button)
 {
     if (input == null || button < 1 || button > 32) return false;
     return (input->mouseButtons & ((u32)1 << (u32)(button - 1))) != 0;
 }
 
+/// True only on the frame a mouse button went down.
 pub bool inputMousePressed(InputState* input, i32 button)
 {
     if (input == null || button < 1 || button > 32) return false;
     return (input->mousePressed & ((u32)1 << (u32)(button - 1))) != 0;
 }
 
+/// True only on the frame a mouse button came up.
 pub bool inputMouseReleased(InputState* input, i32 button)
 {
     if (input == null || button < 1 || button > 32) return false;

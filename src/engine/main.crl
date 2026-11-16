@@ -1,6 +1,7 @@
-// Mu Engine entry: wire the layers once, then let Loop drive them.
-// No gameplay, demo, parser, or test harness lives here; systems are
-// initialized and the engine runs until a quit is requested.
+/* Mu Engine entry point: build the subsystems once, hand them to Loop, and
+ * run until something asks to quit. Gameplay and demos belong outside this
+ *  file; main only owns process lifetime and backend selection.
+ */
 
 use core::core { Loop, logInfo, logError };
 use math::math { Vec3 };
@@ -34,6 +35,8 @@ static ScriptBindings MuScripts;
 static BodyRecord[4096] MuPhysicsBodies;
 static PhysicsWorld MuPhysics;
 
+/// Boots the engine and returns a process exit code. GUI runs choose bgfx
+/// first and fall back to the SDL presenter; `MU_PHYSICS_PROBE` runs headless.
 pub i32 main()
 {
     logInfo("engine starting");
@@ -61,12 +64,12 @@ pub i32 main()
     bool forceSdl = get("MU_SDL_RENDERER").isSome();
     if (probe) logInfo("engine: probe mode");
     MuRenderer = nullRenderer();
-    if (probe)
-    {
+    
+    if (probe) {
         logInfo("renderer: null");
-    }
-    else if (platformInit())
-    {
+    } else if (platformInit()) {
+        // bgfx is the real renderer. The SDL path stays around as a cheap
+        // bring-up fallback for machines where bgfx cannot create a device.
         bool rendererReady = false;
         if (!forceSdl)
         {

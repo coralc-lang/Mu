@@ -1,3 +1,7 @@
+/* SDL window ownership and native-handle extraction. bgfx needs the OS window
+   pointer, not SDL's wrapper, so this module hides the per-platform property
+   names and reports the handle type bgfx expects. */
+
 use sdl::types { SDL_Window, SDL_PropertiesID };
 use sdl::window {
     SDL_Init, SDL_Quit, SDL_GetError, SDL_CreateWindow, SDL_DestroyWindow,
@@ -9,11 +13,17 @@ use sdl::window {
     SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER
 };
 
+/// Window size used when the caller does not care about a specific size.
 pub const i32 PLATFORM_DEFAULT_WIDTH = 1280;
 pub const i32 PLATFORM_DEFAULT_HEIGHT = 720;
+
+/// bgfx's "use the platform default" native-handle type.
 pub const i32 PLATFORM_NATIVE_DEFAULT = 0;
+
+/// Wayland needs an explicit handle type so bgfx creates a Wayland surface.
 pub const i32 PLATFORM_NATIVE_WAYLAND = 1;
 
+/// SDL window plus the native handles bgfx needs to create a swap chain.
 pub struct PlatformWindow
 {
     SDL_Window* handle;
@@ -25,6 +35,8 @@ pub struct PlatformWindow
     bool ready;
 }
 
+// SDL exposes every platform's handle as a window property. Check the ones
+// this process can actually have, in order, and keep the first hit.
 void _resolveNativeWindow(PlatformWindow* window)
 {
     SDL_PropertiesID props = SDL_GetWindowProperties(window->handle);
@@ -93,12 +105,15 @@ void _resolveNativeWindow(PlatformWindow* window)
     }
 }
 
+/// Human-readable name for logs.
 pub str platformWindowNativeTypeName(i32 nativeType)
 {
     if (nativeType == PLATFORM_NATIVE_WAYLAND) return "wayland";
     return "default";
 }
 
+/// Creates the SDL window and resolves its native handle. Returns a window
+/// with `ready == false` on any failure.
 pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 height)
 {
     PlatformWindow window = {
@@ -153,6 +168,7 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
     return window;
 }
 
+/// Destroys the SDL window and shuts down SDL video/events.
 pub void platformWindowDestroy(PlatformWindow* window)
 {
     if (window == null) return;
@@ -167,11 +183,13 @@ pub void platformWindowDestroy(PlatformWindow* window)
     println("[mu] platform: SDL shut down");
 }
 
+/// True when the window exists and has a resolved native handle.
 pub bool platformWindowReady(PlatformWindow* window)
 {
     return window != null && window->ready;
 }
 
+/// Re-reads the pixel size from SDL and reports whether it changed.
 pub bool platformWindowRefreshSize(PlatformWindow* window)
 {
     if (window == null || window->handle == null) return false;
@@ -187,30 +205,35 @@ pub bool platformWindowRefreshSize(PlatformWindow* window)
     return true;
 }
 
+/// Native window pointer for the renderer (HWND, NSWindow, xid, wl_surface, ...).
 pub rawptr platformWindowNativeHandle(PlatformWindow* window)
 {
     if (window == null) return null;
     return window->nativeWindow;
 }
 
+/// Native display pointer where the platform has one (X11/Wayland).
 pub rawptr platformWindowNativeDisplay(PlatformWindow* window)
 {
     if (window == null) return null;
     return window->nativeDisplay;
 }
 
+/// Native handle type constant understood by bgfx.
 pub i32 platformWindowNativeType(PlatformWindow* window)
 {
     if (window == null) return PLATFORM_NATIVE_DEFAULT;
     return window->nativeType;
 }
 
+/// Current framebuffer width in pixels.
 pub i32 platformWindowWidth(PlatformWindow* window)
 {
     if (window == null) return 0;
     return window->width;
 }
 
+/// Current framebuffer height in pixels.
 pub i32 platformWindowHeight(PlatformWindow* window)
 {
     if (window == null) return 0;

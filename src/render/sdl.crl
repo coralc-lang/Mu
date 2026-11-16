@@ -1,9 +1,7 @@
-// SDL3 presentation backend. The window stays visible because SDL owns
-// the native surface and SDL_RenderPresent attaches a real buffer every
-// frame (Wayland will not map a window that never receives one).
-//
-// This is the M3 bring-up renderer: clear + a moving quad so the window is
-// demonstrably alive. The bgfx 3D path plugs into the same Renderer seam.
+/* SDL3 bring-up renderer. SDL owns the surface and presents a real buffer
+   every frame, which keeps Wayland happy while the bgfx path is unavailable.
+   It draws a clear color and a moving bar, enough to see that the loop and
+   presentation are alive. The 3D path plugs into the same Renderer seam. */
 
 use render::render { Renderer, customRenderer };
 use sdl::types { SDL_Window };
@@ -14,6 +12,7 @@ use sdl::render {
     SDL_RenderFillRect, SDL_RenderPresent
 };
 
+/// State owned by the SDL presenter.
 pub struct SdlRenderer
 {
     SDL_Renderer* handle;
@@ -23,6 +22,7 @@ pub struct SdlRenderer
 static SdlRenderer MuSdl;
 static bool MuSdlReady = false;
 
+/// Creates SDL's renderer for an SDL_Window pointer.
 pub bool sdlStart(rawptr window)
 {
     if (MuSdlReady) return true;
@@ -91,6 +91,7 @@ void _sdlShutdown(rawptr ctx)
     MuSdlReady = false;
 }
 
+/// Returns the SDL presenter behind the engine's Renderer interface.
 pub Renderer sdlRenderer()
 {
     return customRenderer((rawptr)&MuSdl, _sdlDraw, _sdlResize, _sdlShutdown);

@@ -1,3 +1,7 @@
+/* Dynamic and static rigid bodies. Spawning always creates a Jolt shape,
+   makes a body at the entity's local transform, and stores the entity/body
+   pair in the world's flat record table. */
+
 use math::math { Vec3, Quat, RVec3 };
 use physics::layers { hasLayer, objectLayerFor };
 use physics::world { BodyRecord, PhysicsWorld };
@@ -52,6 +56,7 @@ Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bo
         return Result<u32, str>::Err { .error = "physics: body settings creation failed" };
     }
 
+    // Conservative defaults for now; per-material tuning comes later.
     JoltC_BodyCreationSettings_SetFriction(settings, 0.5f);
     JoltC_BodyCreationSettings_SetRestitution(settings, 0.0f);
     
@@ -71,22 +76,26 @@ Result<u32, str> _addShape(PhysicsWorld* world, EntityId entity, Shape shape, bo
     return Result<u32, str>::Ok { .value = body };
 }
 
+/// Creates a box body on layer 0.
 pub Result<u32, str> addBox(PhysicsWorld* world, EntityId entity, Vec3 halfExtent, bool dynamic)
 {
     return addBoxOnLayer(world, entity, halfExtent, dynamic, 0);
 }
 
+/// Creates a box body on a specific collision layer.
 pub Result<u32, str> addBoxOnLayer(PhysicsWorld* world, EntityId entity, Vec3 halfExtent, bool dynamic, u32 layer)
 {
     Shape shape = JoltC_BoxShape_Create(halfExtent, 0.05f);
     return _addShape(world, entity, shape, dynamic, layer);
 }
 
+/// Creates a sphere body on layer 0.
 pub Result<u32, str> addSphere(PhysicsWorld* world, EntityId entity, f32 radius, bool dynamic)
 {
     return addSphereOnLayer(world, entity, radius, dynamic, 0);
 }
 
+/// Creates a sphere body on a specific collision layer.
 pub Result<u32, str> addSphereOnLayer(PhysicsWorld* world, EntityId entity, f32 radius, bool dynamic, u32 layer)
 {
     Shape shape = JoltC_SphereShape_Create(radius);
@@ -103,6 +112,8 @@ i32 _find(PhysicsWorld* world, EntityId entity)
     return -1;
 }
 
+/// Destroys the body for an entity. The record table uses swap-remove, so
+/// order is not stable after this call.
 pub bool destroyBody(PhysicsWorld* world, EntityId entity)
 {
     i32 index = _find(world, entity);
@@ -116,6 +127,7 @@ pub bool destroyBody(PhysicsWorld* world, EntityId entity)
     return true;
 }
 
+/// Overwrites the linear velocity of an entity's body.
 pub bool setLinearVelocity(PhysicsWorld* world, EntityId entity, Vec3 velocity)
 {
     i32 index = _find(world, entity);

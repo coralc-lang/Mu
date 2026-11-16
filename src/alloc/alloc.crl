@@ -1,6 +1,6 @@
-// Game allocator (ENGINE.md §9): std's mimalloc behind the std Allocator
-// fn-ptr table (ctx + alloc/free/realloc). One shared instance for engine
-// and game code, initialized on first use.
+/* Game allocator (ENGINE.md §9): mimalloc wrapped in from the std Allocator
+   function table. Engine and game code share one instance, created lazily.
+ */
 
 import std::allocators { mimalloc::MiAlloc, allocator::Allocator };
 

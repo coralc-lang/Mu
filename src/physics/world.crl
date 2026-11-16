@@ -1,7 +1,7 @@
-// Jolt-backed physics world. This is the real runtime path: Jolt owns
-// simulation state, the scene keeps coral-side transforms in sync after each
-// fixed step. Binding code stays in thirdparty/jolt; this file is the small
-// engine-facing wrapper.
+/* Jolt-backed physics world. Jolt owns the simulation state; after every
+   fixed step we copy root-body transforms back into the scene so the normal
+   transform pass can handle children. The raw JoltC surface stays in
+   thirdparty/jolt; this file is the engine-facing wrapper. */
 
 use math::math { Vec3, Quat, RVec3 };
 use physics::layers {
@@ -27,8 +27,10 @@ use thirdparty::jolt {
     JoltC_BodyInterface_GetRotation
 };
 
+/// Default number of bodies a world can track.
 pub const u32 DEFAULT_CAPACITY = 4096;
 
+/// Maps an entity to its Jolt body and collision layer.
 pub struct BodyRecord
 {
     EntityId entity;
@@ -36,6 +38,7 @@ pub struct BodyRecord
     u32 layer;
 }
 
+/// All Jolt state owned by one world, plus the caller-provided body table.
 pub struct PhysicsWorld
 {
     Scene* scene;
@@ -55,6 +58,7 @@ pub struct PhysicsWorld
     bool started;
 }
 
+/// Builds an unstarted world that stores its body records in caller memory.
 pub PhysicsWorld physicsWorld(BodyRecord* records, u32 capacity)
 {
     return PhysicsWorld {
@@ -76,6 +80,7 @@ pub PhysicsWorld physicsWorld(BodyRecord* records, u32 capacity)
     };
 }
 
+/// Sets how many collision layers the world uses. Must happen before `start`.
 pub Result<u32, str> configureLayers(PhysicsWorld* world, u32 count)
 {
     if (world == null)
@@ -90,7 +95,8 @@ pub Result<u32, str> configureLayers(PhysicsWorld* world, u32 count)
     return Result<u32, str>::Ok { .value = count };
 }
 
-// One JoltC world per process (JoltC_Init/Shutdown are global).
+/// Starts Jolt and binds the world to a scene. JoltC's init/shutdown are
+/// process-global, so only one started world is supported at a time.
 pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
 {
     if (world == null || scene == null) return false;
@@ -168,6 +174,7 @@ pub bool start(PhysicsWorld* world, Scene* scene, Vec3 gravity)
     return true;
 }
 
+/// Destroys every body and releases the Jolt objects created by `start`.
 pub void stop(PhysicsWorld* world)
 {
     if (world == null) return;
@@ -214,8 +221,8 @@ pub void stop(PhysicsWorld* world)
     world->started = false;
 }
 
-// One fixed step, then copy Jolt transforms back into root entities. The
-// scene update that follows composes world transforms for children.
+/// Runs one fixed Jolt step and copies root-body transforms into the scene.
+/// Children are composed by the scene update that follows.
 pub u32 step(PhysicsWorld* world, f32 dt)
 {
     if (world == null || !world->started) return 0;
@@ -239,7 +246,7 @@ pub u32 step(PhysicsWorld* world, f32 dt)
     return world->count;
 }
 
-// Loop slot: core only sees a raw context + function pointer.
+/// Loop slot adapter: the core loop only knows a context pointer and a tick.
 pub void physicsSystem(rawptr ctx, f32 dt)
 {
     step((PhysicsWorld*)ctx, dt);

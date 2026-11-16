@@ -1,7 +1,7 @@
-// core layer (ENGINE.md §3/§6): logging, deterministic clock, the frame loop.
-// Loop body is callable `frame()` from day one (Web main-callbacks friendly).
-// Wall-clock time lands with platform at M3 - tests drive the loop headless
-// with the fixed 1/60 timestep only.
+/* Core engine loop: logging, frame stats, and the fixed-step tick.
+ * The body is callable as `frame()` from day one so the Web main-callback
+ * build can drive it directly. Headless tests still use the same 1/60 tick. 
+ */
 
 use scene::scene { Scene };
 use render::render { Renderer };
@@ -10,14 +10,17 @@ use platform::platform {
 };
 import std::time { nowMonotonic, timespecToF64 };
 
+/// Simulation step used by the fixed-timestep loop.
 pub const f32 FIXED_DT = 1.0f / 60.0f;
 const f64 STATS_INTERVAL_SECONDS = 1.0;
 
+/// Writes a normal engine log line with the `[mu]` prefix.
 pub void logInfo(str msg)
 {
     println("[mu] {}", msg);
 }
 
+/// Writes an error line with the `[mu:error]` prefix.
 pub void logError(str msg)
 {
     println("[mu:error] {}", msg);
@@ -33,6 +36,7 @@ void _nullPhysicsUpdate(rawptr ctx, f32 dt)
     // no physics world wired - engine/main swaps in physicsSystem
 }
 
+/// Drives one scene and renderer pair in a fixed order every frame.
 pub struct Loop
 {
     Scene* scene;
@@ -48,6 +52,8 @@ pub struct Loop
     bool running;
     f32 dt;
 
+    /// Builds a loop with no-op physics/script slots; engine/main swaps in
+    /// the real systems once they are up.
     static Loop new(Scene* scene, Renderer* renderer)
     {
         f64 start = timespecToF64(nowMonotonic());
@@ -80,8 +86,8 @@ pub struct Loop
         self.statsTime = now;
     }
 
-    // One frame, in ENGINE.md §6 order. Missing layers are stubbed until
-    // their milestone; call sites already match the final order.
+    /// Runs one frame in ENGINE.md §6 order. Missing layers stay stubbed
+    /// until their milestone, but the call sites already match the final order.
     void frame()
     {
         // dt = clock.tick()            fixed/deterministic until M3
@@ -100,6 +106,7 @@ pub struct Loop
         self._logStats();
     }
 
+    /// Runs a fixed number of frames. Primarily used by tests and probes.
     void run(u64 frames)
     {
         self.running = true;
@@ -113,7 +120,7 @@ pub struct Loop
         self.running = false;
     }
 
-    // Real engine lifetime: stop only when a platform/script quit is requested.
+    /// Runs until the platform or a script asks the engine to quit.
     void runUntilQuit()
     {
         self.running = true;

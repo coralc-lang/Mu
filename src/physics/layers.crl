@@ -1,3 +1,8 @@
+/* Collision-layer setup for Jolt. A layer mask's bit N means "collide with
+   layer N"; a pair only collides when both masks allow it. The broad phase
+   gets one bucket per collision layer, so Jolt can reject whole groups before
+   narrow-phase work. */
+
 use thirdparty::jolt {
     ObjectLayer, BroadPhaseLayer,
     ObjectLayerPairFilter, BroadPhaseLayerInterface,
@@ -14,15 +19,20 @@ use thirdparty::jolt {
     JoltC_ObjectLayerFilter_Destroy
 };
 
+/// Layer masks fit in one byte, so eight layers is the hard ceiling.
 pub const u32 MAX_LAYERS = 8;
+
+/// Mask with every supported layer enabled.
 pub const u8 ALL_LAYERS = 0xFF;
 
+/// Number of active layers plus the per-layer collision masks.
 pub struct CollisionLayers
 {
     u32 count;
     u8[MAX_LAYERS] masks;
 }
 
+/// Builds `count` layers (clamped to 1..MAX_LAYERS), all colliding with all.
 pub CollisionLayers collisionLayers(u32 count)
 {
     u32 n = count;
@@ -38,24 +48,28 @@ pub CollisionLayers collisionLayers(u32 count)
     };
 }
 
+/// Number of active layers, or zero for a null set.
 pub u32 layerCount(const CollisionLayers* layers)
 {
     if (layers == null) return 0;
     return layers->count;
 }
 
+/// True when `layer` is inside the configured range.
 pub bool hasLayer(const CollisionLayers* layers, u32 layer)
 {
     if (layers == null) return false;
     return layer < layers->count;
 }
 
+/// Collision mask for one layer, or zero when the layer is invalid.
 pub u8 layerMask(const CollisionLayers* layers, u32 layer)
 {
     if (!hasLayer(layers, layer)) return 0;
     return layers->masks[layer];
 }
 
+/// Replaces one layer's collision mask. Returns false for an invalid layer.
 pub bool setLayerMask(CollisionLayers* layers, u32 layer, u8 mask)
 {
     if (!hasLayer(layers, layer)) return false;
@@ -63,6 +77,7 @@ pub bool setLayerMask(CollisionLayers* layers, u32 layer, u8 mask)
     return true;
 }
 
+/// Pair test using both masks; both sides must opt in.
 pub bool layersShouldCollide(const CollisionLayers* layers, u32 layerA, u32 layerB)
 {
     if (!hasLayer(layers, layerA) || !hasLayer(layers, layerB)) return false;
@@ -72,6 +87,7 @@ pub bool layersShouldCollide(const CollisionLayers* layers, u32 layerA, u32 laye
            (((u32)layers->masks[layerB] & bitA) != 0);
 }
 
+/// Jolt object-layer value for a coral layer, encoding its mask.
 pub ObjectLayer objectLayerFor(const CollisionLayers* layers, u32 layer)
 {
     if (!hasLayer(layers, layer)) return 0;
@@ -79,11 +95,13 @@ pub ObjectLayer objectLayerFor(const CollisionLayers* layers, u32 layer)
         (u32)1 << layer, (u32)layers->masks[layer]);
 }
 
+/// Creates Jolt's mask-based object-pair filter.
 pub ObjectLayerPairFilter layerObjectFilter()
 {
     return JoltC_ObjectLayerPairFilterMask_Create();
 }
 
+/// Builds a broad-phase interface with one bucket per active layer.
 pub BroadPhaseLayerInterface layerBroadPhase(const CollisionLayers* layers)
 {
     u32 count = layerCount(layers);
@@ -100,18 +118,21 @@ pub BroadPhaseLayerInterface layerBroadPhase(const CollisionLayers* layers)
     return broadPhase;
 }
 
+/// Creates the object-vs-broad-phase filter for an interface.
 pub ObjectVsBroadPhaseLayerFilter layerBroadPhaseFilter(const BroadPhaseLayerInterface broadPhase)
 {
     if (broadPhase == null) return null;
     return JoltC_ObjectVsBroadPhaseLayerFilterMask_Create(broadPhase);
 }
 
+/// Temporary Jolt query filters; destroy after the query/update that uses them.
 pub struct LayerFilters
 {
     BroadPhaseLayerFilter broadPhase;
     ObjectLayerFilter object;
 }
 
+/// Releases both filters and nulls them, safe on partially built sets.
 pub void destroyLayerFilters(LayerFilters* filters)
 {
     if (filters == null) return;
@@ -123,6 +144,7 @@ pub void destroyLayerFilters(LayerFilters* filters)
     filters->broadPhase = null;
 }
 
+/// Borrows Jolt's default broad-phase/object filters for one object layer.
 pub LayerFilters layerFilters(PhysicsSystem system, ObjectLayer objectLayer)
 {
     LayerFilters filters = LayerFilters { .broadPhase = null, .object = null };
@@ -137,6 +159,7 @@ pub LayerFilters layerFilters(PhysicsSystem system, ObjectLayer objectLayer)
     return filters;
 }
 
+/// True when both halves of a filter set were created successfully.
 pub bool layerFiltersReady(const LayerFilters* filters)
 {
     return filters != null && filters->broadPhase != null && filters->object != null;

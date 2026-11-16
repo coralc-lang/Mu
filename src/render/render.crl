@@ -1,3 +1,8 @@
+/* Renderer seam. Everything above this file talks to a draw/resize/shutdown
+   function table, so switching between bgfx, SDL's 2D presenter, or a null
+   backend never leaks into scene or gameplay code. */
+
+/// Backend-neutral renderer handle. `ctx` is whatever the backend needs.
 pub struct Renderer
 {
     rawptr ctx;
@@ -18,6 +23,7 @@ void _nullShutdown(rawptr ctx)
 {
 }
 
+/// A renderer that silently drops every call. Used for probes and headless runs.
 pub Renderer nullRenderer()
 {
     return Renderer {
@@ -28,6 +34,8 @@ pub Renderer nullRenderer()
     };
 }
 
+/// Builds a renderer from a backend's function pointers. `resize` may be a
+/// no-op when the backend follows the window automatically.
 pub Renderer customRenderer(
     rawptr ctx, void(rawptr, rawptr, rawptr) draw,
     void(rawptr, i32, i32) resize, void(rawptr) shutdown)

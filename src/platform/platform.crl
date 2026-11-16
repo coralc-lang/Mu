@@ -1,3 +1,7 @@
+/* Process-wide platform state: one window, one input state, and the quit/
+   resize flags the loop polls. This is the only layer that talks to SDL
+   window events directly. */
+
 use platform::window {
     PlatformWindow, platformWindowCreate, platformWindowDestroy,
     platformWindowRefreshSize, platformWindowNativeHandle,
@@ -15,6 +19,7 @@ static i32 MuResizeHeight = 0;
 static PlatformWindow MuWindow;
 static InputState MuInput;
 
+/// Creates the main window. Safe to call twice; returns true when ready.
 pub bool platformInit()
 {
     if (MuWindow.ready) return true;
@@ -22,12 +27,15 @@ pub bool platformInit()
     return MuWindow.ready;
 }
 
+/// Tears down the window and lets SDL release video/events.
 pub void platformShutdown()
 {
     if (MuWindow.ready) println("[mu] platform: shutdown");
     platformWindowDestroy(&MuWindow);
 }
 
+/// Drains SDL events, then polls the framebuffer size so renderers can
+/// recreate their swap chains even when the compositor resizes us silently.
 pub void platformPump()
 {
     if (!MuWindow.ready) return;
@@ -45,6 +53,7 @@ pub void platformPump()
     if (MuInput.quit) MuQuitRequested = true;
 }
 
+/// Pops the latest pending resize, if any. The loop calls this once per frame.
 pub bool platformConsumeResize(i32* width, i32* height)
 {
     if (!MuResizePending) return false;
@@ -54,12 +63,14 @@ pub bool platformConsumeResize(i32* width, i32* height)
     return true;
 }
 
+/// Asks the loop to stop after the current frame.
 pub void platformRequestQuit()
 {
     if (!MuQuitRequested) println("[mu] platform: quit requested");
     MuQuitRequested = true;
 }
 
+/// True once a quit has been requested by input, code, or the window manager.
 pub bool platformQuitRequested()
 {
     return MuQuitRequested;
@@ -70,36 +81,43 @@ pub InputState* platformInput()
     return &MuInput;
 }
 
+/// True when a live window exists.
 pub bool platformReady()
 {
     return MuWindow.ready;
 }
 
+/// The SDL_Window pointer, for backends (like SDL's renderer) that want it.
 pub rawptr platformSdlWindow()
 {
     return (rawptr)MuWindow.handle;
 }
 
+/// Native window handle for bgfx.
 pub rawptr platformNativeWindow()
 {
     return platformWindowNativeHandle(&MuWindow);
 }
 
+/// Native display handle for bgfx (X11/Wayland, null elsewhere).
 pub rawptr platformNativeDisplay()
 {
     return platformWindowNativeDisplay(&MuWindow);
 }
 
+/// bgfx native-handle type for the current window.
 pub i32 platformNativeType()
 {
     return platformWindowNativeType(&MuWindow);
 }
 
+/// Current framebuffer width in pixels.
 pub i32 platformWidth()
 {
     return platformWindowWidth(&MuWindow);
 }
 
+/// Current framebuffer height in pixels.
 pub i32 platformHeight()
 {
     return platformWindowHeight(&MuWindow);
