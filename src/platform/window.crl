@@ -32,6 +32,7 @@ pub struct PlatformWindow
     rawptr nativeWindow;
     rawptr nativeDisplay;
     i32 nativeType;
+    str nativeBackend;
     bool ready;
 }
 
@@ -49,6 +50,7 @@ void _resolveNativeWindow(PlatformWindow* window)
     {
         window->nativeWindow = native;
         window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        window->nativeBackend = "win32";
         return;
     }
 
@@ -60,6 +62,7 @@ void _resolveNativeWindow(PlatformWindow* window)
     {
         window->nativeWindow = native;
         window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        window->nativeBackend = "cocoa";
         return;
     }
 
@@ -72,6 +75,7 @@ void _resolveNativeWindow(PlatformWindow* window)
         window->nativeWindow = (rawptr)(usize)x11Window;
         window->nativeDisplay = native;
         window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        window->nativeBackend = "x11";
         return;
     }
 
@@ -84,6 +88,7 @@ void _resolveNativeWindow(PlatformWindow* window)
         window->nativeWindow = waylandSurface;
         window->nativeDisplay = waylandDisplay;
         window->nativeType = PLATFORM_NATIVE_WAYLAND;
+        window->nativeBackend = "wayland";
         return;
     }
 
@@ -93,6 +98,7 @@ void _resolveNativeWindow(PlatformWindow* window)
     {
         window->nativeWindow = native;
         window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        window->nativeBackend = "android";
         return;
     }
 
@@ -102,6 +108,7 @@ void _resolveNativeWindow(PlatformWindow* window)
     {
         window->nativeWindow = native;
         window->nativeType = PLATFORM_NATIVE_DEFAULT;
+        window->nativeBackend = "uikit";
     }
 }
 
@@ -110,6 +117,13 @@ pub str platformWindowNativeTypeName(i32 nativeType)
 {
     if (nativeType == PLATFORM_NATIVE_WAYLAND) return "wayland";
     return "default";
+}
+
+/// SDL video backend that supplied the native handle.
+pub str platformWindowBackendName(PlatformWindow* window)
+{
+    if (window == null || window->nativeBackend.len == 0) return "none";
+    return window->nativeBackend;
 }
 
 /// Creates the SDL window and resolves its native handle. Returns a window
@@ -123,6 +137,7 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
         .nativeWindow = null,
         .nativeDisplay = null,
         .nativeType = PLATFORM_NATIVE_DEFAULT,
+        .nativeBackend = "none",
         .ready = false
     };
 
@@ -145,7 +160,9 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
 
     i32 pixelWidth = width;
     i32 pixelHeight = height;
-    SDL_GetWindowSizeInPixels(window.handle, &pixelWidth, &pixelHeight);
+    if (SDL_GetWindowSizeInPixels(window.handle, &pixelWidth, &pixelHeight) == 0)
+        println("[mu:error] platform: SDL_GetWindowSizeInPixels failed: {}",
+            SDL_GetError());
     window.width = pixelWidth;
     window.height = pixelHeight;
     println("[mu] platform: window pixels={}x{}", pixelWidth, pixelHeight);
@@ -160,7 +177,8 @@ pub PlatformWindow platformWindowCreate(const cchar* title, i32 width, i32 heigh
         return window;
     }
 
-    println("[mu] platform: native={} window={:p} display={:p}",
+    println("[mu] platform: backend={} native={} window={:p} display={:p}",
+        platformWindowBackendName(&window),
         platformWindowNativeTypeName(window.nativeType),
         window.nativeWindow, window.nativeDisplay);
     window.ready = true;
@@ -197,7 +215,11 @@ pub bool platformWindowRefreshSize(PlatformWindow* window)
     i32 width = window->width;
     i32 height = window->height;
     if (SDL_GetWindowSizeInPixels(window->handle, &width, &height) == 0)
+    {
+        println("[mu:error] platform: SDL_GetWindowSizeInPixels failed: {}",
+            SDL_GetError());
         return false;
+    }
     if (width == window->width && height == window->height) return false;
 
     window->width = width;

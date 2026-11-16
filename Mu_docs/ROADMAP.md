@@ -21,17 +21,31 @@ Last updated: 2026-11-16
 - [x] M3 renderer: fix bgfx swapchain/presentation so the window maps and animates every frame
 - [ ] **IN PROGRESS** M3 renderer: bgfx platform-data matrix for Wayland/X11, Win32, Cocoa, Android, UIKit; renderer type + fallback selection
   - Done: bgfx is the default renderer; `MU_SDL_RENDERER` forces SDL fallback.
+  - Done: `MU_BGFX_RENDERER` selects auto/noop/vulkan/opengl/gles/d3d11/d3d12/metal/webgpu;
+    `MU_BGFX_FALLBACK=0|false|off` makes the request strict.
+  - Done: SDL backend name (`wayland`/`x11`/`win32`/`cocoa`/`android`/`uikit`) is logged with
+    the bgfx native type; all six SDL native-handle properties are resolved.
   - Verified: Wayland presents (`wl_surface.attach`/`commit`) and maps; X11 maps.
-  - Verified Linux: bgfx Vulkan on Wayland and X11 both present at ~60 fps.
+  - Verified Linux: strict Vulkan initializes on Wayland and X11; a strict D3D11 request fails
+    over to the SDL presenter; unknown renderer names fall back to auto.
+  - Verified Linux pacing: X11 bgfx held ~60 fps; Wayland bgfx and SDL both showed ~30 fps
+    during an unfocused run, pointing at compositor/window-focus pacing rather than the backend.
   - Done: resize/reset handling via `Renderer.resize`, platform size polling, and
     `bgfx_reset` with an updated swap chain.
   - Pending: Win32, Cocoa, Android, UIKit.
 - [ ] Build: per-platform coral.crlb targets, link blocks, packaged archive selection; remove Linux-only hardcoded paths
 - [x] Core loop: fixed-timestep accumulator, dt clamp, vsync/frame pacing, deterministic headless stepping
   - Done: accumulator in `Loop.frame`, 0.25 s frame-time clamp, and `Loop.run` stepping exact `FIXED_DT` frames.
-  - Verified: bgfx Vulkan and `MU_SDL_RENDERER=1` both report ~60 fps on Wayland; the earlier ~30 fps rhythm has not reproduced.
-- [ ] Core loop: remove the `_nullPhysicsUpdate` placeholder and require a real physics slot; `Loop::new` should not silently run with no simulation
-- [ ] Core diagnostics: bgfx debug callback, SDL error reporting, startup/frame telemetry
+  - Verified: bgfx Vulkan and `MU_SDL_RENDERER=1` both report ~60 fps on Wayland;
+    X11 can still drop to ~30 fps intermittently.
+- [x] Core loop: remove the `_nullPhysicsUpdate` placeholder and require a real physics slot; `Loop::new` should not silently run with no simulation
+  - Done: `Loop.new` now takes a physics context and update callback; `engine/main` passes `physicsSystem` directly.
+  - Done: removed the physics probe path from `engine/main`.
+- [x] Core diagnostics: bgfx debug callback, SDL error reporting, startup/frame telemetry
+  - Done: bgfx C callback wired for fatal/trace; profiler/cache/capture slots are stubs.
+  - Done: SDL window-size and renderer-vsync failures now report `SDL_GetError`.
+  - Done: frame stats include sim ticks, average ms, and worst ms; run summary includes ticks.
+- [ ] Renderer: diagnose intermittent ~30 fps presentation on Wayland/X11; capture focus/visibility and present timing
 
 ### Math and scene
 
@@ -143,8 +157,8 @@ created a headless Vulkan device.
 
 Next:
 
-1. Test the platform-data matrix on Windows, macOS, Android, and UIKit.
-2. Recheck the 30 fps rhythm only if it returns; current Wayland builds report
-   ~60 fps with both bgfx Vulkan and the SDL fallback.
-3. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
-4. Replace the `_nullPhysicsUpdate` placeholder with a mandatory physics slot.
+1. Finish the platform-data matrix on Windows, macOS, Android, and UIKit.
+2. Keep `MU_SDL_RENDERER=1` as the temporary SDL presenter fallback.
+3. Move to math completion: Vec2/Vec3/Vec4/Quat additions, then Mat4.
+4. Diagnose intermittent ~30 fps presentation on Wayland/X11; capture
+   focus/visibility and present timing.

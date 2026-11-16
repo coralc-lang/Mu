@@ -5,23 +5,25 @@
 
 use core::core { Loop, logInfo, logError };
 use math::math { Vec3 };
-use physics::probe { runProbe };
 use physics::world { BodyRecord, PhysicsWorld, physicsWorld, physicsSystem, start, stop };
 use platform::platform {
-    platformInit, platformShutdown, platformRequestQuit, platformSdlWindow,
+    platformInit, platformShutdown, platformSdlWindow,
     platformNativeWindow, platformNativeDisplay, platformNativeType,
-    platformWidth, platformHeight
+    platformBackendName, platformWidth, platformHeight
 };
 use render::render { Renderer, nullRenderer };
 use render::sdl { sdlStart, sdlRenderer };
 use render::bgfx {
-    bgfxStart, bgfxRenderer, bgfxRendererType, bgfxRendererName
+    bgfxStart, bgfxRenderer, bgfxRendererType, bgfxRendererName,
+    bgfxRendererTypeFromName
 };
+use bgfx::types { BGFX_RENDERER_TYPE_COUNT };
 use scene::scene { Scene, Entity };
 use script::abi { BindingEntry, BindingTable };
 use script::loader { ScriptHost, scriptSystem };
 use script::bindings { ScriptBinding, ScriptBindings };
 import std::env { get };
+import std::string { String };
 
 static Entity[4096] MuSceneStorage;
 static Scene MuScene;
@@ -36,7 +38,7 @@ static BodyRecord[4096] MuPhysicsBodies;
 static PhysicsWorld MuPhysics;
 
 /// Boots the engine and returns a process exit code. GUI runs choose bgfx
-/// first and fall back to the SDL presenter; `MU_PHYSICS_PROBE` runs headless.
+/// first and fall back to the SDL presenter.
 pub i32 main()
 {
     logInfo("engine starting");
@@ -60,14 +62,38 @@ pub i32 main()
             MuPhysics.capacity, MuPhysics.count);
     }
 
-    bool probe = get("MU_PHYSICS_PROBE").isSome();
     bool forceSdl = get("MU_SDL_RENDERER").isSome();
-    if (probe) logInfo("engine: probe mode");
+
+    // MU_BGFX_RENDERER: auto, vulkan, opengl, gles, d3d11, d3d12, metal,
+    // webgpu, or noop. MU_BGFX_FALLBACK=0 makes the request strict. Add new
+    // window backends in platform/window.crl; bgfx uses native type 0 there
+    // except Wayland, which needs type 1.
+    i32 requestedRenderer = BGFX_RENDERER_TYPE_COUNT;
+    Option<String> rendererEnv = get("MU_BGFX_RENDERER");
+    if (rendererEnv.isSome())
+    {
+        String rendererName = rendererEnv.unwrap();
+        requestedRenderer = bgfxRendererTypeFromName(rendererName.asView());
+        if (requestedRenderer < 0)
+        {
+            logError("renderer: unknown MU_BGFX_RENDERER; using auto");
+            requestedRenderer = BGFX_RENDERER_TYPE_COUNT;
+        }
+    }
+
+    i32 bgfxFallback = 1;
+    Option<String> fallbackEnv = get("MU_BGFX_FALLBACK");
+    if (fallbackEnv.isSome())
+    {
+        String fallbackName = fallbackEnv.unwrap();
+        if (fallbackName.equalsView("0") || fallbackName.equalsView("false")
+            || fallbackName.equalsView("off"))
+            bgfxFallback = 0;
+    }
+
     MuRenderer = nullRenderer();
-    
-    if (probe) {
-        logInfo("renderer: null");
-    } else if (platformInit()) {
+
+    if (platformInit()) {
         // bgfx is the real renderer. The SDL path stays around as a cheap
         // bring-up fallback for machines where bgfx cannot create a device.
         bool rendererReady = false;
@@ -75,12 +101,14 @@ pub i32 main()
         {
             if (bgfxStart(
                 platformWidth(), platformHeight(),
-                platformNativeWindow(), platformNativeDisplay(), platformNativeType()))
+                platformNativeWindow(), platformNativeDisplay(),
+                platformNativeType(), requestedRenderer, bgfxFallback))
             {
                 MuRenderer = bgfxRenderer();
                 i32 rendererType = bgfxRendererType();
-                println("[mu] renderer: bgfx ({}) type {}",
-                    bgfxRendererName(rendererType), rendererType);
+                println("[mu] renderer: bgfx ({}) type {} platform={} requested={} fallback={}",
+                    bgfxRendererName(rendererType), rendererType,
+                    platformBackendName(), requestedRenderer, bgfxFallback);
                 rendererReady = true;
             }
             else
@@ -109,25 +137,17 @@ pub i32 main()
         logInfo("renderer: null");
     }
 
-    MuLoop = Loop::new(&MuScene, &MuRenderer);
-    MuLoop.physicsCtx = (rawptr)&MuPhysics;
-    MuLoop.physicsUpdate = physicsSystem;
+    MuLoop = Loop::new(
+        &MuScene, &MuRenderer, (rawptr)&MuPhysics, physicsSystem);
     MuLoop.scriptCtx = (rawptr)&MuHost;
     MuLoop.scriptUpdate = scriptSystem;
-
-    bool probeOk = true;
-    if (probe)
-    {
-        probeOk = runProbe(&MuPhysics, &MuScene);
-        platformRequestQuit();
-    }
 
     println("[mu] loop: dt={} hz={}", MuLoop.dt, 60);
     logInfo("engine running");
     MuLoop.runUntilQuit();
 
-    println("[mu] engine: run summary frames={} entities={} bodies={}",
-        MuLoop.frameCount, MuScene.count, MuPhysics.count);
+    println("[mu] engine: run summary frames={} ticks={} entities={} bodies={}",
+        MuLoop.frameCount, MuLoop.simTicks, MuScene.count, MuPhysics.count);
     logInfo("engine: shutting down");
     stop(&MuPhysics);
     MuHost.free();
@@ -135,5 +155,5 @@ pub i32 main()
     MuRenderer.shutdown(MuRenderer.ctx);
     platformShutdown();
     logInfo("engine stopped");
-    return probeOk ? 0 : 1;
+    return 0;
 }

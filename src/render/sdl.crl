@@ -39,7 +39,9 @@ pub bool sdlStart(rawptr window)
         return false;
     }
 
-    SDL_SetRenderVSync(MuSdl.handle, 1);
+    if (SDL_SetRenderVSync(MuSdl.handle, 1) == 0)
+        println("[mu:error] renderer: SDL_SetRenderVSync failed: {}",
+            SDL_GetError());
     MuSdl.frames = 0;
     MuSdlReady = true;
     println("[mu] renderer: SDL renderer ready");

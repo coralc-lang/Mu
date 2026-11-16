@@ -286,6 +286,27 @@ pub struct bgfx_init_limits_t
     u32 minUniformCacheSize;
 }
 
+pub struct bgfx_callback_vtbl_t
+{
+    void(rawptr, const cchar*, u16, i32, const cchar*) fatal;
+    void(rawptr, const cchar*, u16, const cchar*, rawptr) traceVargs;
+    void(rawptr, const cchar*, u32, const cchar*, u16) profilerBegin;
+    void(rawptr, const cchar*, u32, const cchar*, u16) profilerBeginLiteral;
+    void(rawptr) profilerEnd;
+    u32(rawptr, u64) cacheReadSize;
+    u32(rawptr, u64, rawptr, u32) cacheRead;
+    void(rawptr, u64, rawptr, u32) cacheWrite;
+    void(rawptr, const cchar*, u32, u32, u32, i32, rawptr, u32, u8) screenShot;
+    void(rawptr, u32, u32, u32, i32, u8) captureBegin;
+    void(rawptr) captureEnd;
+    void(rawptr, rawptr, u32) captureFrame;
+}
+
+pub struct bgfx_callback_t
+{
+    bgfx_callback_vtbl_t* vtbl;
+}
+
 // ABI matches the packaged libbgfx.a, not current upstream master. The
 // packaged archive has no backendType/diagnostics fields and places
 // platformData at offset 24 (verified against bgfx::Init::Init and

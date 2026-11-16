@@ -4,6 +4,11 @@
 
 use bgfx::types {
     bgfx_init_t, bgfx_swap_chain_t, bgfx_renderer_type_t,
+    bgfx_callback_t, bgfx_callback_vtbl_t,
+    BGFX_RENDERER_TYPE_NOOP, BGFX_RENDERER_TYPE_DIRECT3D11,
+    BGFX_RENDERER_TYPE_DIRECT3D12, BGFX_RENDERER_TYPE_METAL,
+    BGFX_RENDERER_TYPE_OPENGLES, BGFX_RENDERER_TYPE_OPENGL,
+    BGFX_RENDERER_TYPE_VULKAN, BGFX_RENDERER_TYPE_WEBGPU,
     BGFX_RENDERER_TYPE_COUNT, BGFX_RESET_VSYNC, BGFX_CLEAR_COLOR,
     BGFX_CLEAR_DEPTH
 };
@@ -18,10 +23,105 @@ use render::render { Renderer, customRenderer };
 
 static bool MuBgfxReady = false;
 static bgfx_swap_chain_t MuBgfxSwapChain;
+static bgfx_callback_t MuBgfxCallback;
+static bgfx_callback_vtbl_t MuBgfxCallbackVtbl;
+
+void _bgfxFatal(rawptr userData, const cchar* filePath, u16 line,
+    i32 code, const cchar* message)
+{
+    println("[mu:error] bgfx fatal {}:{} code={} {}",
+        filePath, line, code, message);
+}
+
+void _bgfxTrace(rawptr userData, const cchar* filePath, u16 line,
+    const cchar* format, rawptr args)
+{
+    println("[mu] bgfx trace {}:{} {}", filePath, line, format);
+}
+
+void _bgfxProfilerBegin(rawptr userData, const cchar* name, u32 abgr,
+    const cchar* filePath, u16 line)
+{
+}
+
+void _bgfxProfilerBeginLiteral(rawptr userData, const cchar* name, u32 abgr,
+    const cchar* filePath, u16 line)
+{
+}
+
+void _bgfxProfilerEnd(rawptr userData)
+{
+}
+
+u32 _bgfxCacheReadSize(rawptr userData, u64 id)
+{
+    return 0;
+}
+
+u32 _bgfxCacheRead(rawptr userData, u64 id, rawptr data, u32 size)
+{
+    return 0;
+}
+
+void _bgfxCacheWrite(rawptr userData, u64 id, rawptr data, u32 size)
+{
+}
+
+void _bgfxScreenShot(rawptr userData, const cchar* filePath, u32 width,
+    u32 height, u32 pitch, i32 format, rawptr data, u32 size, u8 flipV)
+{
+}
+
+void _bgfxCaptureBegin(rawptr userData, u32 width, u32 height, u32 pitch,
+    i32 format, u8 flipV)
+{
+}
+
+void _bgfxCaptureEnd(rawptr userData)
+{
+}
+
+void _bgfxCaptureFrame(rawptr userData, rawptr data, u32 size)
+{
+}
+
+void _bgfxCallbackInit()
+{
+    MuBgfxCallbackVtbl.fatal = _bgfxFatal;
+    MuBgfxCallbackVtbl.traceVargs = _bgfxTrace;
+    MuBgfxCallbackVtbl.profilerBegin = _bgfxProfilerBegin;
+    MuBgfxCallbackVtbl.profilerBeginLiteral = _bgfxProfilerBeginLiteral;
+    MuBgfxCallbackVtbl.profilerEnd = _bgfxProfilerEnd;
+    MuBgfxCallbackVtbl.cacheReadSize = _bgfxCacheReadSize;
+    MuBgfxCallbackVtbl.cacheRead = _bgfxCacheRead;
+    MuBgfxCallbackVtbl.cacheWrite = _bgfxCacheWrite;
+    MuBgfxCallbackVtbl.screenShot = _bgfxScreenShot;
+    MuBgfxCallbackVtbl.captureBegin = _bgfxCaptureBegin;
+    MuBgfxCallbackVtbl.captureEnd = _bgfxCaptureEnd;
+    MuBgfxCallbackVtbl.captureFrame = _bgfxCaptureFrame;
+    MuBgfxCallback.vtbl = &MuBgfxCallbackVtbl;
+}
+
+/// Maps `MU_BGFX_RENDERER` names to bgfx renderer types; -1 means unknown.
+pub i32 bgfxRendererTypeFromName(str name)
+{
+    if (name.equals("auto")) return BGFX_RENDERER_TYPE_COUNT;
+    if (name.equals("noop")) return BGFX_RENDERER_TYPE_NOOP;
+    if (name.equals("d3d11")) return BGFX_RENDERER_TYPE_DIRECT3D11;
+    if (name.equals("d3d12")) return BGFX_RENDERER_TYPE_DIRECT3D12;
+    if (name.equals("metal")) return BGFX_RENDERER_TYPE_METAL;
+    if (name.equals("gles")) return BGFX_RENDERER_TYPE_OPENGLES;
+    if (name.equals("opengles")) return BGFX_RENDERER_TYPE_OPENGLES;
+    if (name.equals("opengl")) return BGFX_RENDERER_TYPE_OPENGL;
+    if (name.equals("vulkan")) return BGFX_RENDERER_TYPE_VULKAN;
+    if (name.equals("webgpu")) return BGFX_RENDERER_TYPE_WEBGPU;
+    return -1;
+}
 
 /// Creates the bgfx device and its first swap chain. `nativeType` is bgfx's
 /// platform handle enum (0 default, 1 Wayland); width/height are pixels.
-pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisplay, i32 nativeType)
+pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow,
+    rawptr nativeDisplay, i32 nativeType, i32 rendererType, i32 fallback)
 {
     if (MuBgfxReady) return true;
     if (width <= 0 || height <= 0)
@@ -30,13 +130,15 @@ pub bool bgfxStart(i32 width, i32 height, rawptr nativeWindow, rawptr nativeDisp
         return false;
     }
 
-    println("[mu] renderer: bgfx init request={}x{} nativeType={} fallback=1 vsync=1",
-        width, height, nativeType);
+    println("[mu] renderer: bgfx init request={}x{} nativeType={} rendererType={} fallback={} vsync=1",
+        width, height, nativeType, rendererType, fallback);
 
     bgfx_init_t init;
     bgfx_init_ctor(&init);
-    init.type = BGFX_RENDERER_TYPE_COUNT;
-    init.fallback = 1;
+    _bgfxCallbackInit();
+    init.callback = (rawptr)&MuBgfxCallback;
+    init.type = rendererType;
+    init.fallback = (u8)fallback;
     init.platformData.type = nativeType;
     init.swapChain.nwh = nativeWindow;
     init.swapChain.ndt = nativeDisplay;

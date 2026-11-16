@@ -6,7 +6,7 @@ use platform::window {
     PlatformWindow, platformWindowCreate, platformWindowDestroy,
     platformWindowRefreshSize, platformWindowNativeHandle,
     platformWindowNativeDisplay, platformWindowNativeType,
-    platformWindowWidth, platformWindowHeight,
+    platformWindowBackendName, platformWindowWidth, platformWindowHeight,
     PLATFORM_DEFAULT_WIDTH, PLATFORM_DEFAULT_HEIGHT
 };
 
@@ -109,6 +109,12 @@ pub rawptr platformNativeDisplay()
 pub i32 platformNativeType()
 {
     return platformWindowNativeType(&MuWindow);
+}
+
+/// SDL video backend that created the current window.
+pub str platformBackendName()
+{
+    return platformWindowBackendName(&MuWindow);
 }
 
 /// Current framebuffer width in pixels.

@@ -1,7 +1,6 @@
 /* Core engine loop: logging, frame stats, and the fixed-step tick.
  * The body is callable as `frame()` from day one so the Web main-callback
- * build can drive it directly. Headless tests still use the same 1/60 tick. 
- */
+ * build can drive it directly. Headless tests still use the same 1/60 tick. */
 
 use scene::scene { Scene };
 use render::render { Renderer };
@@ -11,12 +10,6 @@ use platform::platform {
 import std::time { nowMonotonic, timespecToF64 };
 
 /// Simulation step used by the fixed-timestep loop.
-
-
-
-
-
-
 pub const f32 FIXED_DT = 1.0f / 60.0f;
 const f64 STATS_INTERVAL_SECONDS = 1.0;
 const f64 MAX_FRAME_TIME = 0.25;
@@ -38,11 +31,6 @@ void _nullScriptUpdate(rawptr ctx, f32 dt)
     // no script host wired (M1 default) - engine/main swaps in scriptSystem
 }
 
-void _nullPhysicsUpdate(rawptr ctx, f32 dt)
-{
-    // no physics world wired - engine/main swaps in physicsSystem
-}
-
 /// Drives one scene and renderer pair in a fixed order every frame.
 pub struct Loop
 {
@@ -50,20 +38,23 @@ pub struct Loop
     Renderer* renderer;
     rawptr scriptCtx;                // ScriptHost* - wired by engine/main (M1)
     void(rawptr, f32) scriptUpdate;  // script.update(dt); null host until wired
-    rawptr physicsCtx;               // PhysicsWorld* - wired by engine/main
-    void(rawptr, f32) physicsUpdate; // physics.step(dt); null world until wired
+    rawptr physicsCtx;               // PhysicsWorld* - supplied by the caller
+    void(rawptr, f32) physicsUpdate; // physics.step(dt)
     rawptr ui;            // null until M6, passed through to the renderer
     u64 frameCount;
     u64 statsFrame;
+    u64 simTicks;
     f64 statsTime;
     f64 lastTime;
     f64 accumulator;
+    f64 worstFrame;
     bool running;
     f32 dt;
 
-    /// Builds a loop with no-op physics/script slots; engine/main swaps in
-    /// the real systems once they are up.
-    static Loop new(Scene* scene, Renderer* renderer)
+    /// Builds a loop with a required physics slot and a no-op script slot
+    /// until a script host is wired.
+    static Loop new(Scene* scene, Renderer* renderer,
+        rawptr physicsCtx, void(rawptr, f32) physicsUpdate)
     {
         f64 start = timespecToF64(nowMonotonic());
         return Loop {
@@ -71,14 +62,16 @@ pub struct Loop
             .renderer = renderer,
             .scriptCtx = null,
             .scriptUpdate = _nullScriptUpdate,
-            .physicsCtx = null,
-            .physicsUpdate = _nullPhysicsUpdate,
+            .physicsCtx = physicsCtx,
+            .physicsUpdate = physicsUpdate,
             .ui = null,
             .frameCount = 0,
             .statsFrame = 0,
+            .simTicks = 0,
             .statsTime = start,
             .lastTime = start,
             .accumulator = 0.0,
+            .worstFrame = 0.0,
             .running = false,
             .dt = FIXED_DT
         };
@@ -91,10 +84,13 @@ pub struct Loop
         if (elapsed < STATS_INTERVAL_SECONDS) return;
         u64 frames = self.frameCount - self.statsFrame;
         f64 fps = (f64)frames / elapsed;
-        println("[mu] frame stats: frames={} total={} elapsed={} fps={}",
-            frames, self.frameCount, elapsed, fps);
+        f64 avgMs = elapsed / (f64)frames * 1000.0;
+        f64 worstMs = self.worstFrame * 1000.0;
+        println("[mu] frame stats: frames={} total={} ticks={} elapsed={} fps={} avg_ms={} worst_ms={}",
+            frames, self.frameCount, self.simTicks, elapsed, fps, avgMs, worstMs);
         self.statsFrame = self.frameCount;
         self.statsTime = now;
+        self.worstFrame = 0.0;
     }
 
     void _beginFrame()
@@ -109,6 +105,7 @@ pub struct Loop
 
     void _simulate(f32 dt)
     {
+        self.simTicks = self.simTicks + 1;
         self.physicsUpdate(self.physicsCtx, dt);
         self.scene->update(dt);
         self.scriptUpdate(self.scriptCtx, dt);
@@ -132,6 +129,7 @@ pub struct Loop
         self.lastTime = now;
         if (elapsed < 0.0) elapsed = 0.0;
         if (elapsed > MAX_FRAME_TIME) elapsed = MAX_FRAME_TIME;
+        if (elapsed > self.worstFrame) self.worstFrame = elapsed;
         self.accumulator = self.accumulator + elapsed;
 
         f64 step = (f64)self.dt;
